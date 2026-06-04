@@ -4,14 +4,15 @@ import { t } from "i18next";
 import { forwardRef, ForwardRefRenderFunction, memo } from "react";
 
 import { modal } from "@/AntdGlobalComp";
+import CodexBindingPanel from "@/components/CodexBindingPanel";
 import OIMAvatar from "@/components/OIMAvatar";
 import SettingRow from "@/components/SettingRow";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
 import { IMSDK } from "@/layout/MainContentWrap";
+import { useConversationStore } from "@/store";
 import { useContactStore } from "@/store/contact";
 import { feedbackToast } from "@/utils/common";
 import { emit } from "@/utils/events";
-import { useConversationStore } from "@/store";
 
 // export interface SingleSettingProps {}
 
@@ -116,6 +117,7 @@ const SingleSetting: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (
         value={isBlack}
         tryChange={updateBlack}
       />
+      <CodexBindingPanel />
       <Divider className="m-0 border-4 border-[#F4F5F7]" />
 
       <div className="flex-1" />

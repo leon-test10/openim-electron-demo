@@ -7,6 +7,7 @@ import { memo, useEffect, useRef } from "react";
 import group_member from "@/assets/images/chatHeader/group_member.png";
 import launch_group from "@/assets/images/chatHeader/launch_group.png";
 import settings from "@/assets/images/chatHeader/settings.png";
+import CodexStatusBadge from "@/components/CodexStatusBadge";
 import OIMAvatar from "@/components/OIMAvatar";
 import { OverlayVisibleHandle } from "@/hooks/useOverlayVisible";
 import { useConversationStore, useUserStore } from "@/store";
@@ -115,6 +116,7 @@ const ChatHeader = () => {
                 <span>{currentGroupInfo?.memberCount}</span>
               </div>
             )}
+            {isSingleSession && <CodexStatusBadge />}
           </div>
         </div>
         <div className="mr-5 flex">
