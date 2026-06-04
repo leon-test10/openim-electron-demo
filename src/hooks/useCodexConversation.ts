@@ -1,5 +1,5 @@
-import { SessionType } from "@openim/wasm-client-sdk";
 import { useCallback, useEffect, useMemo } from "react";
+import { useParams } from "react-router-dom";
 
 import {
   activateCodexSession,
@@ -13,25 +13,36 @@ import {
   rebindCodexConversation,
   retryCodexJob,
 } from "@/api/codexBridge";
-import { useCodexStore, useConversationStore } from "@/store";
+import { useCodexStore, useConversationStore, useUserStore } from "@/store";
 import {
   CodexRuntimeEvent,
   CreateCodexSessionInput,
   RebindCodexInput,
 } from "@/types/codex";
+import {
+  isCodexSingleConversation,
+  resolveCodexConversationID,
+} from "@/utils/codexConversation";
 import { getViteEnv } from "@/utils/env";
 
 const CODEX_BOT_USER_ID = getViteEnv("VITE_CODEX_BOT_USER_ID", "codex_bot");
 const POLL_INTERVAL_MS = 2000;
 
 export function useCodexConversation() {
+  const { conversationID: routeConversationID } = useParams();
   const currentConversation = useConversationStore(
     (state) => state.currentConversation,
   );
-  const conversationID = currentConversation?.conversationID;
-  const isCodexConversation =
-    currentConversation?.conversationType === SessionType.Single &&
-    currentConversation?.userID === CODEX_BOT_USER_ID;
+  const selfUserID = useUserStore((state) => state.selfInfo.userID);
+  const conversationID = resolveCodexConversationID(
+    currentConversation,
+    routeConversationID,
+  );
+  const isCodexConversation = isCodexSingleConversation(
+    currentConversation,
+    routeConversationID,
+    CODEX_BOT_USER_ID,
+  );
 
   const entry = useCodexStore((state) =>
     conversationID ? state.conversations[conversationID] : undefined,
@@ -141,20 +152,26 @@ export function useCodexConversation() {
   const actions = useMemo(
     () => ({
       refresh,
+      loadJobEvents: async (jobID: string) => {
+        if (!conversationID) return;
+        const { events } = await getCodexJobEvents(jobID);
+        setJobEvents(conversationID, jobID, events);
+      },
       cancel: async () => {
         if (!activeJob?.id || !activeJob.canCancel) return;
         await cancelCodexJob(activeJob.id);
         await refresh();
       },
-      retry: async () => {
-        if (!latestJob?.id || !latestJob.canRetry) return;
-        await retryCodexJob(latestJob.id);
+      retry: async (jobID?: string) => {
+        const sourceJobID = jobID ?? latestJob?.id;
+        if (!sourceJobID) return;
+        await retryCodexJob(sourceJobID);
         await refresh();
       },
       rebind: async (payload: RebindCodexInput) => {
         if (!conversationID) return;
         await rebindCodexConversation(conversationID, {
-          openimDisplayUserId: currentConversation?.userID,
+          openimDisplayUserId: selfUserID,
           ...payload,
         });
         await refresh();
@@ -166,11 +183,22 @@ export function useCodexConversation() {
       },
       createSession: async (payload: CreateCodexSessionInput = {}) => {
         if (!conversationID) return;
-        await createCodexSession(conversationID, {
-          openimDisplayUserId: currentConversation?.userID,
+        const session = await createCodexSession(conversationID, {
+          openimDisplayUserId: selfUserID,
           ...payload,
         });
         await refresh();
+        return session;
+      },
+      createAndActivateSession: async (payload: CreateCodexSessionInput = {}) => {
+        if (!conversationID) return;
+        const session = await createCodexSession(conversationID, {
+          openimDisplayUserId: selfUserID,
+          ...payload,
+        });
+        await activateCodexSession(conversationID, session.id);
+        await refresh();
+        return session;
       },
       activateSession: async (sessionRecordID: string) => {
         if (!conversationID) return;
@@ -178,7 +206,7 @@ export function useCodexConversation() {
         await refresh();
       },
     }),
-    [activeJob, conversationID, currentConversation?.userID, latestJob, refresh],
+    [activeJob, conversationID, latestJob, refresh, selfUserID, setJobEvents],
   );
 
   return {
@@ -193,6 +221,7 @@ export function useCodexConversation() {
     sessions: entry?.sessions ?? [],
     queuedJobCount: entry?.status?.queuedJobCount ?? 0,
     activeJobEvents,
+    eventsByJobId: entry?.eventsByJobId ?? {},
     ...actions,
   };
 }

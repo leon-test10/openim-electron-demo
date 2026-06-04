@@ -4,7 +4,6 @@ import { t } from "i18next";
 import { forwardRef, ForwardRefRenderFunction, memo } from "react";
 
 import { modal } from "@/AntdGlobalComp";
-import CodexBindingPanel from "@/components/CodexBindingPanel";
 import OIMAvatar from "@/components/OIMAvatar";
 import SettingRow from "@/components/SettingRow";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
@@ -117,9 +116,6 @@ const SingleSetting: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (
         value={isBlack}
         tryChange={updateBlack}
       />
-      <CodexBindingPanel />
-      <Divider className="m-0 border-4 border-[#F4F5F7]" />
-
       <div className="flex-1" />
       {isFriend && (
         <div className="flex w-full justify-center pb-3 pt-24">

@@ -28,6 +28,9 @@ export interface CodexSessionRecord {
   openimDisplayUserId: string;
   codexSessionId: string | null;
   codexProjectPath: string;
+  codexHomeDir: string | null;
+  codexHomeSeedMode: "copy-auth-only" | "copy-auth-and-config" | "none" | null;
+  sandboxMode: string | null;
   isActive: boolean;
   status: "active" | "paused" | "archived" | "error";
   parentSessionRecordId: string | null;
@@ -56,6 +59,9 @@ export interface CodexRuntimeJob {
   createdAt: number;
   startedAt: number | null;
   finishedAt: number | null;
+  queuedMs?: number | null;
+  runningMs?: number | null;
+  totalMs?: number | null;
   runningForMs?: number | null;
   totalDurationMs?: number | null;
   canCancel?: boolean;

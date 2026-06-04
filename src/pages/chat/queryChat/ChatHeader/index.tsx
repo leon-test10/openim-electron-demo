@@ -1,16 +1,24 @@
+import { UnorderedListOutlined } from "@ant-design/icons";
 import { SessionType } from "@openim/wasm-client-sdk";
-import { Layout, Tooltip } from "antd";
+import { Button, Layout, Tooltip } from "antd";
 import clsx from "clsx";
 import i18n, { t } from "i18next";
 import { memo, useEffect, useRef } from "react";
+import { useParams } from "react-router-dom";
 
 import group_member from "@/assets/images/chatHeader/group_member.png";
 import launch_group from "@/assets/images/chatHeader/launch_group.png";
 import settings from "@/assets/images/chatHeader/settings.png";
+import CodexActivityDrawer from "@/components/CodexActivityDrawer";
 import CodexStatusBadge from "@/components/CodexStatusBadge";
 import OIMAvatar from "@/components/OIMAvatar";
 import { OverlayVisibleHandle } from "@/hooks/useOverlayVisible";
 import { useConversationStore, useUserStore } from "@/store";
+import {
+  isCodexSingleConversation,
+  resolveCodexConversationID,
+} from "@/utils/codexConversation";
+import { getViteEnv } from "@/utils/env";
 import { emit } from "@/utils/events";
 
 import GroupSetting from "../GroupSetting";
@@ -34,6 +42,8 @@ const menuList = [
   },
 ];
 
+const CODEX_BOT_USER_ID = getViteEnv("VITE_CODEX_BOT_USER_ID", "codex_bot");
+
 i18n.on("languageChanged", () => {
   menuList[0].title = t("placeholder.createGroup");
   menuList[1].title = t("placeholder.invitation");
@@ -41,8 +51,10 @@ i18n.on("languageChanged", () => {
 });
 
 const ChatHeader = () => {
+  const { conversationID: routeConversationID } = useParams();
   const singleSettingRef = useRef<OverlayVisibleHandle>(null);
   const groupSettingRef = useRef<OverlayVisibleHandle>(null);
+  const codexActivityRef = useRef<OverlayVisibleHandle>(null);
 
   const currentConversation = useConversationStore(
     (state) => state.currentConversation,
@@ -65,7 +77,10 @@ const ChatHeader = () => {
     if (groupSettingRef.current?.isOverlayOpen) {
       groupSettingRef.current?.closeOverlay();
     }
-  }, [currentConversation?.conversationID]);
+    if (codexActivityRef.current?.isOverlayOpen) {
+      codexActivityRef.current?.closeOverlay();
+    }
+  }, [currentConversation?.conversationID, routeConversationID]);
 
   const menuClick = (idx: number) => {
     switch (idx) {
@@ -92,6 +107,18 @@ const ChatHeader = () => {
 
   const isSingleSession = currentConversation?.conversationType === SessionType.Single;
   const isGroupSession = currentConversation?.conversationType === SessionType.Group;
+  const isCodexConversation = isCodexSingleConversation(
+    currentConversation,
+    routeConversationID,
+    CODEX_BOT_USER_ID,
+  );
+  const resolvedConversationID = resolveCodexConversationID(
+    currentConversation,
+    routeConversationID,
+  );
+  const showName =
+    currentConversation?.showName ??
+    (isCodexConversation ? "Codex Bot" : resolvedConversationID);
 
   return (
     <Layout.Header className="relative border-b border-b-[var(--gap-text)] !bg-white !px-3">
@@ -99,7 +126,7 @@ const ChatHeader = () => {
         <div className="flex flex-1 items-center overflow-hidden">
           <OIMAvatar
             src={currentConversation?.faceURL}
-            text={currentConversation?.showName}
+            text={showName}
             isgroup={Boolean(currentConversation?.groupID)}
           />
           <div
@@ -107,19 +134,28 @@ const ChatHeader = () => {
               "ml-3 flex !h-10.5 flex-1 flex-col justify-between overflow-hidden",
             )}
           >
-            <div className="truncate text-base font-semibold">
-              {currentConversation?.showName}
-            </div>
+            <div className="truncate text-base font-semibold">{showName}</div>
             {isGroupSession && currentUserIsInGroup && (
               <div className="flex items-center text-xs text-[var(--sub-text)]">
                 <img width={20} src={group_member} alt="member" />
                 <span>{currentGroupInfo?.memberCount}</span>
               </div>
             )}
-            {isSingleSession && <CodexStatusBadge />}
+            {(isSingleSession || isCodexConversation) && <CodexStatusBadge />}
           </div>
         </div>
         <div className="mr-5 flex">
+          {isCodexConversation && (
+            <Tooltip title="Codex activity">
+              <Button
+                className="ml-5"
+                size="small"
+                type="text"
+                icon={<UnorderedListOutlined rev={undefined} />}
+                onClick={() => codexActivityRef.current?.openOverlay()}
+              />
+            </Tooltip>
+          )}
           {menuList.map((menu) => {
             if (menu.idx === 1 && (isSingleSession || (!inGroup && !isSingleSession))) {
               return null;
@@ -142,6 +178,7 @@ const ChatHeader = () => {
           })}
         </div>
       </div>
+      <CodexActivityDrawer ref={codexActivityRef} />
       <SingleSetting ref={singleSettingRef} />
       <GroupSetting ref={groupSettingRef} />
     </Layout.Header>
