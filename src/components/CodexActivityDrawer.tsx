@@ -1,10 +1,13 @@
+import { MoreOutlined } from "@ant-design/icons";
 import {
   Button,
   Card,
   Drawer,
+  Dropdown,
   Empty,
   Input,
   List,
+  Modal,
   Space,
   Tabs,
   Tag,
@@ -55,10 +58,10 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
     cancel,
     retry,
     rebind,
-    archive,
     createSession,
-    createAndActivateSession,
     activateSession,
+    renameSession,
+    archiveSession,
     loadJobEvents,
   } = useCodexConversation();
   const [selectedJobID, setSelectedJobID] = useState<string | null>(null);
@@ -127,6 +130,7 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
       getContainer={"#chat-container"}
     >
       <Tabs
+        className="px-3"
         items={[
           {
             key: "runs",
@@ -152,20 +156,17 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
             children: (
               <SessionsTab
                 sessions={sessions}
-                activeSession={status?.activeSession ?? null}
                 hasActiveJob={hasActiveJob}
                 submitting={submitting}
                 projectPath={projectPath}
                 onCreate={() =>
                   runAction(() => createSession({ codexProjectPath: projectPath }))
                 }
-                onCreateAndActivate={() =>
-                  runAction(() =>
-                    createAndActivateSession({ codexProjectPath: projectPath }),
-                  )
-                }
                 onActivate={(session) => runAction(() => activateSession(session.id))}
-                onArchive={() => runAction(archive)}
+                onRename={(session, displayName) =>
+                  runAction(() => renameSession(session.id, displayName))
+                }
+                onArchive={(session) => runAction(() => archiveSession(session.id))}
               />
             ),
           },
@@ -225,7 +226,7 @@ function RunsTab({
             </div>
             <div className="mt-1 text-xs text-[var(--sub-text)]">
               {queuedJobCount > 0 ? `${queuedJobCount} queued` : "No queued jobs"}
-              {selectedJob ? ` · ${formatJobTiming(selectedJob)}` : ""}
+              {selectedJob ? ` / ${formatJobTiming(selectedJob)}` : ""}
             </div>
           </div>
           <Space>
@@ -290,54 +291,48 @@ function RunsTab({
 
 function SessionsTab({
   sessions,
-  activeSession,
   hasActiveJob,
   submitting,
   projectPath,
   onCreate,
-  onCreateAndActivate,
   onActivate,
   onArchive,
+  onRename,
 }: {
   sessions: CodexSessionRecord[];
-  activeSession: CodexSessionRecord | null;
   hasActiveJob: boolean;
   submitting: boolean;
   projectPath: string;
   onCreate: () => Promise<unknown>;
-  onCreateAndActivate: () => Promise<unknown>;
   onActivate: (session: CodexSessionRecord) => Promise<unknown>;
-  onArchive: () => Promise<unknown>;
+  onArchive: (session: CodexSessionRecord) => Promise<unknown>;
+  onRename: (session: CodexSessionRecord, displayName: string) => Promise<unknown>;
 }) {
+  const [renameTarget, setRenameTarget] = useState<CodexSessionRecord | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const openRename = (session: CodexSessionRecord) => {
+    setRenameTarget(session);
+    setRenameValue(getSessionTitle(session));
+  };
+  const closeRename = () => {
+    setRenameTarget(null);
+    setRenameValue("");
+  };
+
   return (
-    <div className="space-y-3">
-      <Space className="flex-wrap">
+    <div className="space-y-3 px-3 pb-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs text-[var(--sub-text)]">
+          Select a session to use it for the next Codex run.
+        </div>
         <Button
-          size="small"
           disabled={hasActiveJob || !projectPath.trim()}
           loading={submitting}
           onClick={() => void onCreate()}
         >
           New Session
         </Button>
-        <Button
-          size="small"
-          type="primary"
-          disabled={hasActiveJob || !projectPath.trim()}
-          loading={submitting}
-          onClick={() => void onCreateAndActivate()}
-        >
-          Create and Activate
-        </Button>
-        <Button
-          size="small"
-          disabled={hasActiveJob || !activeSession}
-          loading={submitting}
-          onClick={() => void onArchive()}
-        >
-          Archive Active
-        </Button>
-      </Space>
+      </div>
 
       <List
         size="small"
@@ -353,32 +348,76 @@ function SessionsTab({
         renderItem={(session) => {
           const canActivate =
             !hasActiveJob && !session.isActive && session.status !== "archived";
+          const canArchive = !hasActiveJob && session.status !== "archived";
           return (
             <List.Item
+              className={[
+                "mb-2 cursor-pointer rounded border px-3 py-3 transition",
+                session.isActive
+                  ? "!border-[#95de64] !bg-[#f6ffed]"
+                  : "!border-[#f0f0f0]",
+                canActivate ? "hover:!border-[#91caff] hover:!bg-[#f5f9ff]" : "",
+                session.status === "archived" ? "cursor-not-allowed opacity-60" : "",
+              ].join(" ")}
+              onClick={() => {
+                if (canActivate && !submitting) {
+                  void onActivate(session);
+                }
+              }}
               actions={[
-                <Button
-                  key="activate"
-                  size="small"
-                  disabled={!canActivate}
-                  loading={submitting}
-                  onClick={() => void onActivate(session)}
+                <Dropdown
+                  key="more"
+                  trigger={["click"]}
+                  menu={{
+                    items: [
+                      { key: "rename", label: "Rename" },
+                      {
+                        key: "archive",
+                        label: "Archive",
+                        disabled: !canArchive,
+                      },
+                    ],
+                    onClick: ({ key, domEvent }) => {
+                      domEvent.stopPropagation();
+                      if (key === "rename") {
+                        openRename(session);
+                      }
+                      if (key === "archive") {
+                        void onArchive(session);
+                      }
+                    },
+                  }}
                 >
-                  Activate
-                </Button>,
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<MoreOutlined rev={undefined} />}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                </Dropdown>,
               ]}
             >
               <List.Item.Meta
                 title={
                   <Space>
-                    <span>{session.codexSessionId ?? "New session"}</span>
+                    <span>{getSessionTitle(session)}</span>
                     {session.isActive ? <Tag color="success">Active</Tag> : null}
-                    <Tag>{session.status}</Tag>
+                    {!session.isActive && session.status === "archived" ? (
+                      <Tag>Archived</Tag>
+                    ) : null}
+                    {!session.isActive && session.status !== "archived" ? (
+                      <Tag color="blue">Ready</Tag>
+                    ) : null}
                   </Space>
                 }
                 description={
                   <div className="space-y-1 text-xs">
-                    <div>Record: {session.id}</div>
+                    <div>{session.lastSummary ?? "No summary yet"}</div>
                     <div>Project: {session.codexProjectPath}</div>
+                    <div>
+                      Updated: {new Date(session.updatedAt).toLocaleString()} / Record:{" "}
+                      {session.id}
+                    </div>
                   </div>
                 }
               />
@@ -386,6 +425,23 @@ function SessionsTab({
           );
         }}
       />
+      <Modal
+        title="Rename session"
+        open={Boolean(renameTarget)}
+        okText="Save"
+        onCancel={closeRename}
+        confirmLoading={submitting}
+        onOk={() => {
+          if (!renameTarget || !renameValue.trim()) return;
+          void onRename(renameTarget, renameValue).then(closeRename);
+        }}
+      >
+        <Input
+          value={renameValue}
+          maxLength={80}
+          onChange={(event) => setRenameValue(event.target.value)}
+        />
+      </Modal>
     </div>
   );
 }
@@ -426,7 +482,7 @@ function ConfigTab({
           loading={submitting}
           onClick={() => void onRebind()}
         >
-          Rebind Active Session
+          Change project and start new binding
         </Button>
       </Card>
 
@@ -447,11 +503,19 @@ function ConfigTab({
         <InfoRow
           label="Latest job"
           value={
-            latestJob ? `${latestJob.status} · ${formatJobTiming(latestJob)}` : "none"
+            latestJob ? `${latestJob.status} / ${formatJobTiming(latestJob)}` : "none"
           }
         />
       </Card>
     </div>
+  );
+}
+
+function getSessionTitle(session: CodexSessionRecord): string {
+  return (
+    session.displayName ||
+    session.codexSessionId ||
+    (session.isActive ? "Active session" : "New session")
   );
 }
 
@@ -475,7 +539,7 @@ function formatJobTiming(job: CodexRuntimeJob): string {
     running === null ? null : `running ${formatMs(running)}`,
     total === null ? null : `total ${formatMs(total)}`,
   ].filter((part): part is string => Boolean(part));
-  return parts.join(" · ") || "timing unavailable";
+  return parts.join(" / ") || "timing unavailable";
 }
 
 function formatMs(value: number): string {

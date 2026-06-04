@@ -7,12 +7,13 @@ import { UploadRequestOption } from "rc-upload/lib/interface";
 import { memo, ReactNode, useState } from "react";
 import React from "react";
 
+import fileIcon from "@/assets/images/chatFooter/file.png";
 import image from "@/assets/images/chatFooter/image.png";
 import rtc from "@/assets/images/chatFooter/rtc.png";
+import { useConversationStore } from "@/store";
 
 import { SendMessageParams } from "../useSendMessage";
 import CallPopContent from "./CallPopContent";
-import { useConversationStore } from "@/store";
 
 const sendActionList = [
   {
@@ -20,6 +21,14 @@ const sendActionList = [
     icon: image,
     key: "image",
     accept: "image/*",
+    comp: null,
+    placement: undefined,
+  },
+  {
+    title: "File",
+    icon: fileIcon,
+    key: "file",
+    accept: "*",
     comp: null,
     placement: undefined,
   },
@@ -41,19 +50,26 @@ i18n.on("languageChanged", () => {
 const SendActionBar = ({
   sendMessage,
   getImageMessage,
+  getNormalFileMessage,
 }: {
   sendMessage: (params: SendMessageParams) => Promise<void>;
   getImageMessage: (file: File) => Promise<MessageItem>;
+  getNormalFileMessage: (file: File) => Promise<MessageItem>;
 }) => {
   const [visibleState, setVisibleState] = useState(false);
-  const isGroupSession = useConversationStore(
-    (state) => !!state.currentConversation?.groupID,
+  const isGroupSession = useConversationStore((state) =>
+    Boolean(state.currentConversation?.groupID),
   );
 
   const closePop = () => setVisibleState(false);
 
   const fileHandle = async (options: UploadRequestOption) => {
-    const message = await getImageMessage(options.file as File);
+    const file = options.file as File;
+    const message =
+      file.type.startsWith("image/") &&
+      (options as UploadRequestOption & { actionKey?: string }).actionKey !== "file"
+        ? await getImageMessage(file)
+        : await getNormalFileMessage(file);
     sendMessage({
       message,
     });
@@ -86,6 +102,7 @@ const SendActionBar = ({
             key={action.key}
             accept={action.accept}
             fileHandle={fileHandle}
+            actionKey={action.key}
           >
             <div
               className={clsx("flex cursor-pointer items-center last:mr-0", {
@@ -108,17 +125,23 @@ const ActionWrap = ({
   popProps,
   children,
   fileHandle,
+  actionKey,
 }: {
   accept?: string;
   children: ReactNode;
   popProps?: PopoverProps;
-  fileHandle: (options: UploadRequestOption) => void;
+  fileHandle: (options: UploadRequestOption) => Promise<void>;
+  actionKey: string;
 }) => {
   return accept ? (
     <Upload
       showUploadList={false}
-      customRequest={fileHandle}
-      accept={accept}
+      customRequest={(options) =>
+        void fileHandle({ ...options, actionKey } as UploadRequestOption & {
+          actionKey: string;
+        })
+      }
+      accept={accept === "*" ? undefined : accept}
       multiple
       className="mr-5 flex"
     >

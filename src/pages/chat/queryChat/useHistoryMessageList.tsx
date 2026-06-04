@@ -60,11 +60,33 @@ export function useHistoryMessageList() {
         };
       });
     };
+    const replaceMessages = ({
+      messages,
+      targetClientMsgID,
+    }: {
+      messages: MessageItem[];
+      targetClientMsgID: string;
+    }) => {
+      setLoadState((preState) => ({
+        ...preState,
+        initLoading: false,
+        hasMoreOld: true,
+        messageList: messages,
+        firstItemIndex: START_INDEX - messages.length,
+      }));
+      setTimeout(() => {
+        document
+          .getElementById(`chat_${targetClientMsgID}`)
+          ?.scrollIntoView({ block: "center" });
+      }, 100);
+    };
     emitter.on("PUSH_NEW_MSG", pushNewMessage);
     emitter.on("UPDATE_ONE_MSG", updateOneMessage);
+    emitter.on("REPLACE_MESSAGE_LIST_AND_SCROLL", replaceMessages);
     return () => {
       emitter.off("PUSH_NEW_MSG", pushNewMessage);
       emitter.off("UPDATE_ONE_MSG", updateOneMessage);
+      emitter.off("REPLACE_MESSAGE_LIST_AND_SCROLL", replaceMessages);
     };
   }, []);
 
@@ -110,3 +132,7 @@ export function useHistoryMessageList() {
 export const pushNewMessage = (message: MessageItem) => emit("PUSH_NEW_MSG", message);
 export const updateOneMessage = (message: MessageItem) =>
   emit("UPDATE_ONE_MSG", message);
+export const replaceMessageListAndScroll = (
+  messages: MessageItem[],
+  targetClientMsgID: string,
+) => emit("REPLACE_MESSAGE_LIST_AND_SCROLL", { messages, targetClientMsgID });

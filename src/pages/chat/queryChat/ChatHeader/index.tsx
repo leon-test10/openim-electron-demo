@@ -1,4 +1,4 @@
-import { UnorderedListOutlined } from "@ant-design/icons";
+import { HistoryOutlined, UnorderedListOutlined } from "@ant-design/icons";
 import { SessionType } from "@openim/wasm-client-sdk";
 import { Button, Layout, Tooltip } from "antd";
 import clsx from "clsx";
@@ -9,6 +9,7 @@ import { useParams } from "react-router-dom";
 import group_member from "@/assets/images/chatHeader/group_member.png";
 import launch_group from "@/assets/images/chatHeader/launch_group.png";
 import settings from "@/assets/images/chatHeader/settings.png";
+import ChatHistoryDrawer from "@/components/ChatHistoryDrawer";
 import CodexActivityDrawer from "@/components/CodexActivityDrawer";
 import CodexStatusBadge from "@/components/CodexStatusBadge";
 import OIMAvatar from "@/components/OIMAvatar";
@@ -55,6 +56,7 @@ const ChatHeader = () => {
   const singleSettingRef = useRef<OverlayVisibleHandle>(null);
   const groupSettingRef = useRef<OverlayVisibleHandle>(null);
   const codexActivityRef = useRef<OverlayVisibleHandle>(null);
+  const chatHistoryRef = useRef<OverlayVisibleHandle>(null);
 
   const currentConversation = useConversationStore(
     (state) => state.currentConversation,
@@ -79,6 +81,9 @@ const ChatHeader = () => {
     }
     if (codexActivityRef.current?.isOverlayOpen) {
       codexActivityRef.current?.closeOverlay();
+    }
+    if (chatHistoryRef.current?.isOverlayOpen) {
+      chatHistoryRef.current?.closeOverlay();
     }
   }, [currentConversation?.conversationID, routeConversationID]);
 
@@ -145,6 +150,17 @@ const ChatHeader = () => {
           </div>
         </div>
         <div className="mr-5 flex">
+          {resolvedConversationID && (
+            <Tooltip title="History / Search">
+              <Button
+                className="ml-5"
+                size="small"
+                type="text"
+                icon={<HistoryOutlined rev={undefined} />}
+                onClick={() => chatHistoryRef.current?.openOverlay()}
+              />
+            </Tooltip>
+          )}
           {isCodexConversation && (
             <Tooltip title="Codex activity">
               <Button
@@ -179,6 +195,7 @@ const ChatHeader = () => {
         </div>
       </div>
       <CodexActivityDrawer ref={codexActivityRef} />
+      <ChatHistoryDrawer ref={chatHistoryRef} />
       <SingleSetting ref={singleSettingRef} />
       <GroupSetting ref={groupSettingRef} />
     </Layout.Header>

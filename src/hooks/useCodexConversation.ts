@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import {
   activateCodexSession,
   archiveCodexConversation,
+  archiveCodexSession,
   cancelCodexJob,
   createCodexSession,
   getCodexJobEvents,
@@ -12,6 +13,7 @@ import {
   getCodexStatus,
   rebindCodexConversation,
   retryCodexJob,
+  updateCodexSession,
 } from "@/api/codexBridge";
 import { useCodexStore, useConversationStore, useUserStore } from "@/store";
 import {
@@ -181,22 +183,22 @@ export function useCodexConversation() {
         await archiveCodexConversation(conversationID);
         await refresh();
       },
+      archiveSession: async (sessionRecordID: string) => {
+        if (!conversationID) return;
+        await archiveCodexSession(conversationID, sessionRecordID);
+        await refresh();
+      },
+      renameSession: async (sessionRecordID: string, displayName: string) => {
+        if (!conversationID) return;
+        await updateCodexSession(conversationID, sessionRecordID, { displayName });
+        await refresh();
+      },
       createSession: async (payload: CreateCodexSessionInput = {}) => {
         if (!conversationID) return;
         const session = await createCodexSession(conversationID, {
           openimDisplayUserId: selfUserID,
           ...payload,
         });
-        await refresh();
-        return session;
-      },
-      createAndActivateSession: async (payload: CreateCodexSessionInput = {}) => {
-        if (!conversationID) return;
-        const session = await createCodexSession(conversationID, {
-          openimDisplayUserId: selfUserID,
-          ...payload,
-        });
-        await activateCodexSession(conversationID, session.id);
         await refresh();
         return session;
       },

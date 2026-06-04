@@ -1,8 +1,6 @@
-import { MessageItem } from "@openim/wasm-client-sdk";
 import { v4 as uuidV4 } from "uuid";
 
 import { IMSDK } from "@/layout/MainContentWrap";
-import { base64toFile, canSendImageTypeList } from "@/utils/common";
 
 export interface FileWithPath extends File {
   path?: string;
@@ -38,7 +36,7 @@ export function useFileMessage() {
   };
 
   const getPicInfo = (file: File): Promise<HTMLImageElement> =>
-    new Promise((resolve, reject) => {
+    new Promise((resolve) => {
       const _URL = window.URL || window.webkitURL;
       const img = new Image();
       img.onload = function () {
@@ -47,8 +45,31 @@ export function useFileMessage() {
       img.src = _URL.createObjectURL(file);
     });
 
+  const getNormalFileMessage = async (file: FileWithPath) => {
+    if (window.electronAPI) {
+      return (
+        await IMSDK.createFileMessageFromFullPath({
+          filePath: file.path!,
+          fileName: file.name,
+        })
+      ).data;
+    }
+
+    return (
+      await IMSDK.createFileMessageByFile({
+        filePath: "",
+        fileName: file.name,
+        uuid: uuidV4(),
+        sourceUrl: URL.createObjectURL(file),
+        fileSize: file.size,
+        fileType: file.type,
+        file,
+      })
+    ).data;
+  };
 
   return {
-    getImageMessage
+    getImageMessage,
+    getNormalFileMessage,
   };
 }

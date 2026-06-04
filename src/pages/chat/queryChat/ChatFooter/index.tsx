@@ -27,7 +27,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = () => {
   const [html, setHtml] = useState("");
   const latestHtml = useLatest(html);
 
-  const { getImageMessage } = useFileMessage();
+  const { getImageMessage, getNormalFileMessage } = useFileMessage();
   const { sendMessage } = useSendMessage();
   const { isCodexConversation, activeJob, queuedJobCount, cancel } =
     useCodexConversation();
@@ -48,7 +48,11 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = () => {
   return (
     <footer className="relative h-full bg-white py-px">
       <div className="flex h-full flex-col border-t border-t-[var(--gap-text)]">
-        <SendActionBar sendMessage={sendMessage} getImageMessage={getImageMessage} />
+        <SendActionBar
+          sendMessage={sendMessage}
+          getImageMessage={getImageMessage}
+          getNormalFileMessage={getNormalFileMessage}
+        />
         <div className="relative flex flex-1 flex-col overflow-hidden">
           {isCodexConversation && activeJob && (
             <div className="flex items-center justify-between border-b border-b-[var(--gap-text)] px-3 py-1 text-xs text-[var(--sub-text)]">

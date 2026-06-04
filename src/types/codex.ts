@@ -31,6 +31,9 @@ export interface CodexSessionRecord {
   codexHomeDir: string | null;
   codexHomeSeedMode: "copy-auth-only" | "copy-auth-and-config" | "none" | null;
   sandboxMode: string | null;
+  displayName: string | null;
+  displayNameSource: "auto" | "manual" | null;
+  lastSummary: string | null;
   isActive: boolean;
   status: "active" | "paused" | "archived" | "error";
   parentSessionRecordId: string | null;
@@ -111,4 +114,5 @@ export interface CreateCodexSessionInput {
   openimDisplayUserId?: string;
   userId?: string;
   codexProjectPath?: string;
+  displayName?: string;
 }

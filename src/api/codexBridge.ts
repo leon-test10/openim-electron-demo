@@ -71,6 +71,31 @@ export function activateCodexSession(conversationID: string, sessionRecordID: st
   );
 }
 
+export function updateCodexSession(
+  conversationID: string,
+  sessionRecordID: string,
+  payload: { displayName: string },
+) {
+  return requestBridge<CodexSessionRecord>(
+    `/api/conversations/${encodeURIComponent(
+      conversationID,
+    )}/codex-sessions/${encodeURIComponent(sessionRecordID)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function archiveCodexSession(conversationID: string, sessionRecordID: string) {
+  return requestBridge<CodexSessionRecord>(
+    `/api/conversations/${encodeURIComponent(
+      conversationID,
+    )}/codex-sessions/${encodeURIComponent(sessionRecordID)}/archive`,
+    { method: "POST" },
+  );
+}
+
 export function getCodexJobEvents(jobID: string, afterSequence = 0) {
   const query = afterSequence > 0 ? `?after=${afterSequence}` : "";
   return requestBridge<{ jobId: string; events: CodexRuntimeEvent[] }>(

@@ -6,8 +6,10 @@ import {
   WSEvent,
 } from "@openim/wasm-client-sdk/lib/types/entity";
 import { Popover } from "antd";
+import { Input, List, Tabs, Typography } from "antd";
 import i18n, { t } from "i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { getBusinessUserInfo } from "@/api/login";
 import add_friend from "@/assets/images/topSearchBar/add_friend.png";
@@ -17,12 +19,13 @@ import show_more from "@/assets/images/topSearchBar/show_more.png";
 import WindowControlBar from "@/components/WindowControlBar";
 import { CustomType } from "@/constants";
 import { OverlayVisibleHandle } from "@/hooks/useOverlayVisible";
+import { replaceMessageListAndScroll } from "@/pages/chat/queryChat/useHistoryMessageList";
 import ChooseModal, { ChooseModalState } from "@/pages/common/ChooseModal";
 import GroupCardModal from "@/pages/common/GroupCardModal";
 import RtcCallModal from "@/pages/common/RtcCallModal";
 import { InviteData } from "@/pages/common/RtcCallModal/data";
 import UserCardModal, { CardInfo } from "@/pages/common/UserCardModal";
-import { useContactStore, useUserStore } from "@/store";
+import { useContactStore, useConversationStore, useUserStore } from "@/store";
 import emitter, { OpenUserCardParams } from "@/utils/events";
 
 import { IMSDK } from "../MainContentWrap";
@@ -33,6 +36,7 @@ type UserCardState = OpenUserCardParams & {
 };
 
 const TopSearchBar = () => {
+  const navigate = useNavigate();
   const userCardRef = useRef<OverlayVisibleHandle>(null);
   const groupCardRef = useRef<OverlayVisibleHandle>(null);
   const chooseModalRef = useRef<OverlayVisibleHandle>(null);
@@ -48,6 +52,16 @@ const TopSearchBar = () => {
   const [actionVisible, setActionVisible] = useState(false);
   const [isSearchGroup, setIsSearchGroup] = useState(false);
   const [inviteData, setInviteData] = useState<InviteData>({} as InviteData);
+  const [globalKeyword, setGlobalKeyword] = useState("");
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [messageResults, setMessageResults] = useState<MessageItem[]>([]);
+  const [searchingMessages, setSearchingMessages] = useState(false);
+  const conversationList = useConversationStore((state) => state.conversationList);
+  const updateCurrentConversation = useConversationStore(
+    (state) => state.updateCurrentConversation,
+  );
+  const friendList = useContactStore((state) => state.friendList);
+  const groupList = useContactStore((state) => state.groupList);
 
   useEffect(() => {
     const userCardHandler = (params: OpenUserCardParams) => {
@@ -143,10 +157,119 @@ const TopSearchBar = () => {
     groupCardRef.current?.openOverlay();
   }, []);
 
+  const runGlobalMessageSearch = async (keyword: string) => {
+    const normalized = keyword.trim();
+    if (!normalized) {
+      setMessageResults([]);
+      return;
+    }
+    setSearchingMessages(true);
+    try {
+      const results = await Promise.all(
+        conversationList.slice(0, 50).map(async (conversation) => {
+          try {
+            const { data } = await IMSDK.searchLocalMessages({
+              conversationID: conversation.conversationID,
+              keywordList: [normalized],
+              count: 5,
+              pageIndex: 1,
+            });
+            return normalizeMessageSearchResult(data);
+          } catch {
+            return [] as MessageItem[];
+          }
+        }),
+      );
+      setMessageResults(results.flat());
+    } finally {
+      setSearchingMessages(false);
+    }
+  };
+
+  const openConversation = async (
+    conversationID: string,
+    targetMessage?: MessageItem,
+  ) => {
+    const conversation = conversationList.find(
+      (item) => item.conversationID === conversationID,
+    );
+    if (conversation) {
+      await updateCurrentConversation(conversation);
+    }
+    navigate(`/chat/${conversationID}`);
+    setGlobalSearchOpen(false);
+
+    if (!targetMessage?.clientMsgID) {
+      return;
+    }
+
+    try {
+      const { data } = await IMSDK.fetchSurroundingMessages({
+        conversationID,
+        clientMsgID: targetMessage.clientMsgID,
+        count: 20,
+      });
+      const surroundingMessages = Array.isArray(data)
+        ? data
+        : [
+            ...((data as { messageList?: MessageItem[] }).messageList ?? []),
+            ...((data as { messageListReverse?: MessageItem[] }).messageListReverse ??
+              []),
+          ];
+      setTimeout(() => {
+        replaceMessageListAndScroll(surroundingMessages, targetMessage.clientMsgID);
+      }, 200);
+    } catch {
+      // Keep the conversation navigation even if local surrounding messages are unavailable.
+    }
+  };
+
+  const searchedFriends = globalKeyword.trim()
+    ? friendList.filter((friend) =>
+        [friend.nickname, friend.remark, friend.userID]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(globalKeyword.toLowerCase())),
+      )
+    : [];
+  const searchedGroups = globalKeyword.trim()
+    ? groupList.filter((group) =>
+        [group.groupName, group.groupID]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(globalKeyword.toLowerCase())),
+      )
+    : [];
+
   return (
     <div className="no-mobile app-drag flex h-10 min-h-[40px] items-center bg-[var(--top-search-bar)] dark:bg-[#141414]">
       <div className="flex w-full items-center justify-center">
-        <div className="app-no-drag flex h-[26px] w-1/3 items-center justify-center rounded-md bg-[rgba(255,255,255,0.2)]"></div>
+        <Popover
+          open={globalSearchOpen}
+          onOpenChange={setGlobalSearchOpen}
+          trigger="click"
+          placement="bottom"
+          arrow={false}
+          content={
+            <GlobalSearchResults
+              friends={searchedFriends}
+              groups={searchedGroups}
+              messages={messageResults}
+              loadingMessages={searchingMessages}
+              onOpenUser={openUserCardWithData}
+              onOpenGroup={openGroupCardWithData}
+              onOpenConversation={openConversation}
+            />
+          }
+        >
+          <Input.Search
+            className="app-no-drag w-1/3"
+            size="small"
+            placeholder="Search contacts, groups, messages"
+            value={globalKeyword}
+            onFocus={() => setGlobalSearchOpen(true)}
+            onChange={(event) => setGlobalKeyword(event.target.value)}
+            onSearch={(value) => void runGlobalMessageSearch(value)}
+          />
+        </Popover>
         <Popover
           content={<ActionPopContent actionClick={actionClick} />}
           arrow={false}
@@ -178,6 +301,120 @@ const TopSearchBar = () => {
     </div>
   );
 };
+
+function GlobalSearchResults({
+  friends,
+  groups,
+  messages,
+  loadingMessages,
+  onOpenUser,
+  onOpenGroup,
+  onOpenConversation,
+}: {
+  friends: CardInfo[];
+  groups: GroupItem[];
+  messages: MessageItem[];
+  loadingMessages: boolean;
+  onOpenUser: (data: CardInfo) => void;
+  onOpenGroup: (data: GroupItem) => void;
+  onOpenConversation: (
+    conversationID: string,
+    targetMessage?: MessageItem,
+  ) => Promise<void>;
+}) {
+  return (
+    <div className="w-[420px]">
+      <Tabs
+        size="small"
+        items={[
+          {
+            key: "contacts",
+            label: `Contacts (${friends.length})`,
+            children: (
+              <List
+                size="small"
+                dataSource={friends}
+                renderItem={(friend) => (
+                  <List.Item
+                    className="cursor-pointer"
+                    onClick={() => onOpenUser(friend)}
+                  >
+                    <Typography.Text ellipsis>
+                      {friend.nickname || friend.userID}
+                    </Typography.Text>
+                  </List.Item>
+                )}
+              />
+            ),
+          },
+          {
+            key: "groups",
+            label: `Groups (${groups.length})`,
+            children: (
+              <List
+                size="small"
+                dataSource={groups}
+                renderItem={(group) => (
+                  <List.Item
+                    className="cursor-pointer"
+                    onClick={() => onOpenGroup(group)}
+                  >
+                    <Typography.Text ellipsis>
+                      {group.groupName || group.groupID}
+                    </Typography.Text>
+                  </List.Item>
+                )}
+              />
+            ),
+          },
+          {
+            key: "messages",
+            label: `Messages (${messages.length})`,
+            children: (
+              <List
+                size="small"
+                loading={loadingMessages}
+                dataSource={messages}
+                renderItem={(message) => (
+                  <List.Item
+                    className="cursor-pointer"
+                    onClick={() =>
+                      void onOpenConversation(String(message.conversationID), message)
+                    }
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs text-[var(--sub-text)]">
+                        {message.senderNickname}
+                      </div>
+                      <Typography.Text className="block max-w-[360px]" ellipsis>
+                        {message.textElem?.content ||
+                          message.fileElem?.fileName ||
+                          "[Message]"}
+                      </Typography.Text>
+                    </div>
+                  </List.Item>
+                )}
+              />
+            ),
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
+function normalizeMessageSearchResult(data: unknown): MessageItem[] {
+  if (Array.isArray(data)) {
+    return data as MessageItem[];
+  }
+  const result = data as {
+    searchResultItems?: Array<{ messageList?: MessageItem[] }>;
+    findResultItems?: Array<{ messageList?: MessageItem[] }>;
+  };
+  return (result.searchResultItems ?? result.findResultItems ?? []).flatMap(
+    (item) => item.messageList ?? [],
+  );
+}
 
 export default TopSearchBar;
 
