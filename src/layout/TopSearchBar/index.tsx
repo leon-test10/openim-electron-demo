@@ -27,6 +27,11 @@ import { InviteData } from "@/pages/common/RtcCallModal/data";
 import UserCardModal, { CardInfo } from "@/pages/common/UserCardModal";
 import { useContactStore, useConversationStore, useUserStore } from "@/store";
 import emitter, { OpenUserCardParams } from "@/utils/events";
+import {
+  getCachedConversationMessages,
+  getMessagePreview,
+  searchConversationMessages,
+} from "@/utils/messageSearch";
 
 import { IMSDK } from "../MainContentWrap";
 import SearchUserOrGroup from "./SearchUserOrGroup";
@@ -168,13 +173,14 @@ const TopSearchBar = () => {
       const results = await Promise.all(
         conversationList.slice(0, 50).map(async (conversation) => {
           try {
-            const { data } = await IMSDK.searchLocalMessages({
+            return await searchConversationMessages({
+              sdk: IMSDK,
               conversationID: conversation.conversationID,
-              keywordList: [normalized],
-              count: 5,
-              pageIndex: 1,
+              keyword: normalized,
+              seedMessages: getCachedConversationMessages(conversation.conversationID),
+              maxHistoryPages: 2,
+              pageSize: 20,
             });
-            return normalizeMessageSearchResult(data);
           } catch {
             return [] as MessageItem[];
           }
@@ -381,9 +387,7 @@ function GlobalSearchResults({
                         {message.senderNickname}
                       </div>
                       <Typography.Text className="block max-w-[360px]" ellipsis>
-                        {message.textElem?.content ||
-                          message.fileElem?.fileName ||
-                          "[Message]"}
+                        {getMessagePreview(message)}
                       </Typography.Text>
                     </div>
                   </List.Item>
@@ -394,19 +398,6 @@ function GlobalSearchResults({
         ]}
       />
     </div>
-  );
-}
-
-function normalizeMessageSearchResult(data: unknown): MessageItem[] {
-  if (Array.isArray(data)) {
-    return data as MessageItem[];
-  }
-  const result = data as {
-    searchResultItems?: Array<{ messageList?: MessageItem[] }>;
-    findResultItems?: Array<{ messageList?: MessageItem[] }>;
-  };
-  return (result.searchResultItems ?? result.findResultItems ?? []).flatMap(
-    (item) => item.messageList ?? [],
   );
 }
 

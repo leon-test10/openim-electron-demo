@@ -8,6 +8,8 @@ import {
   Empty,
   Input,
   List,
+  Modal,
+  Select,
   Space,
   Tabs,
   Tag,
@@ -21,10 +23,23 @@ import {
   useState,
 } from "react";
 
+import {
+  createRuntimeProfile,
+  deleteRuntimeProfile,
+  listRuntimeProfiles,
+  testRuntimeProfile,
+  updateRuntimeProfile,
+} from "@/api/codexBridge";
 import CodexRuntimeTrace from "@/components/CodexRuntimeTrace";
 import { useCodexConversation } from "@/hooks/useCodexConversation";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
-import { CodexRuntimeEvent, CodexRuntimeJob, CodexSessionRecord } from "@/types/codex";
+import {
+  CodexRuntimeEvent,
+  CodexRuntimeJob,
+  CodexRuntimeProfile,
+  CodexRuntimeProfileInput,
+  CodexSessionRecord,
+} from "@/types/codex";
 import { feedbackToast } from "@/utils/common";
 import { getViteEnv } from "@/utils/env";
 
@@ -63,11 +78,19 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
     activateSession,
     renameSession,
     archiveSession,
+    restoreSession,
+    deleteSession,
     loadJobEvents,
   } = useCodexConversation();
   const [selectedJobID, setSelectedJobID] = useState<string | null>(null);
   const [projectPath, setProjectPath] = useState(defaultProjectPath);
   const [submitting, setSubmitting] = useState(false);
+  const [runtimeProfiles, setRuntimeProfiles] = useState<CodexRuntimeProfile[]>([]);
+  const [selectedRuntimeProfileID, setSelectedRuntimeProfileID] = useState<string>("");
+  const [profileDraft, setProfileDraft] = useState<RuntimeProfileDraft>(
+    createEmptyProfileDraft(),
+  );
+  const [profileTestResult, setProfileTestResult] = useState<string>("");
 
   const jobs = useMemo(() => {
     const byId = new Map<string, CodexRuntimeJob>();
@@ -99,6 +122,23 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
   }, [status?.activeSession?.codexProjectPath]);
 
   useEffect(() => {
+    if (status?.activeSession?.runtimeProfileId) {
+      setSelectedRuntimeProfileID(status.activeSession.runtimeProfileId);
+    }
+  }, [status?.activeSession?.runtimeProfileId]);
+
+  const refreshRuntimeProfiles = async () => {
+    const { profiles } = await listRuntimeProfiles();
+    setRuntimeProfiles(profiles);
+  };
+
+  useEffect(() => {
+    if (isOverlayOpen) {
+      void refreshRuntimeProfiles().catch((error) => feedbackToast({ error }));
+    }
+  }, [isOverlayOpen]);
+
+  useEffect(() => {
     if (isOverlayOpen && selectedJob?.id) {
       void loadJobEvents(selectedJob.id);
     }
@@ -123,6 +163,37 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
       setSubmitting(false);
     }
   };
+
+  const saveRuntimeProfile = async () =>
+    runAction(async () => {
+      const payload = toRuntimeProfilePayload(profileDraft);
+      const profile = profileDraft.id
+        ? await updateRuntimeProfile(profileDraft.id, payload)
+        : await createRuntimeProfile(payload as CodexRuntimeProfileInput);
+      setSelectedRuntimeProfileID(profile.id);
+      setProfileDraft(createDraftFromProfile(profile));
+      await refreshRuntimeProfiles();
+    }, "Runtime profile saved");
+
+  const removeRuntimeProfile = async (profileID: string) =>
+    runAction(async () => {
+      await deleteRuntimeProfile(profileID);
+      if (selectedRuntimeProfileID === profileID) {
+        setSelectedRuntimeProfileID("");
+      }
+      setProfileDraft(createEmptyProfileDraft());
+      await refreshRuntimeProfiles();
+    }, "Runtime profile deleted");
+
+  const runRuntimeProfileTest = async (profileID: string) =>
+    runAction(async () => {
+      const result = await testRuntimeProfile(profileID);
+      setProfileTestResult(
+        `args: ${result.codexArgs.join(" ")} / env: ${
+          Object.keys(result.env).join(", ") || "none"
+        }`,
+      );
+    }, "Runtime profile checked");
 
   return (
     <Drawer
@@ -170,7 +241,11 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
                 projectPath={projectPath}
                 onCreate={() =>
                   runAction(
-                    () => createSession({ codexProjectPath: projectPath }),
+                    () =>
+                      createSession({
+                        codexProjectPath: projectPath,
+                        runtimeProfileId: selectedRuntimeProfileID || null,
+                      }),
                     "New Codex session activated",
                   )
                 }
@@ -189,6 +264,12 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
                 onArchive={(session) =>
                   runAction(() => archiveSession(session.id), "Codex session archived")
                 }
+                onRestore={(session) =>
+                  runAction(() => restoreSession(session.id), "Codex session restored")
+                }
+                onDelete={(session) =>
+                  runAction(() => deleteSession(session.id), "Codex session deleted")
+                }
               />
             ),
           },
@@ -203,9 +284,30 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
                 hasActiveJob={hasActiveJob}
                 submitting={submitting}
                 onProjectPathChange={setProjectPath}
+                runtimeProfiles={runtimeProfiles}
+                selectedRuntimeProfileID={selectedRuntimeProfileID}
+                profileDraft={profileDraft}
+                profileTestResult={profileTestResult}
+                onRuntimeProfileChange={(profileID) => {
+                  setSelectedRuntimeProfileID(profileID);
+                  const profile = runtimeProfiles.find((item) => item.id === profileID);
+                  setProfileDraft(
+                    profile
+                      ? createDraftFromProfile(profile)
+                      : createEmptyProfileDraft(),
+                  );
+                }}
+                onProfileDraftChange={setProfileDraft}
+                onSaveRuntimeProfile={saveRuntimeProfile}
+                onDeleteRuntimeProfile={removeRuntimeProfile}
+                onTestRuntimeProfile={runRuntimeProfileTest}
                 onRebind={() =>
                   runAction(
-                    () => rebind({ codexProjectPath: projectPath }),
+                    () =>
+                      rebind({
+                        codexProjectPath: projectPath,
+                        runtimeProfileId: selectedRuntimeProfileID || null,
+                      }),
                     "Codex binding changed",
                   )
                 }
@@ -323,6 +425,8 @@ function SessionsTab({
   onCreate,
   onActivate,
   onArchive,
+  onRestore,
+  onDelete,
   onRename,
 }: {
   sessions: CodexSessionRecord[];
@@ -333,6 +437,8 @@ function SessionsTab({
   onCreate: () => Promise<boolean>;
   onActivate: (session: CodexSessionRecord) => Promise<boolean>;
   onArchive: (session: CodexSessionRecord) => Promise<boolean>;
+  onRestore: (session: CodexSessionRecord) => Promise<boolean>;
+  onDelete: (session: CodexSessionRecord) => Promise<boolean>;
   onRename: (session: CodexSessionRecord, displayName: string) => Promise<boolean>;
 }) {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -384,6 +490,8 @@ function SessionsTab({
           const canActivate =
             !hasActiveJob && !session.isActive && session.status !== "archived";
           const canArchive = !hasActiveJob && session.status !== "archived";
+          const canRestore = !hasActiveJob && session.status === "archived";
+          const canDelete = !hasActiveJob;
           return (
             <List.Item
               className={[
@@ -404,16 +512,19 @@ function SessionsTab({
                   key="activate"
                   size="small"
                   type={session.isActive ? "primary" : "default"}
-                  disabled={!canActivate || submitting}
+                  disabled={(!canActivate && !canRestore) || submitting}
                   loading={submitting && canActivate}
                   onClick={(event) => {
                     event.stopPropagation();
                     if (canActivate) {
                       void onActivate(session);
                     }
+                    if (canRestore) {
+                      void onRestore(session);
+                    }
                   }}
                 >
-                  {session.isActive ? "Active" : "Activate"}
+                  {session.isActive ? "Active" : canRestore ? "Restore" : "Activate"}
                 </Button>,
                 <Dropdown
                   key="more"
@@ -426,6 +537,12 @@ function SessionsTab({
                         label: "Archive",
                         disabled: !canArchive,
                       },
+                      {
+                        key: "delete",
+                        label: "Delete",
+                        danger: true,
+                        disabled: !canDelete,
+                      },
                     ],
                     onClick: ({ key, domEvent }) => {
                       domEvent.stopPropagation();
@@ -434,6 +551,15 @@ function SessionsTab({
                       }
                       if (key === "archive") {
                         void onArchive(session);
+                      }
+                      if (key === "delete") {
+                        Modal.confirm({
+                          title: "Delete Codex session?",
+                          content:
+                            "The session record will be hidden from the UI. Runtime jobs remain in the bridge audit data.",
+                          okButtonProps: { danger: true },
+                          onOk: () => onDelete(session),
+                        });
                       }
                     },
                   }}
@@ -518,7 +644,16 @@ function ConfigTab({
   projectPath,
   hasActiveJob,
   submitting,
+  runtimeProfiles,
+  selectedRuntimeProfileID,
+  profileDraft,
+  profileTestResult,
   onProjectPathChange,
+  onRuntimeProfileChange,
+  onProfileDraftChange,
+  onSaveRuntimeProfile,
+  onDeleteRuntimeProfile,
+  onTestRuntimeProfile,
   onRebind,
 }: {
   activeSession: CodexSessionRecord | null;
@@ -526,11 +661,137 @@ function ConfigTab({
   projectPath: string;
   hasActiveJob: boolean;
   submitting: boolean;
+  runtimeProfiles: CodexRuntimeProfile[];
+  selectedRuntimeProfileID: string;
+  profileDraft: RuntimeProfileDraft;
+  profileTestResult: string;
   onProjectPathChange: (value: string) => void;
+  onRuntimeProfileChange: (value: string) => void;
+  onProfileDraftChange: (value: RuntimeProfileDraft) => void;
+  onSaveRuntimeProfile: () => Promise<boolean>;
+  onDeleteRuntimeProfile: (profileID: string) => Promise<boolean>;
+  onTestRuntimeProfile: (profileID: string) => Promise<boolean>;
   onRebind: () => Promise<unknown>;
 }) {
+  const patchDraft = (patch: Partial<RuntimeProfileDraft>) =>
+    onProfileDraftChange({ ...profileDraft, ...patch });
   return (
     <div className="space-y-3">
+      <Card size="small" title="Runtime profile">
+        <div className="space-y-2">
+          <Select
+            className="w-full"
+            allowClear
+            placeholder="Use default Codex CLI configuration"
+            value={selectedRuntimeProfileID || undefined}
+            onChange={(value) => onRuntimeProfileChange(value ?? "")}
+            options={runtimeProfiles.map((profile) => ({
+              label: `${profile.name}${profile.model ? ` / ${profile.model}` : ""}`,
+              value: profile.id,
+            }))}
+          />
+          <Input
+            placeholder="Profile name"
+            value={profileDraft.name}
+            onChange={(event) => patchDraft({ name: event.target.value })}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Select
+              value={profileDraft.providerType}
+              onChange={(value) => patchDraft({ providerType: value })}
+              options={[
+                { label: "OpenAI", value: "openai" },
+                { label: "OpenAI compatible", value: "openai-compatible" },
+                { label: "OSS local", value: "oss-local" },
+              ]}
+            />
+            <Input
+              placeholder="Model"
+              value={profileDraft.model}
+              onChange={(event) => patchDraft({ model: event.target.value })}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Select
+              allowClear
+              placeholder="Sandbox"
+              value={profileDraft.sandboxMode || undefined}
+              onChange={(value) => patchDraft({ sandboxMode: value ?? "" })}
+              options={[
+                { label: "read-only", value: "read-only" },
+                { label: "workspace-write", value: "workspace-write" },
+                { label: "danger-full-access", value: "danger-full-access" },
+              ]}
+            />
+            <Select
+              allowClear
+              placeholder="Approval"
+              value={profileDraft.approvalPolicy || undefined}
+              onChange={(value) => patchDraft({ approvalPolicy: value ?? "" })}
+              options={[
+                { label: "never", value: "never" },
+                { label: "on-request", value: "on-request" },
+                { label: "untrusted", value: "untrusted" },
+              ]}
+            />
+          </div>
+          <Input
+            placeholder="Codex profile name"
+            value={profileDraft.codexProfile}
+            onChange={(event) => patchDraft({ codexProfile: event.target.value })}
+          />
+          <Input
+            placeholder="Base URL"
+            value={profileDraft.baseUrl}
+            onChange={(event) => patchDraft({ baseUrl: event.target.value })}
+          />
+          <Input.Password
+            placeholder={
+              profileDraft.apiKeyMasked
+                ? `API key unchanged (${profileDraft.apiKeyMasked})`
+                : "API key"
+            }
+            value={profileDraft.apiKey}
+            onChange={(event) => patchDraft({ apiKey: event.target.value })}
+          />
+          <Space>
+            <Button
+              size="small"
+              type="primary"
+              disabled={!profileDraft.name.trim()}
+              loading={submitting}
+              onClick={() => void onSaveRuntimeProfile()}
+            >
+              Save profile
+            </Button>
+            <Button
+              size="small"
+              disabled={!profileDraft.id}
+              loading={submitting}
+              onClick={() =>
+                profileDraft.id && void onTestRuntimeProfile(profileDraft.id)
+              }
+            >
+              Test
+            </Button>
+            <Button
+              size="small"
+              danger
+              disabled={!profileDraft.id}
+              loading={submitting}
+              onClick={() =>
+                profileDraft.id && void onDeleteRuntimeProfile(profileDraft.id)
+              }
+            >
+              Delete profile
+            </Button>
+          </Space>
+          {profileTestResult ? (
+            <div className="text-xs text-[var(--sub-text)]">{profileTestResult}</div>
+          ) : null}
+        </div>
+      </Card>
+
       <Card size="small" title="Project path">
         <Input
           value={projectPath}
@@ -540,6 +801,9 @@ function ConfigTab({
         <div className="mt-2 text-xs text-[var(--sub-text)]">
           Codex CLI runs with this directory as <code>--cd</code>. This is runtime
           configuration, not an OpenIM setting.
+          {selectedRuntimeProfileID
+            ? " Runtime profile will be bound to the new session."
+            : ""}
         </div>
         <Button
           className="mt-3"
@@ -567,6 +831,10 @@ function ConfigTab({
           value={activeSession?.sandboxMode ?? "Codex CLI default"}
         />
         <InfoRow
+          label="Runtime profile"
+          value={activeSession?.runtimeProfileId ?? "Codex CLI default"}
+        />
+        <InfoRow
           label="Latest job"
           value={
             latestJob ? `${latestJob.status} / ${formatJobTiming(latestJob)}` : "none"
@@ -583,6 +851,69 @@ function getSessionTitle(session: CodexSessionRecord): string {
     session.codexSessionId ||
     (session.isActive ? "Active session" : "New session")
   );
+}
+
+type RuntimeProfileDraft = {
+  id: string;
+  name: string;
+  providerType: CodexRuntimeProfile["providerType"];
+  model: string;
+  sandboxMode: string;
+  approvalPolicy: string;
+  codexProfile: string;
+  baseUrl: string;
+  apiKey: string;
+  apiKeyMasked: string | null;
+};
+
+function createEmptyProfileDraft(): RuntimeProfileDraft {
+  return {
+    id: "",
+    name: "",
+    providerType: "openai",
+    model: "",
+    sandboxMode: "",
+    approvalPolicy: "",
+    codexProfile: "",
+    baseUrl: "",
+    apiKey: "",
+    apiKeyMasked: null,
+  };
+}
+
+function createDraftFromProfile(profile: CodexRuntimeProfile): RuntimeProfileDraft {
+  return {
+    id: profile.id,
+    name: profile.name,
+    providerType: profile.providerType,
+    model: profile.model ?? "",
+    sandboxMode: profile.sandboxMode ?? "",
+    approvalPolicy: profile.approvalPolicy ?? "",
+    codexProfile: profile.codexProfile ?? "",
+    baseUrl: profile.baseUrl ?? "",
+    apiKey: "",
+    apiKeyMasked: profile.apiKeyMasked,
+  };
+}
+
+function toRuntimeProfilePayload(
+  draft: RuntimeProfileDraft,
+): CodexRuntimeProfileInput | Partial<CodexRuntimeProfileInput> {
+  return {
+    name: draft.name.trim(),
+    providerType: draft.providerType,
+    model: nullableText(draft.model),
+    sandboxMode: nullableText(draft.sandboxMode),
+    approvalPolicy: nullableText(draft.approvalPolicy),
+    codexProfile: nullableText(draft.codexProfile),
+    baseUrl: nullableText(draft.baseUrl),
+    apiKey: draft.apiKey.trim() ? draft.apiKey.trim() : undefined,
+  };
+}
+
+function nullableText(value: string): string | null {
+  const normalized = value.trim();
+  return normalized ? normalized : null;
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {

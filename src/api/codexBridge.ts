@@ -4,6 +4,8 @@ import {
   CodexConversationStatus,
   CodexRuntimeEvent,
   CodexRuntimeJob,
+  CodexRuntimeProfile,
+  CodexRuntimeProfileInput,
   CodexSessionRecord,
   CreateCodexSessionInput,
   RebindCodexInput,
@@ -74,7 +76,9 @@ export function getCodexBinding(conversationID: string) {
 
 export function getCodexSessions(conversationID: string) {
   return requestBridge<{ conversationId: string; sessions: CodexSessionRecord[] }>(
-    `/api/conversations/${encodeURIComponent(conversationID)}/codex-sessions`,
+    `/api/conversations/${encodeURIComponent(
+      conversationID,
+    )}/codex-sessions?includeArchived=true`,
   );
 }
 
@@ -123,6 +127,67 @@ export function archiveCodexSession(conversationID: string, sessionRecordID: str
     )}/codex-sessions/${encodeURIComponent(sessionRecordID)}/archive`,
     { method: "POST", body: emptyJsonBody },
   );
+}
+
+export function restoreCodexSession(conversationID: string, sessionRecordID: string) {
+  return requestBridge<CodexSessionRecord>(
+    `/api/conversations/${encodeURIComponent(
+      conversationID,
+    )}/codex-sessions/${encodeURIComponent(sessionRecordID)}/restore`,
+    { method: "POST", body: emptyJsonBody },
+  );
+}
+
+export function deleteCodexSession(conversationID: string, sessionRecordID: string) {
+  return requestBridge<CodexSessionRecord>(
+    `/api/conversations/${encodeURIComponent(
+      conversationID,
+    )}/codex-sessions/${encodeURIComponent(sessionRecordID)}`,
+    { method: "DELETE", body: emptyJsonBody },
+  );
+}
+
+export function listRuntimeProfiles() {
+  return requestBridge<{ profiles: CodexRuntimeProfile[] }>("/api/runtime-profiles");
+}
+
+export function createRuntimeProfile(payload: CodexRuntimeProfileInput) {
+  return requestBridge<CodexRuntimeProfile>("/api/runtime-profiles", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateRuntimeProfile(
+  profileID: string,
+  payload: Partial<CodexRuntimeProfileInput>,
+) {
+  return requestBridge<CodexRuntimeProfile>(
+    `/api/runtime-profiles/${encodeURIComponent(profileID)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function deleteRuntimeProfile(profileID: string) {
+  return requestBridge<CodexRuntimeProfile>(
+    `/api/runtime-profiles/${encodeURIComponent(profileID)}`,
+    { method: "DELETE", body: emptyJsonBody },
+  );
+}
+
+export function testRuntimeProfile(profileID: string) {
+  return requestBridge<{
+    ok: boolean;
+    profile: CodexRuntimeProfile;
+    codexArgs: string[];
+    env: Record<string, string>;
+  }>(`/api/runtime-profiles/${encodeURIComponent(profileID)}/test`, {
+    method: "POST",
+    body: emptyJsonBody,
+  });
 }
 
 export function getCodexJobEvents(jobID: string, afterSequence = 0) {

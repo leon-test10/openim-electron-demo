@@ -5,6 +5,7 @@ import { useParams } from "react-router-dom";
 
 import { IMSDK } from "@/layout/MainContentWrap";
 import emitter, { emit } from "@/utils/events";
+import { cacheConversationMessages } from "@/utils/messageSearch";
 
 export const START_INDEX = 10000;
 const SPLIT_COUNT = 20;
@@ -30,6 +31,10 @@ export function useHistoryMessageList() {
       }));
     };
   }, [conversationID]);
+
+  useEffect(() => {
+    cacheConversationMessages(conversationID, loadState.messageList);
+  }, [conversationID, loadState.messageList]);
 
   useEffect(() => {
     const pushNewMessage = (message: MessageItem) => {

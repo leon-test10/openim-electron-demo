@@ -31,11 +31,12 @@ export interface CodexSessionRecord {
   codexHomeDir: string | null;
   codexHomeSeedMode: "copy-auth-only" | "copy-auth-and-config" | "none" | null;
   sandboxMode: string | null;
+  runtimeProfileId: string | null;
   displayName: string | null;
   displayNameSource: "auto" | "manual" | null;
   lastSummary: string | null;
   isActive: boolean;
-  status: "active" | "paused" | "archived" | "error";
+  status: "active" | "paused" | "archived" | "error" | "deleted";
   parentSessionRecordId: string | null;
   forkedFromCodexSessionId: string | null;
   createdReason: string;
@@ -52,9 +53,12 @@ export interface CodexBridgeMeta {
     sessionActivate?: boolean;
     sessionRename?: boolean;
     sessionArchive?: boolean;
+    sessionRestore?: boolean;
+    sessionDelete?: boolean;
     runtimeEvents?: boolean;
     jobCancel?: boolean;
     jobRetry?: boolean;
+    runtimeProfiles?: boolean;
   };
 }
 
@@ -123,6 +127,7 @@ export interface RebindCodexInput {
   userId?: string;
   codexProjectPath?: string;
   codexSessionId?: string;
+  runtimeProfileId?: string | null;
 }
 
 export interface CreateCodexSessionInput {
@@ -130,4 +135,35 @@ export interface CreateCodexSessionInput {
   userId?: string;
   codexProjectPath?: string;
   displayName?: string;
+  runtimeProfileId?: string | null;
+}
+
+export interface CodexRuntimeProfile {
+  id: string;
+  name: string;
+  providerType: "openai" | "openai-compatible" | "oss-local";
+  model: string | null;
+  sandboxMode: string | null;
+  approvalPolicy: string | null;
+  codexProfile: string | null;
+  baseUrl: string | null;
+  localProvider: "lmstudio" | "ollama" | null;
+  useOss: boolean;
+  apiKeyMasked: string | null;
+  status: "active" | "deleted";
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CodexRuntimeProfileInput {
+  name: string;
+  providerType?: CodexRuntimeProfile["providerType"];
+  model?: string | null;
+  sandboxMode?: string | null;
+  approvalPolicy?: string | null;
+  codexProfile?: string | null;
+  baseUrl?: string | null;
+  localProvider?: CodexRuntimeProfile["localProvider"];
+  useOss?: boolean;
+  apiKey?: string | null;
 }

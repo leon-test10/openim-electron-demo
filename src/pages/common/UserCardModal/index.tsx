@@ -74,27 +74,35 @@ const UserCardModal: ForwardRefRenderFunction<
     cardInfo: CardInfo;
     memberInfo?: GroupMemberItem | null;
   }> => {
+    const fallbackInfo: CardInfo = {
+      userID,
+      ...(props.cardInfo ?? {}),
+    };
     if (isSelf) {
       return {
         cardInfo: selfInfo,
       };
     }
-    let userInfo: CardInfo | null = null;
+    let userInfo: CardInfo | null = fallbackInfo;
     const friendInfo = useContactStore
       .getState()
       .friendList.find((item) => item.userID === userID);
     if (friendInfo) {
-      userInfo = { ...friendInfo };
+      userInfo = { ...fallbackInfo, ...friendInfo };
     } else {
-      const { data } = await IMSDK.getUsersInfo([userID!]);
-      userInfo = { ...(data[0] ?? {}) };
+      try {
+        const { data } = await IMSDK.getUsersInfo([userID!]);
+        userInfo = { ...fallbackInfo, ...(data[0] ?? {}) };
+      } catch (error) {
+        console.error("get sdk user info failed", userID, error);
+      }
     }
 
     try {
       const {
         data: { users },
       } = await getBusinessUserInfo([userID!]);
-      userInfo = { ...userInfo, ...users[0] };
+      userInfo = { ...userInfo, ...(users[0] ?? {}) };
     } catch (error) {
       console.error("get business user info failed", userID, error);
     }
@@ -109,8 +117,9 @@ const UserCardModal: ForwardRefRenderFunction<
     }
     const { cardInfo } = data;
 
-    setCardInfo(cardInfo!);
-    setUserInfoRow(cardInfo!);
+    const normalizedInfo = normalizeCardInfo(cardInfo, userID);
+    setCardInfo(normalizedInfo);
+    setUserInfoRow(normalizedInfo);
   };
 
   const {
@@ -238,7 +247,7 @@ const UserCardModal: ForwardRefRenderFunction<
                 <OIMAvatar
                   size={60}
                   src={cardInfo?.faceURL}
-                  text={cardInfo?.nickname}
+                  text={cardInfo?.nickname || cardInfo?.userID}
                 />
                 <div className="ml-3 flex h-[60px] flex-1 flex-col justify-around overflow-hidden">
                   <div className="flex w-fit max-w-[80%] items-baseline">
@@ -246,7 +255,7 @@ const UserCardModal: ForwardRefRenderFunction<
                       className="flex-1 select-text truncate text-base font-medium text-white"
                       title={cardInfo?.nickname}
                     >
-                      {cardInfo?.nickname}
+                      {cardInfo?.nickname || cardInfo?.userID}
                     </div>
                   </div>
                   <div className="flex items-center">
@@ -367,3 +376,13 @@ const UserCardDataGroup: FC<IUserCardDataGroupProps> = ({
     </div>
   );
 };
+
+function normalizeCardInfo(
+  info: CardInfo | null | undefined,
+  userID?: string,
+): CardInfo {
+  const normalized = { ...(info ?? {}) };
+  normalized.userID = normalized.userID || userID;
+  normalized.nickname = normalized.nickname || normalized.userID || "-";
+  return normalized;
+}

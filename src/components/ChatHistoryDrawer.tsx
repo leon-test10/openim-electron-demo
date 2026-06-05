@@ -2,12 +2,18 @@ import { SearchOutlined } from "@ant-design/icons";
 import { MessageItem, MessageType, ViewType } from "@openim/wasm-client-sdk";
 import { Button, Drawer, Empty, Input, List, Select, Space, Typography } from "antd";
 import { forwardRef, ForwardRefRenderFunction, useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { replaceMessageListAndScroll } from "@/pages/chat/queryChat/useHistoryMessageList";
 import { useConversationStore } from "@/store";
 import { formatMessageTime } from "@/utils/imCommon";
+import {
+  getCachedConversationMessages,
+  getMessagePreview,
+  searchConversationMessages,
+} from "@/utils/messageSearch";
 
 const PAGE_SIZE = 30;
 
@@ -19,7 +25,8 @@ const ChatHistoryDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknown>
   const currentConversation = useConversationStore(
     (state) => state.currentConversation,
   );
-  const conversationID = currentConversation?.conversationID;
+  const { conversationID: routeConversationID } = useParams();
+  const conversationID = currentConversation?.conversationID ?? routeConversationID;
   const [keyword, setKeyword] = useState("");
   const [messageType, setMessageType] = useState<number | "all">("all");
   const [history, setHistory] = useState<MessageItem[]>([]);
@@ -38,6 +45,12 @@ const ChatHistoryDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknown>
     if (!conversationID) return;
     setLoading(true);
     try {
+      if (!loadMore) {
+        const cached = getCachedConversationMessages(conversationID);
+        if (cached.length) {
+          setHistory(cached);
+        }
+      }
       const { data } = await IMSDK.getAdvancedHistoryMessageList({
         count: PAGE_SIZE,
         startClientMsgID: loadMore
@@ -46,9 +59,10 @@ const ChatHistoryDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknown>
         conversationID,
         viewType: ViewType.History,
       });
-      setHistory((prev) =>
-        loadMore ? [...prev, ...data.messageList] : data.messageList,
-      );
+      setHistory((prev) => {
+        const next = loadMore ? [...prev, ...data.messageList] : data.messageList;
+        return next.length ? next : prev;
+      });
       setHasMore(!data.isEnd);
     } finally {
       setLoading(false);
@@ -59,28 +73,36 @@ const ChatHistoryDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknown>
     if (!conversationID || !keyword.trim()) return;
     setLoading(true);
     try {
-      const { data } = await IMSDK.searchLocalMessages({
+      const results = await searchConversationMessages({
+        sdk: IMSDK,
         conversationID,
-        keywordList: [keyword.trim()],
-        messageTypeList:
-          messageType === "all" ? undefined : [messageType as MessageType],
-        count: 50,
-        pageIndex: 1,
+        keyword,
+        messageType,
+        seedMessages: [...history, ...getCachedConversationMessages(conversationID)],
       });
-      setSearchResults(normalizeSearchResult(data));
+      setSearchResults(results);
     } finally {
       setLoading(false);
     }
   };
 
   const jumpToMessage = async (message: MessageItem) => {
-    const { data } = await IMSDK.fetchSurroundingMessages({
-      startMessage: message,
-      viewType: ViewType.History,
-      before: 10,
-      after: 10,
-    });
-    replaceMessageListAndScroll(data.messageList, message.clientMsgID);
+    try {
+      const { data } = await IMSDK.fetchSurroundingMessages({
+        startMessage: message,
+        viewType: ViewType.History,
+        before: 10,
+        after: 10,
+      });
+      replaceMessageListAndScroll(data.messageList, message.clientMsgID);
+    } catch {
+      replaceMessageListAndScroll(
+        getCachedConversationMessages(conversationID).length
+          ? getCachedConversationMessages(conversationID)
+          : [message],
+        message.clientMsgID,
+      );
+    }
     closeOverlay();
   };
 
@@ -158,25 +180,5 @@ const ChatHistoryDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknown>
     </Drawer>
   );
 };
-
-function normalizeSearchResult(data: unknown): MessageItem[] {
-  if (Array.isArray(data)) {
-    return data as MessageItem[];
-  }
-  const result = data as {
-    searchResultItems?: Array<{ messageList?: MessageItem[] }>;
-    findResultItems?: Array<{ messageList?: MessageItem[] }>;
-  };
-  return (result.searchResultItems ?? result.findResultItems ?? []).flatMap(
-    (item) => item.messageList ?? [],
-  );
-}
-
-function getMessagePreview(message: MessageItem): string {
-  if (message.textElem?.content) return message.textElem.content;
-  if (message.pictureElem) return "[Image]";
-  if (message.fileElem) return `[File] ${message.fileElem.fileName}`;
-  return `[${message.contentType}]`;
-}
 
 export default forwardRef(ChatHistoryDrawer);

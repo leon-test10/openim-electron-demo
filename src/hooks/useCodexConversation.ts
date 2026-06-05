@@ -7,12 +7,14 @@ import {
   archiveCodexSession,
   cancelCodexJob,
   createCodexSession,
+  deleteCodexSession,
   getCodexBridgeMeta,
   getCodexJobEvents,
   getCodexJobEventsStreamUrl,
   getCodexSessions,
   getCodexStatus,
   rebindCodexConversation,
+  restoreCodexSession,
   retryCodexJob,
   updateCodexSession,
 } from "@/api/codexBridge";
@@ -205,6 +207,18 @@ export function useCodexConversation() {
         if (!conversationID) return;
         await ensureCapability("sessionArchive", conversationID, setMeta);
         await archiveCodexSession(conversationID, sessionRecordID);
+        await refresh();
+      },
+      restoreSession: async (sessionRecordID: string) => {
+        if (!conversationID) return;
+        await ensureCapability("sessionRestore", conversationID, setMeta);
+        await restoreCodexSession(conversationID, sessionRecordID);
+        await refresh();
+      },
+      deleteSession: async (sessionRecordID: string) => {
+        if (!conversationID) return;
+        await ensureCapability("sessionDelete", conversationID, setMeta);
+        await deleteCodexSession(conversationID, sessionRecordID);
         await refresh();
       },
       renameSession: async (sessionRecordID: string, displayName: string) => {

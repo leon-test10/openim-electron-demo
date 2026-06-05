@@ -1,10 +1,7 @@
 import { ChooseModalState } from "@/pages/common/ChooseModal";
 import { CheckListItem } from "@/pages/common/ChooseModal/ChooseBox/CheckItem";
 import mitt from "mitt";
-import {
-  GroupItem,
-  MessageItem,
-} from "@openim/wasm-client-sdk/lib/types/entity";
+import { GroupItem, MessageItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { InviteData } from "@/pages/common/RtcCallModal/data";
 
 type EmitterEvents = {
@@ -30,6 +27,11 @@ export type OpenUserCardParams = {
   groupID?: string;
   isSelf?: boolean;
   notAdd?: boolean;
+  cardInfo?: {
+    userID?: string;
+    nickname?: string;
+    faceURL?: string;
+  };
 };
 
 const emitter = mitt<EmitterEvents>();

@@ -79,7 +79,14 @@ const SingleSetting: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (
   };
 
   const openUserCard = () => {
-    emit("OPEN_USER_CARD", { userID: currentConversation?.userID });
+    emit("OPEN_USER_CARD", {
+      userID: currentConversation?.userID,
+      cardInfo: {
+        userID: currentConversation?.userID,
+        nickname: currentConversation?.showName,
+        faceURL: currentConversation?.faceURL,
+      },
+    });
   };
 
   return (
