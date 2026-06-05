@@ -1,4 +1,4 @@
-import { CbEvents, MessageType } from "@openim/wasm-client-sdk";
+import { CbEvents, MessageType, ViewType } from "@openim/wasm-client-sdk";
 import {
   GroupItem,
   MessageItem,
@@ -205,19 +205,13 @@ const TopSearchBar = () => {
 
     try {
       const { data } = await IMSDK.fetchSurroundingMessages({
-        conversationID,
-        clientMsgID: targetMessage.clientMsgID,
-        count: 20,
+        startMessage: targetMessage,
+        viewType: ViewType.History,
+        before: 10,
+        after: 10,
       });
-      const surroundingMessages = Array.isArray(data)
-        ? data
-        : [
-            ...((data as { messageList?: MessageItem[] }).messageList ?? []),
-            ...((data as { messageListReverse?: MessageItem[] }).messageListReverse ??
-              []),
-          ];
       setTimeout(() => {
-        replaceMessageListAndScroll(surroundingMessages, targetMessage.clientMsgID);
+        replaceMessageListAndScroll(data.messageList, targetMessage.clientMsgID);
       }, 200);
     } catch {
       // Keep the conversation navigation even if local surrounding messages are unavailable.

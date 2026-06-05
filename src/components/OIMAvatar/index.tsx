@@ -25,9 +25,9 @@ const OIMAvatar: React.FC<IOIMAvatarProps> = (props) => {
     color = "#fff",
     bgColor = "#0289FA",
     isgroup = false,
-    isnotification,
   } = props;
   const [errorHolder, setErrorHolder] = React.useState<string>();
+  const fallbackText = useMemo(() => compactAvatarText(text), [text]);
 
   const getAvatarUrl = useMemo(() => {
     if (src) {
@@ -37,9 +37,14 @@ const OIMAvatar: React.FC<IOIMAvatarProps> = (props) => {
       return src;
     }
     return isgroup ? default_group : undefined;
-  }, [src, isgroup, isnotification]);
+  }, [src, isgroup]);
 
-  const avatarProps = { ...props, isgroup: undefined, isnotification: undefined };
+  const avatarProps = {
+    ...props,
+    text: undefined,
+    isgroup: undefined,
+    isnotification: undefined,
+  };
 
   React.useEffect(() => {
     if (!isgroup) {
@@ -50,7 +55,9 @@ const OIMAvatar: React.FC<IOIMAvatarProps> = (props) => {
   const errorHandler = () => {
     if (isgroup) {
       setErrorHolder(default_group);
+      return false;
     }
+    return true;
   };
 
   return (
@@ -71,11 +78,26 @@ const OIMAvatar: React.FC<IOIMAvatarProps> = (props) => {
         props.className,
       )}
       src={errorHolder ?? getAvatarUrl}
-      onError={errorHandler as any}
+      onError={errorHandler}
     >
-      {text}
+      {fallbackText}
     </AntdAvatar>
   );
 };
+
+function compactAvatarText(text: string | undefined) {
+  const normalized = text?.trim();
+  if (!normalized) return "";
+
+  const words = normalized.match(/[A-Za-z0-9]+/g);
+  if (words?.length) {
+    if (words.length >= 2) {
+      return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
+    }
+    return words[0].slice(0, 2).toUpperCase();
+  }
+
+  return Array.from(normalized).slice(0, 2).join("");
+}
 
 export default OIMAvatar;

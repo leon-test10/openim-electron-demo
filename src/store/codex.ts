@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import {
+  CodexBridgeMeta,
   CodexConversationStatus,
   CodexRuntimeEvent,
   CodexSessionRecord,
@@ -17,9 +18,13 @@ interface CodexStateEntry {
 
 interface CodexStore {
   conversations: Record<string, CodexStateEntry>;
+  meta: CodexBridgeMeta | null;
   setLoading: (conversationID: string, loading: boolean) => void;
+  setMeta: (meta: CodexBridgeMeta) => void;
   setStatus: (conversationID: string, status: CodexConversationStatus) => void;
   setSessions: (conversationID: string, sessions: CodexSessionRecord[]) => void;
+  upsertSession: (conversationID: string, session: CodexSessionRecord) => void;
+  activateSessionLocal: (conversationID: string, session: CodexSessionRecord) => void;
   setJobEvents: (
     conversationID: string,
     jobID: string,
@@ -44,6 +49,8 @@ const emptyEntry: CodexStateEntry = {
 
 export const useCodexStore = create<CodexStore>()((set) => ({
   conversations: {},
+  meta: null,
+  setMeta: (meta) => set({ meta }),
   setLoading: (conversationID, loading) =>
     set((state) => ({
       conversations: {
@@ -78,6 +85,55 @@ export const useCodexStore = create<CodexStore>()((set) => ({
         },
       },
     })),
+  upsertSession: (conversationID, session) =>
+    set((state) => {
+      const entry = state.conversations[conversationID] ?? emptyEntry;
+      const sessions = entry.sessions.some((item) => item.id === session.id)
+        ? entry.sessions.map((item) => (item.id === session.id ? session : item))
+        : [session, ...entry.sessions];
+      return {
+        conversations: {
+          ...state.conversations,
+          [conversationID]: {
+            ...entry,
+            sessions,
+            status: entry.status
+              ? {
+                  ...entry.status,
+                  activeSession: session.isActive
+                    ? session
+                    : entry.status.activeSession,
+                }
+              : entry.status,
+            updatedAt: Date.now(),
+          },
+        },
+      };
+    }),
+  activateSessionLocal: (conversationID, session) =>
+    set((state) => {
+      const entry = state.conversations[conversationID] ?? emptyEntry;
+      return {
+        conversations: {
+          ...state.conversations,
+          [conversationID]: {
+            ...entry,
+            sessions: entry.sessions.map((item) => ({
+              ...item,
+              isActive: item.id === session.id,
+              updatedAt: item.id === session.id ? session.updatedAt : item.updatedAt,
+            })),
+            status: entry.status
+              ? {
+                  ...entry.status,
+                  activeSession: session,
+                }
+              : entry.status,
+            updatedAt: Date.now(),
+          },
+        },
+      };
+    }),
   setJobEvents: (conversationID, jobID, events) =>
     set((state) => {
       const entry = state.conversations[conversationID] ?? emptyEntry;

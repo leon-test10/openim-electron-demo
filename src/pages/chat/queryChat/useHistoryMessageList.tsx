@@ -6,7 +6,7 @@ import { useParams } from "react-router-dom";
 import { IMSDK } from "@/layout/MainContentWrap";
 import emitter, { emit } from "@/utils/events";
 
-const START_INDEX = 10000;
+export const START_INDEX = 10000;
 const SPLIT_COUNT = 20;
 
 export function useHistoryMessageList() {
@@ -62,7 +62,6 @@ export function useHistoryMessageList() {
     };
     const replaceMessages = ({
       messages,
-      targetClientMsgID,
     }: {
       messages: MessageItem[];
       targetClientMsgID: string;
@@ -74,11 +73,6 @@ export function useHistoryMessageList() {
         messageList: messages,
         firstItemIndex: START_INDEX - messages.length,
       }));
-      setTimeout(() => {
-        document
-          .getElementById(`chat_${targetClientMsgID}`)
-          ?.scrollIntoView({ block: "center" });
-      }, 100);
     };
     emitter.on("PUSH_NEW_MSG", pushNewMessage);
     emitter.on("UPDATE_ONE_MSG", updateOneMessage);

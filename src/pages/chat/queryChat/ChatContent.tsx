@@ -1,7 +1,7 @@
-import { SessionType } from "@openim/wasm-client-sdk";
+import { MessageItem as MessageItemType } from "@openim/wasm-client-sdk";
 import { Layout, Spin } from "antd";
 import clsx from "clsx";
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
 import { SystemMessageTypes } from "@/constants/im";
@@ -10,10 +10,13 @@ import emitter from "@/utils/events";
 
 import MessageItem from "./MessageItem";
 import NotificationMessage from "./NotificationMessage";
-import { useHistoryMessageList } from "./useHistoryMessageList";
+import { START_INDEX, useHistoryMessageList } from "./useHistoryMessageList";
 
 const ChatContent = () => {
   const virtuoso = useRef<VirtuosoHandle>(null);
+  const [highlightedClientMsgID, setHighlightedClientMsgID] = useState<string | null>(
+    null,
+  );
   const selfUserID = useUserStore((state) => state.selfInfo.userID);
 
   const scrollToBottom = () => {
@@ -31,8 +34,35 @@ const ChatContent = () => {
 
   useEffect(() => {
     emitter.on("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
+    const jumpToMessage = ({
+      messages,
+      targetClientMsgID,
+    }: {
+      messages: MessageItemType[];
+      targetClientMsgID: string;
+    }) => {
+      const targetIndex = messages.findIndex(
+        (message) => message.clientMsgID === targetClientMsgID,
+      );
+      if (targetIndex < 0) return;
+      setHighlightedClientMsgID(targetClientMsgID);
+      setTimeout(() => {
+        virtuoso.current?.scrollToIndex({
+          index: START_INDEX - messages.length + targetIndex,
+          align: "center",
+          behavior: "auto",
+        });
+      }, 150);
+      window.setTimeout(() => {
+        setHighlightedClientMsgID((current) =>
+          current === targetClientMsgID ? null : current,
+        );
+      }, 2400);
+    };
+    emitter.on("REPLACE_MESSAGE_LIST_AND_SCROLL", jumpToMessage);
     return () => {
       emitter.off("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
+      emitter.off("REPLACE_MESSAGE_LIST_AND_SCROLL", jumpToMessage);
     };
   }, []);
 
@@ -89,6 +119,7 @@ const ChatContent = () => {
                 message={message}
                 messageUpdateFlag={message.senderNickname + message.senderFaceUrl}
                 isSender={isSender}
+                highlighted={message.clientMsgID === highlightedClientMsgID}
               />
             );
           }}

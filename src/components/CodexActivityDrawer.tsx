@@ -1,5 +1,6 @@
 import { MoreOutlined } from "@ant-design/icons";
 import {
+  Alert,
   Button,
   Card,
   Drawer,
@@ -7,7 +8,6 @@ import {
   Empty,
   Input,
   List,
-  Modal,
   Space,
   Tabs,
   Tag,
@@ -25,6 +25,7 @@ import CodexRuntimeTrace from "@/components/CodexRuntimeTrace";
 import { useCodexConversation } from "@/hooks/useCodexConversation";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
 import { CodexRuntimeEvent, CodexRuntimeJob, CodexSessionRecord } from "@/types/codex";
+import { feedbackToast } from "@/utils/common";
 import { getViteEnv } from "@/utils/env";
 
 const defaultProjectPath = getViteEnv(
@@ -107,10 +108,17 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
     return null;
   }
 
-  const runAction = async (action: () => Promise<unknown>) => {
+  const runAction = async (action: () => Promise<unknown>, successMessage?: string) => {
     setSubmitting(true);
     try {
       await action();
+      if (successMessage) {
+        feedbackToast({ msg: successMessage });
+      }
+      return true;
+    } catch (error) {
+      feedbackToast({ error });
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -145,8 +153,8 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
                 error={error}
                 submitting={submitting}
                 onSelectJob={setSelectedJobID}
-                onCancel={() => runAction(cancel)}
-                onRetry={(jobID) => runAction(() => retry(jobID))}
+                onCancel={() => runAction(cancel, "Codex job cancellation requested")}
+                onRetry={(jobID) => runAction(() => retry(jobID), "Codex job queued")}
               />
             ),
           },
@@ -157,16 +165,30 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
               <SessionsTab
                 sessions={sessions}
                 hasActiveJob={hasActiveJob}
+                error={error}
                 submitting={submitting}
                 projectPath={projectPath}
                 onCreate={() =>
-                  runAction(() => createSession({ codexProjectPath: projectPath }))
+                  runAction(
+                    () => createSession({ codexProjectPath: projectPath }),
+                    "New Codex session activated",
+                  )
                 }
-                onActivate={(session) => runAction(() => activateSession(session.id))}
+                onActivate={(session) =>
+                  runAction(
+                    () => activateSession(session.id),
+                    "Codex session activated",
+                  )
+                }
                 onRename={(session, displayName) =>
-                  runAction(() => renameSession(session.id, displayName))
+                  runAction(
+                    () => renameSession(session.id, displayName),
+                    "Codex session renamed",
+                  )
                 }
-                onArchive={(session) => runAction(() => archiveSession(session.id))}
+                onArchive={(session) =>
+                  runAction(() => archiveSession(session.id), "Codex session archived")
+                }
               />
             ),
           },
@@ -182,7 +204,10 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
                 submitting={submitting}
                 onProjectPathChange={setProjectPath}
                 onRebind={() =>
-                  runAction(() => rebind({ codexProjectPath: projectPath }))
+                  runAction(
+                    () => rebind({ codexProjectPath: projectPath }),
+                    "Codex binding changed",
+                  )
                 }
               />
             ),
@@ -292,6 +317,7 @@ function RunsTab({
 function SessionsTab({
   sessions,
   hasActiveJob,
+  error,
   submitting,
   projectPath,
   onCreate,
@@ -301,26 +327,35 @@ function SessionsTab({
 }: {
   sessions: CodexSessionRecord[];
   hasActiveJob: boolean;
+  error: string | null;
   submitting: boolean;
   projectPath: string;
-  onCreate: () => Promise<unknown>;
-  onActivate: (session: CodexSessionRecord) => Promise<unknown>;
-  onArchive: (session: CodexSessionRecord) => Promise<unknown>;
-  onRename: (session: CodexSessionRecord, displayName: string) => Promise<unknown>;
+  onCreate: () => Promise<boolean>;
+  onActivate: (session: CodexSessionRecord) => Promise<boolean>;
+  onArchive: (session: CodexSessionRecord) => Promise<boolean>;
+  onRename: (session: CodexSessionRecord, displayName: string) => Promise<boolean>;
 }) {
-  const [renameTarget, setRenameTarget] = useState<CodexSessionRecord | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const openRename = (session: CodexSessionRecord) => {
-    setRenameTarget(session);
+    setEditingSessionId(session.id);
     setRenameValue(getSessionTitle(session));
   };
   const closeRename = () => {
-    setRenameTarget(null);
+    setEditingSessionId(null);
     setRenameValue("");
+  };
+  const saveRename = async (session: CodexSessionRecord) => {
+    if (!renameValue.trim()) return;
+    const ok = await onRename(session, renameValue.trim());
+    if (ok) {
+      closeRename();
+    }
   };
 
   return (
     <div className="space-y-3 px-3 pb-4">
+      {error ? <Alert type="error" showIcon message={error} /> : null}
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs text-[var(--sub-text)]">
           Select a session to use it for the next Codex run.
@@ -360,11 +395,26 @@ function SessionsTab({
                 session.status === "archived" ? "cursor-not-allowed opacity-60" : "",
               ].join(" ")}
               onClick={() => {
-                if (canActivate && !submitting) {
+                if (canActivate && !submitting && editingSessionId !== session.id) {
                   void onActivate(session);
                 }
               }}
               actions={[
+                <Button
+                  key="activate"
+                  size="small"
+                  type={session.isActive ? "primary" : "default"}
+                  disabled={!canActivate || submitting}
+                  loading={submitting && canActivate}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (canActivate) {
+                      void onActivate(session);
+                    }
+                  }}
+                >
+                  {session.isActive ? "Active" : "Activate"}
+                </Button>,
                 <Dropdown
                   key="more"
                   trigger={["click"]}
@@ -414,10 +464,43 @@ function SessionsTab({
                   <div className="space-y-1 text-xs">
                     <div>{session.lastSummary ?? "No summary yet"}</div>
                     <div>Project: {session.codexProjectPath}</div>
+                    <div>Name source: {session.displayNameSource ?? "default"}</div>
                     <div>
                       Updated: {new Date(session.updatedAt).toLocaleString()} / Record:{" "}
                       {session.id}
                     </div>
+                    {editingSessionId === session.id ? (
+                      <div
+                        className="flex items-center gap-2 pt-2"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Input
+                          aria-label="Session name"
+                          size="small"
+                          value={renameValue}
+                          maxLength={80}
+                          onChange={(event) => setRenameValue(event.target.value)}
+                          onPressEnter={() => void saveRename(session)}
+                        />
+                        <Button
+                          size="small"
+                          type="primary"
+                          loading={submitting}
+                          disabled={!renameValue.trim()}
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void saveRename(session);
+                          }}
+                          onClick={() => void saveRename(session)}
+                        >
+                          Save
+                        </Button>
+                        <Button size="small" onClick={closeRename}>
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 }
               />
@@ -425,23 +508,6 @@ function SessionsTab({
           );
         }}
       />
-      <Modal
-        title="Rename session"
-        open={Boolean(renameTarget)}
-        okText="Save"
-        onCancel={closeRename}
-        confirmLoading={submitting}
-        onOk={() => {
-          if (!renameTarget || !renameValue.trim()) return;
-          void onRename(renameTarget, renameValue).then(closeRename);
-        }}
-      >
-        <Input
-          value={renameValue}
-          maxLength={80}
-          onChange={(event) => setRenameValue(event.target.value)}
-        />
-      </Modal>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   archiveCodexSession,
   cancelCodexJob,
   createCodexSession,
+  getCodexBridgeMeta,
   getCodexJobEvents,
   getCodexJobEventsStreamUrl,
   getCodexSessions,
@@ -17,6 +18,7 @@ import {
 } from "@/api/codexBridge";
 import { useCodexStore, useConversationStore, useUserStore } from "@/store";
 import {
+  CodexBridgeMeta,
   CodexRuntimeEvent,
   CreateCodexSessionInput,
   RebindCodexInput,
@@ -50,8 +52,12 @@ export function useCodexConversation() {
     conversationID ? state.conversations[conversationID] : undefined,
   );
   const setLoading = useCodexStore((state) => state.setLoading);
+  const meta = useCodexStore((state) => state.meta);
+  const setMeta = useCodexStore((state) => state.setMeta);
   const setStatus = useCodexStore((state) => state.setStatus);
   const setSessions = useCodexStore((state) => state.setSessions);
+  const upsertSession = useCodexStore((state) => state.upsertSession);
+  const activateSessionLocal = useCodexStore((state) => state.activateSessionLocal);
   const setJobEvents = useCodexStore((state) => state.setJobEvents);
   const appendJobEvents = useCodexStore((state) => state.appendJobEvents);
   const setError = useCodexStore((state) => state.setError);
@@ -60,6 +66,16 @@ export function useCodexConversation() {
     if (!conversationID || !isCodexConversation) return;
     setLoading(conversationID, true);
     try {
+      if (!useCodexStore.getState().meta) {
+        await getCodexBridgeMeta()
+          .then(setMeta)
+          .catch((error) => {
+            setError(
+              conversationID,
+              error instanceof Error ? error.message : String(error),
+            );
+          });
+      }
       const status = await getCodexStatus(conversationID);
       setStatus(conversationID, status);
       const sessions = await getCodexSessions(conversationID);
@@ -72,6 +88,7 @@ export function useCodexConversation() {
     isCodexConversation,
     setError,
     setLoading,
+    setMeta,
     setSessions,
     setStatus,
   ]);
@@ -154,6 +171,7 @@ export function useCodexConversation() {
   const actions = useMemo(
     () => ({
       refresh,
+      meta,
       loadJobEvents: async (jobID: string) => {
         if (!conversationID) return;
         const { events } = await getCodexJobEvents(jobID);
@@ -185,30 +203,49 @@ export function useCodexConversation() {
       },
       archiveSession: async (sessionRecordID: string) => {
         if (!conversationID) return;
+        await ensureCapability("sessionArchive", conversationID, setMeta);
         await archiveCodexSession(conversationID, sessionRecordID);
         await refresh();
       },
       renameSession: async (sessionRecordID: string, displayName: string) => {
         if (!conversationID) return;
-        await updateCodexSession(conversationID, sessionRecordID, { displayName });
+        const session = await updateCodexSession(conversationID, sessionRecordID, {
+          displayName,
+        });
+        upsertSession(conversationID, session);
         await refresh();
       },
       createSession: async (payload: CreateCodexSessionInput = {}) => {
         if (!conversationID) return;
+        await ensureCapability("sessionActivate", conversationID, setMeta);
         const session = await createCodexSession(conversationID, {
           openimDisplayUserId: selfUserID,
           ...payload,
         });
+        activateSessionLocal(conversationID, session);
         await refresh();
         return session;
       },
       activateSession: async (sessionRecordID: string) => {
         if (!conversationID) return;
-        await activateCodexSession(conversationID, sessionRecordID);
+        await ensureCapability("sessionActivate", conversationID, setMeta);
+        const session = await activateCodexSession(conversationID, sessionRecordID);
+        activateSessionLocal(conversationID, session);
         await refresh();
       },
     }),
-    [activeJob, conversationID, latestJob, refresh, selfUserID, setJobEvents],
+    [
+      activateSessionLocal,
+      activeJob,
+      conversationID,
+      latestJob,
+      meta,
+      refresh,
+      selfUserID,
+      setJobEvents,
+      setMeta,
+      upsertSession,
+    ],
   );
 
   return {
@@ -226,4 +263,33 @@ export function useCodexConversation() {
     eventsByJobId: entry?.eventsByJobId ?? {},
     ...actions,
   };
+}
+
+async function ensureCapability(
+  capability: keyof CodexBridgeMeta["capabilities"],
+  conversationID: string,
+  setMeta: (meta: CodexBridgeMeta) => void,
+) {
+  let meta = useCodexStore.getState().meta;
+  if (!meta) {
+    try {
+      meta = await getCodexBridgeMeta();
+      setMeta(meta);
+    } catch (error) {
+      throw new Error(
+        `Codex bridge needs restart or is version-mismatched. Missing capability endpoint. ${formatErrorMessage(
+          error,
+        )}`,
+      );
+    }
+  }
+  if (!meta.capabilities?.[capability]) {
+    throw new Error(
+      `Codex bridge needs restart or is version-mismatched. Missing capability: ${capability}. Conversation: ${conversationID}`,
+    );
+  }
+}
+
+function formatErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

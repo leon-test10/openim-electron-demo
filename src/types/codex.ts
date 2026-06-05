@@ -43,6 +43,21 @@ export interface CodexSessionRecord {
   updatedAt: number;
 }
 
+export interface CodexBridgeMeta {
+  name: string;
+  version: string;
+  apiVersion: string;
+  capabilities: {
+    sessionMetadata?: boolean;
+    sessionActivate?: boolean;
+    sessionRename?: boolean;
+    sessionArchive?: boolean;
+    runtimeEvents?: boolean;
+    jobCancel?: boolean;
+    jobRetry?: boolean;
+  };
+}
+
 export interface CodexRuntimeJob {
   id: string;
   sessionRecordId: string;

@@ -3,6 +3,8 @@ import clsx from "clsx";
 import { FC, memo, useCallback, useRef, useState } from "react";
 
 import OIMAvatar from "@/components/OIMAvatar";
+import { useConversationStore } from "@/store";
+import { getViteEnv } from "@/utils/env";
 import { formatMessageTime } from "@/utils/imCommon";
 
 import CatchMessageRender from "./CatchMsgRenderer";
@@ -19,6 +21,7 @@ export interface IMessageItemProps {
   disabled?: boolean;
   conversationID?: string;
   messageUpdateFlag?: string;
+  highlighted?: boolean;
 }
 
 const components: Record<number, FC<IMessageItemProps>> = {
@@ -27,15 +30,29 @@ const components: Record<number, FC<IMessageItemProps>> = {
   [MessageType.FileMessage]: FileMessageRender,
 };
 
+const CODEX_BOT_USER_ID = getViteEnv("VITE_CODEX_BOT_USER_ID", "codex_bot");
+
 const MessageItem: FC<IMessageItemProps> = ({
   message,
   disabled,
   isSender,
   conversationID,
+  highlighted,
 }) => {
   const messageWrapRef = useRef<HTMLDivElement>(null);
   const [showMessageMenu, setShowMessageMenu] = useState(false);
+  const currentConversation = useConversationStore(
+    (state) => state.currentConversation,
+  );
   const MessageRenderComponent = components[message.contentType] || CatchMessageRender;
+  const isConversationPeer = message.sendID === currentConversation?.userID;
+  const isCodexBotMessage = message.sendID === CODEX_BOT_USER_ID;
+  const avatarSrc =
+    message.senderFaceUrl ||
+    (isConversationPeer || isCodexBotMessage ? currentConversation?.faceURL : "");
+  const avatarText = isCodexBotMessage
+    ? "CB"
+    : message.senderNickname || message.sendID;
 
   const closeMessageMenu = useCallback(() => {
     setShowMessageMenu(false);
@@ -47,7 +64,10 @@ const MessageItem: FC<IMessageItemProps> = ({
     <>
       <div
         id={`chat_${message.clientMsgID}`}
-        className={clsx("relative flex select-text px-5 py-3")}
+        className={clsx(
+          "relative flex select-text px-5 py-3 transition-colors duration-300",
+          highlighted && "bg-[#fff7e6]",
+        )}
       >
         <div
           className={clsx(
@@ -55,11 +75,7 @@ const MessageItem: FC<IMessageItemProps> = ({
             isSender && styles["message-container-sender"],
           )}
         >
-          <OIMAvatar
-            size={36}
-            src={message.senderFaceUrl}
-            text={message.senderNickname}
-          />
+          <OIMAvatar size={36} src={avatarSrc} text={avatarText} />
 
           <div className={styles["message-wrap"]} ref={messageWrapRef}>
             <div className={styles["message-profile"]}>
