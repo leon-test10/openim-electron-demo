@@ -13,6 +13,10 @@ type EmitterEvents = {
   // message store
   PUSH_NEW_MSG: MessageItem;
   UPDATE_ONE_MSG: MessageItem;
+  REPLACE_MESSAGE_LIST_AND_SCROLL: {
+    messages: MessageItem[];
+    targetClientMsgID: string;
+  };
 
   SELECT_USER: SelectUserParams;
 };

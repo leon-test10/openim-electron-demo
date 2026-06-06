@@ -62,6 +62,9 @@ const TopSearchBar = () => {
   const [messageResults, setMessageResults] = useState<MessageItem[]>([]);
   const [searchingMessages, setSearchingMessages] = useState(false);
   const conversationList = useConversationStore((state) => state.conversationList);
+  const currentConversation = useConversationStore(
+    (state) => state.currentConversation,
+  );
   const updateCurrentConversation = useConversationStore(
     (state) => state.updateCurrentConversation,
   );
@@ -170,8 +173,19 @@ const TopSearchBar = () => {
     }
     setSearchingMessages(true);
     try {
+      const routeConversationID = getRouteConversationID();
+      const candidateMap = new Map<string, { conversationID: string }>();
+      for (const conversation of conversationList.slice(0, 50)) {
+        candidateMap.set(conversation.conversationID, conversation);
+      }
+      if (currentConversation?.conversationID) {
+        candidateMap.set(currentConversation.conversationID, currentConversation);
+      }
+      if (routeConversationID) {
+        candidateMap.set(routeConversationID, { conversationID: routeConversationID });
+      }
       const results = await Promise.all(
-        conversationList.slice(0, 50).map(async (conversation) => {
+        Array.from(candidateMap.values()).map(async (conversation) => {
           try {
             return await searchConversationMessages({
               sdk: IMSDK,
@@ -191,6 +205,14 @@ const TopSearchBar = () => {
       setSearchingMessages(false);
     }
   };
+
+  useEffect(() => {
+    if (!globalSearchOpen) return;
+    const timer = window.setTimeout(() => {
+      void runGlobalMessageSearch(globalKeyword);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [globalKeyword, globalSearchOpen, conversationList, currentConversation]);
 
   const openConversation = async (
     conversationID: string,
@@ -443,3 +465,11 @@ const ActionPopContent = ({ actionClick }: { actionClick: (idx: number) => void 
     </div>
   );
 };
+
+function getRouteConversationID() {
+  const hash = window.location.hash;
+  const marker = "#/chat/";
+  const index = hash.indexOf(marker);
+  if (index < 0) return "";
+  return decodeURIComponent(hash.slice(index + marker.length).split("?")[0] ?? "");
+}

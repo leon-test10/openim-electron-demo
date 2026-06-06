@@ -6,9 +6,12 @@ import {
   CodexRuntimeJob,
   CodexRuntimeProfile,
   CodexRuntimeProfileInput,
+  CodexSessionDiagnostics,
   CodexSessionRecord,
   CreateCodexSessionInput,
+  OpenImHistorySnapshotInput,
   RebindCodexInput,
+  RuntimeProfileTestResult,
 } from "@/types/codex";
 import { getViteEnv } from "@/utils/env";
 
@@ -179,15 +182,37 @@ export function deleteRuntimeProfile(profileID: string) {
 }
 
 export function testRuntimeProfile(profileID: string) {
-  return requestBridge<{
-    ok: boolean;
-    profile: CodexRuntimeProfile;
-    codexArgs: string[];
-    env: Record<string, string>;
-  }>(`/api/runtime-profiles/${encodeURIComponent(profileID)}/test`, {
-    method: "POST",
-    body: emptyJsonBody,
-  });
+  return requestBridge<RuntimeProfileTestResult>(
+    `/api/runtime-profiles/${encodeURIComponent(profileID)}/test`,
+    {
+      method: "POST",
+      body: emptyJsonBody,
+    },
+  );
+}
+
+export function getCodexSessionDiagnostics(
+  conversationID: string,
+  sessionRecordID: string,
+) {
+  return requestBridge<CodexSessionDiagnostics>(
+    `/api/conversations/${encodeURIComponent(
+      conversationID,
+    )}/codex-sessions/${encodeURIComponent(sessionRecordID)}/diagnostics`,
+  );
+}
+
+export function postOpenImHistorySnapshot(
+  conversationID: string,
+  payload: OpenImHistorySnapshotInput,
+) {
+  return requestBridge<{ id: string; messageCount: number }>(
+    `/api/conversations/${encodeURIComponent(conversationID)}/openim-history-snapshots`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function getCodexJobEvents(jobID: string, afterSequence = 0) {

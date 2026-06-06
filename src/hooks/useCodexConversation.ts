@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { MessageItem, ViewType } from "@openim/wasm-client-sdk";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useParams } from "react-router-dom";
 
 import {
@@ -11,13 +12,16 @@ import {
   getCodexBridgeMeta,
   getCodexJobEvents,
   getCodexJobEventsStreamUrl,
+  getCodexSessionDiagnostics,
   getCodexSessions,
   getCodexStatus,
+  postOpenImHistorySnapshot,
   rebindCodexConversation,
   restoreCodexSession,
   retryCodexJob,
   updateCodexSession,
 } from "@/api/codexBridge";
+import { IMSDK } from "@/layout/MainContentWrap";
 import { useCodexStore, useConversationStore, useUserStore } from "@/store";
 import {
   CodexBridgeMeta,
@@ -63,6 +67,7 @@ export function useCodexConversation() {
   const setJobEvents = useCodexStore((state) => state.setJobEvents);
   const appendJobEvents = useCodexStore((state) => state.appendJobEvents);
   const setError = useCodexStore((state) => state.setError);
+  const importedHistoryRequestIds = useRef(new Set<string>());
 
   const refresh = useCallback(async () => {
     if (!conversationID || !isCodexConversation) return;
@@ -103,6 +108,28 @@ export function useCodexConversation() {
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [conversationID, isCodexConversation, refresh]);
+
+  useEffect(() => {
+    const pending = entry?.status?.pendingHistoryImport;
+    if (!conversationID || !isCodexConversation || !pending) return;
+    if (importedHistoryRequestIds.current.has(pending.id)) return;
+    importedHistoryRequestIds.current.add(pending.id);
+    void importOpenImHistory(conversationID, pending.id, pending.requestedCount)
+      .then(() => refresh())
+      .catch((error) => {
+        importedHistoryRequestIds.current.delete(pending.id);
+        setError(
+          conversationID,
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+  }, [
+    conversationID,
+    entry?.status?.pendingHistoryImport,
+    isCodexConversation,
+    refresh,
+    setError,
+  ]);
 
   const activeJob = entry?.status?.activeJob;
   const latestJob = entry?.status?.latestJob;
@@ -247,6 +274,10 @@ export function useCodexConversation() {
         activateSessionLocal(conversationID, session);
         await refresh();
       },
+      getSessionDiagnostics: async (sessionRecordID: string) => {
+        if (!conversationID) return null;
+        return getCodexSessionDiagnostics(conversationID, sessionRecordID);
+      },
     }),
     [
       activateSessionLocal,
@@ -276,6 +307,37 @@ export function useCodexConversation() {
     activeJobEvents,
     eventsByJobId: entry?.eventsByJobId ?? {},
     ...actions,
+  };
+}
+
+async function importOpenImHistory(
+  conversationID: string,
+  requestID: string,
+  requestedCount: number,
+) {
+  const { data } = await IMSDK.getAdvancedHistoryMessageList({
+    count: Math.min(Math.max(requestedCount, 1), 200),
+    startClientMsgID: "",
+    conversationID,
+    viewType: ViewType.History,
+  });
+  await postOpenImHistorySnapshot(conversationID, {
+    requestId: requestID,
+    source: "electron-sdk",
+    messages: (data.messageList ?? []).map(toSnapshotMessage),
+  });
+}
+
+function toSnapshotMessage(message: MessageItem) {
+  return {
+    clientMsgID: message.clientMsgID,
+    serverMsgID: message.serverMsgID,
+    sendID: message.sendID,
+    senderNickname: message.senderNickname,
+    contentType: message.contentType,
+    sendTime: message.sendTime,
+    text: message.textElem?.content,
+    preview: message.textElem?.content || message.fileElem?.fileName,
   };
 }
 

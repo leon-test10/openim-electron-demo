@@ -38,6 +38,7 @@ import {
   CodexRuntimeJob,
   CodexRuntimeProfile,
   CodexRuntimeProfileInput,
+  CodexSessionDiagnostics,
   CodexSessionRecord,
 } from "@/types/codex";
 import { feedbackToast } from "@/utils/common";
@@ -81,6 +82,7 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
     restoreSession,
     deleteSession,
     loadJobEvents,
+    getSessionDiagnostics,
   } = useCodexConversation();
   const [selectedJobID, setSelectedJobID] = useState<string | null>(null);
   const [projectPath, setProjectPath] = useState(defaultProjectPath);
@@ -91,6 +93,9 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
     createEmptyProfileDraft(),
   );
   const [profileTestResult, setProfileTestResult] = useState<string>("");
+  const [sessionDiagnostics, setSessionDiagnostics] = useState<
+    Record<string, CodexSessionDiagnostics>
+  >({});
 
   const jobs = useMemo(() => {
     const byId = new Map<string, CodexRuntimeJob>();
@@ -144,6 +149,29 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
     }
   }, [isOverlayOpen, loadJobEvents, selectedJob?.id]);
 
+  useEffect(() => {
+    if (!isOverlayOpen || !getSessionDiagnostics) return;
+    let cancelled = false;
+    void Promise.all(
+      sessions.map(async (session) => {
+        const diagnostics = await getSessionDiagnostics(session.id);
+        return diagnostics ? [session.id, diagnostics] : null;
+      }),
+    )
+      .then((items) => {
+        if (cancelled) return;
+        setSessionDiagnostics(
+          Object.fromEntries(
+            items.filter(Boolean) as Array<[string, CodexSessionDiagnostics]>,
+          ),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [getSessionDiagnostics, isOverlayOpen, sessions]);
+
   if (!isCodexConversation) {
     return null;
   }
@@ -189,9 +217,9 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
     runAction(async () => {
       const result = await testRuntimeProfile(profileID);
       setProfileTestResult(
-        `args: ${result.codexArgs.join(" ")} / env: ${
-          Object.keys(result.env).join(", ") || "none"
-        }`,
+        `Upstream: ${formatProbe(result.upstreamProbe)} / Codex: ${formatProbe(
+          result.codexProbe,
+        )}`,
       );
     }, "Runtime profile checked");
 
@@ -235,6 +263,7 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
             children: (
               <SessionsTab
                 sessions={sessions}
+                diagnosticsBySessionId={sessionDiagnostics}
                 hasActiveJob={hasActiveJob}
                 error={error}
                 submitting={submitting}
@@ -418,6 +447,7 @@ function RunsTab({
 
 function SessionsTab({
   sessions,
+  diagnosticsBySessionId,
   hasActiveJob,
   error,
   submitting,
@@ -430,6 +460,7 @@ function SessionsTab({
   onRename,
 }: {
   sessions: CodexSessionRecord[];
+  diagnosticsBySessionId: Record<string, CodexSessionDiagnostics>;
   hasActiveJob: boolean;
   error: string | null;
   submitting: boolean;
@@ -487,6 +518,7 @@ function SessionsTab({
           ),
         }}
         renderItem={(session) => {
+          const diagnostics = diagnosticsBySessionId[session.id];
           const canActivate =
             !hasActiveJob && !session.isActive && session.status !== "archived";
           const canArchive = !hasActiveJob && session.status !== "archived";
@@ -584,6 +616,9 @@ function SessionsTab({
                     {!session.isActive && session.status !== "archived" ? (
                       <Tag color="blue">Ready</Tag>
                     ) : null}
+                    <Tag color={getDiagnosticsColor(diagnostics)}>
+                      {getDiagnosticsLabel(session, diagnostics)}
+                    </Tag>
                   </Space>
                 }
                 description={
@@ -711,6 +746,23 @@ function ConfigTab({
               onChange={(event) => patchDraft({ model: event.target.value })}
             />
           </div>
+          <Select
+            allowClear
+            placeholder="Provider mode"
+            value={profileDraft.providerMode || undefined}
+            onChange={(value) => patchDraft({ providerMode: value ?? "" })}
+            options={[
+              { label: "OpenAI Responses", value: "openai-responses" },
+              {
+                label: "DeepSeek via Responses bridge",
+                value: "deepseek-via-responses-bridge",
+              },
+              {
+                label: "Chat probe only",
+                value: "openai-chat-probe-only",
+              },
+            ]}
+          />
           <div className="grid grid-cols-2 gap-2">
             <Select
               allowClear
@@ -741,9 +793,31 @@ function ConfigTab({
             onChange={(event) => patchDraft({ codexProfile: event.target.value })}
           />
           <Input
-            placeholder="Base URL"
+            placeholder="Upstream base URL"
             value={profileDraft.baseUrl}
             onChange={(event) => patchDraft({ baseUrl: event.target.value })}
+          />
+          <Input
+            placeholder="Responses bridge URL, for example http://127.0.0.1:38440/v1"
+            value={profileDraft.bridgeBaseUrl}
+            onChange={(event) => patchDraft({ bridgeBaseUrl: event.target.value })}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              placeholder="wire_api"
+              value={profileDraft.wireApi}
+              onChange={(event) => patchDraft({ wireApi: event.target.value })}
+            />
+            <Input
+              placeholder="Auth env key"
+              value={profileDraft.authEnvKey}
+              onChange={(event) => patchDraft({ authEnvKey: event.target.value })}
+            />
+          </div>
+          <Input
+            placeholder="Codex home override"
+            value={profileDraft.codexHomeOverride}
+            onChange={(event) => patchDraft({ codexHomeOverride: event.target.value })}
           />
           <Input.Password
             placeholder={
@@ -853,15 +927,43 @@ function getSessionTitle(session: CodexSessionRecord): string {
   );
 }
 
+function getDiagnosticsLabel(
+  session: CodexSessionRecord,
+  diagnostics: CodexSessionDiagnostics | undefined,
+) {
+  if (!session.codexSessionId) return "No Codex session yet";
+  if (!diagnostics) return "Resume unknown";
+  if (diagnostics.resumeReady) return "Resume ready";
+  if (!diagnostics.homeExists) return "Home missing";
+  if (!diagnostics.rolloutExists) return "Rollout missing";
+  return "Resume unavailable";
+}
+
+function getDiagnosticsColor(diagnostics: CodexSessionDiagnostics | undefined) {
+  if (!diagnostics) return "default";
+  return diagnostics.resumeReady ? "green" : "orange";
+}
+
+function formatProbe(probe: { ok: boolean; skipped: boolean; errorText?: string }) {
+  if (probe.skipped) return "skipped";
+  if (probe.ok) return "ok";
+  return probe.errorText ? `failed (${probe.errorText})` : "failed";
+}
+
 type RuntimeProfileDraft = {
   id: string;
   name: string;
   providerType: CodexRuntimeProfile["providerType"];
+  providerMode: NonNullable<CodexRuntimeProfile["providerMode"]> | "";
   model: string;
   sandboxMode: string;
   approvalPolicy: string;
   codexProfile: string;
   baseUrl: string;
+  bridgeBaseUrl: string;
+  wireApi: string;
+  authEnvKey: string;
+  codexHomeOverride: string;
   apiKey: string;
   apiKeyMasked: string | null;
 };
@@ -871,11 +973,16 @@ function createEmptyProfileDraft(): RuntimeProfileDraft {
     id: "",
     name: "",
     providerType: "openai",
+    providerMode: "",
     model: "",
     sandboxMode: "",
     approvalPolicy: "",
     codexProfile: "",
     baseUrl: "",
+    bridgeBaseUrl: "",
+    wireApi: "responses",
+    authEnvKey: "",
+    codexHomeOverride: "",
     apiKey: "",
     apiKeyMasked: null,
   };
@@ -886,11 +993,16 @@ function createDraftFromProfile(profile: CodexRuntimeProfile): RuntimeProfileDra
     id: profile.id,
     name: profile.name,
     providerType: profile.providerType,
+    providerMode: profile.providerMode ?? "",
     model: profile.model ?? "",
     sandboxMode: profile.sandboxMode ?? "",
     approvalPolicy: profile.approvalPolicy ?? "",
     codexProfile: profile.codexProfile ?? "",
     baseUrl: profile.baseUrl ?? "",
+    bridgeBaseUrl: profile.bridgeBaseUrl ?? "",
+    wireApi: profile.wireApi ?? "responses",
+    authEnvKey: profile.authEnvKey ?? "",
+    codexHomeOverride: profile.codexHomeOverride ?? "",
     apiKey: "",
     apiKeyMasked: profile.apiKeyMasked,
   };
@@ -902,11 +1014,18 @@ function toRuntimeProfilePayload(
   return {
     name: draft.name.trim(),
     providerType: draft.providerType,
+    providerMode: nullableText(
+      draft.providerMode,
+    ) as CodexRuntimeProfile["providerMode"],
     model: nullableText(draft.model),
     sandboxMode: nullableText(draft.sandboxMode),
     approvalPolicy: nullableText(draft.approvalPolicy),
     codexProfile: nullableText(draft.codexProfile),
     baseUrl: nullableText(draft.baseUrl),
+    bridgeBaseUrl: nullableText(draft.bridgeBaseUrl),
+    wireApi: nullableText(draft.wireApi),
+    authEnvKey: nullableText(draft.authEnvKey),
+    codexHomeOverride: nullableText(draft.codexHomeOverride),
     apiKey: draft.apiKey.trim() ? draft.apiKey.trim() : undefined,
   };
 }

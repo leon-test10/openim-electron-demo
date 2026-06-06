@@ -59,6 +59,8 @@ export interface CodexBridgeMeta {
     jobCancel?: boolean;
     jobRetry?: boolean;
     runtimeProfiles?: boolean;
+    sessionResumeDiagnostics?: boolean;
+    openimHistoryImport?: boolean;
   };
 }
 
@@ -111,6 +113,7 @@ export interface CodexConversationStatus {
   latestJob: CodexRuntimeJob | null;
   recentJobs: CodexRuntimeJob[];
   queuedJobCount: number;
+  pendingHistoryImport: OpenImHistoryImportRequest | null;
 }
 
 export interface CodexBindingDetail {
@@ -142,11 +145,20 @@ export interface CodexRuntimeProfile {
   id: string;
   name: string;
   providerType: "openai" | "openai-compatible" | "oss-local";
+  providerMode:
+    | "openai-responses"
+    | "deepseek-via-responses-bridge"
+    | "openai-chat-probe-only"
+    | null;
   model: string | null;
   sandboxMode: string | null;
   approvalPolicy: string | null;
   codexProfile: string | null;
   baseUrl: string | null;
+  bridgeBaseUrl: string | null;
+  wireApi: string | null;
+  authEnvKey: string | null;
+  codexHomeOverride: string | null;
   localProvider: "lmstudio" | "ollama" | null;
   useOss: boolean;
   apiKeyMasked: string | null;
@@ -158,12 +170,73 @@ export interface CodexRuntimeProfile {
 export interface CodexRuntimeProfileInput {
   name: string;
   providerType?: CodexRuntimeProfile["providerType"];
+  providerMode?: CodexRuntimeProfile["providerMode"];
   model?: string | null;
   sandboxMode?: string | null;
   approvalPolicy?: string | null;
   codexProfile?: string | null;
   baseUrl?: string | null;
+  bridgeBaseUrl?: string | null;
+  wireApi?: string | null;
+  authEnvKey?: string | null;
+  codexHomeOverride?: string | null;
   localProvider?: CodexRuntimeProfile["localProvider"];
   useOss?: boolean;
   apiKey?: string | null;
+}
+
+export interface CodexSessionDiagnostics {
+  conversationId: string;
+  sessionRecordId: string;
+  codexSessionId: string | null;
+  codexHomeDir: string | null;
+  homeExists: boolean;
+  rolloutExists: boolean;
+  resumeReady: boolean;
+  lastJobId: string | null;
+  lastResumeFailure: string | null;
+}
+
+export interface OpenImHistoryImportRequest {
+  id: string;
+  openimConversationId: string;
+  requestedCount: number;
+  status: "pending" | "fulfilled" | "failed";
+  createdAt: number;
+  fulfilledAt: number | null;
+}
+
+export interface OpenImHistorySnapshotInput {
+  requestId?: string;
+  source?: string;
+  messages: Array<{
+    clientMsgID?: string;
+    serverMsgID?: string;
+    sendID?: string;
+    senderNickname?: string;
+    contentType?: number;
+    sendTime?: number;
+    text?: string;
+    preview?: string;
+  }>;
+}
+
+export interface RuntimeProfileTestResult {
+  ok: boolean;
+  profile: CodexRuntimeProfile;
+  upstreamProbe: {
+    ok: boolean;
+    skipped: boolean;
+    status?: number;
+    errorText?: string;
+  };
+  codexProbe: {
+    ok: boolean;
+    skipped: boolean;
+    codexArgs?: string[];
+    env?: Record<string, string>;
+    exitCode?: number | null;
+    outputPreview?: string;
+    errorText?: string;
+  };
 }

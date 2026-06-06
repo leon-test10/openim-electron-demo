@@ -23,11 +23,20 @@ export function cacheConversationMessages(
   messages: MessageItem[],
 ) {
   if (!conversationID) return;
-  conversationMessageCache.set(conversationID, messages);
+  for (const alias of getConversationAliases(conversationID)) {
+    conversationMessageCache.set(alias, tagConversationMessages(messages, alias));
+  }
 }
 
 export function getCachedConversationMessages(conversationID: string | undefined) {
-  return conversationID ? conversationMessageCache.get(conversationID) ?? [] : [];
+  if (!conversationID) return [];
+  const byId = new Map<string, MessageItem>();
+  for (const alias of getConversationAliases(conversationID)) {
+    for (const message of conversationMessageCache.get(alias) ?? []) {
+      byId.set(message.clientMsgID, tagConversationMessage(message, conversationID));
+    }
+  }
+  return Array.from(byId.values());
 }
 
 export async function searchConversationMessages(input: {
@@ -50,9 +59,10 @@ export async function searchConversationMessages(input: {
   const add = (messages: MessageItem[]) => {
     for (const message of messages) {
       if (seen.has(message.clientMsgID)) continue;
-      if (!matchesMessage(message, keyword, messageType)) continue;
+      const tagged = tagConversationMessage(message, input.conversationID);
+      if (!matchesMessage(tagged, keyword, messageType)) continue;
       seen.add(message.clientMsgID);
-      results.push(message);
+      results.push(tagged);
     }
   };
 
@@ -85,6 +95,44 @@ export async function searchConversationMessages(input: {
   }
 
   return results;
+}
+
+export function getConversationAliases(conversationID: string): string[] {
+  const aliases = new Set([conversationID]);
+  if (conversationID.startsWith("single:")) {
+    const [, botID, userID] = conversationID.split(":");
+    if (botID && userID) {
+      aliases.add(`si_${userID}_${botID}`);
+      aliases.add(`si_${botID}_${userID}`);
+    }
+  }
+  if (conversationID.startsWith("si_")) {
+    const raw = conversationID.slice(3);
+    const parts = raw.split("_");
+    if (parts.length >= 2) {
+      const first = parts[0];
+      const last = parts[parts.length - 1];
+      const middle = parts.slice(1).join("_");
+      const beforeLast = parts.slice(0, -1).join("_");
+      if (last && beforeLast) aliases.add(`single:${last}:${beforeLast}`);
+      if (first && middle) aliases.add(`single:${first}:${middle}`);
+    }
+  }
+  return Array.from(aliases);
+}
+
+function tagConversationMessages(messages: MessageItem[], conversationID: string) {
+  return messages.map((message) => tagConversationMessage(message, conversationID));
+}
+
+function tagConversationMessage(
+  message: MessageItem,
+  conversationID: string,
+): MessageItem {
+  return {
+    ...message,
+    conversationID: message.conversationID || conversationID,
+  };
 }
 
 export function matchesMessage(

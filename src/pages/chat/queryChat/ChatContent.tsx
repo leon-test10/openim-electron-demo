@@ -17,6 +17,9 @@ const ChatContent = () => {
   const [highlightedClientMsgID, setHighlightedClientMsgID] = useState<string | null>(
     null,
   );
+  const [pendingJumpClientMsgID, setPendingJumpClientMsgID] = useState<string | null>(
+    null,
+  );
   const selfUserID = useUserStore((state) => state.selfInfo.userID);
 
   const scrollToBottom = () => {
@@ -35,29 +38,12 @@ const ChatContent = () => {
   useEffect(() => {
     emitter.on("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
     const jumpToMessage = ({
-      messages,
       targetClientMsgID,
     }: {
       messages: MessageItemType[];
       targetClientMsgID: string;
     }) => {
-      const targetIndex = messages.findIndex(
-        (message) => message.clientMsgID === targetClientMsgID,
-      );
-      if (targetIndex < 0) return;
-      setHighlightedClientMsgID(targetClientMsgID);
-      setTimeout(() => {
-        virtuoso.current?.scrollToIndex({
-          index: START_INDEX - messages.length + targetIndex,
-          align: "center",
-          behavior: "auto",
-        });
-      }, 150);
-      window.setTimeout(() => {
-        setHighlightedClientMsgID((current) =>
-          current === targetClientMsgID ? null : current,
-        );
-      }, 2400);
+      setPendingJumpClientMsgID(targetClientMsgID);
     };
     emitter.on("REPLACE_MESSAGE_LIST_AND_SCROLL", jumpToMessage);
     return () => {
@@ -65,6 +51,32 @@ const ChatContent = () => {
       emitter.off("REPLACE_MESSAGE_LIST_AND_SCROLL", jumpToMessage);
     };
   }, []);
+
+  useEffect(() => {
+    if (!pendingJumpClientMsgID) return;
+    const targetIndex = loadState.messageList.findIndex(
+      (message) => message.clientMsgID === pendingJumpClientMsgID,
+    );
+    if (targetIndex < 0) return;
+
+    setHighlightedClientMsgID(pendingJumpClientMsgID);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        virtuoso.current?.scrollToIndex({
+          index: loadState.firstItemIndex + targetIndex,
+          align: "center",
+          behavior: "auto",
+        });
+      });
+    });
+    const targetClientMsgID = pendingJumpClientMsgID;
+    setPendingJumpClientMsgID(null);
+    window.setTimeout(() => {
+      setHighlightedClientMsgID((current) =>
+        current === targetClientMsgID ? null : current,
+      );
+    }, 2400);
+  }, [loadState.firstItemIndex, loadState.messageList, pendingJumpClientMsgID]);
 
   const loadMoreMessage = () => {
     if (!loadState.hasMoreOld || moreOldLoading) return;
