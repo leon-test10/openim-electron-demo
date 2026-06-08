@@ -1,6 +1,7 @@
 import {
   CodexBindingDetail,
   CodexBridgeMeta,
+  CodexContextPreview,
   CodexConversationStatus,
   CodexRuntimeEvent,
   CodexRuntimeJob,
@@ -213,6 +214,13 @@ export function postOpenImHistorySnapshot(
       method: "POST",
       body: JSON.stringify(payload),
     },
+  );
+}
+
+export function getCodexContextPreview(conversationID: string, includePrompt = false) {
+  const query = includePrompt ? "?includePrompt=true" : "";
+  return requestBridge<CodexContextPreview>(
+    `/api/conversations/${encodeURIComponent(conversationID)}/context/preview${query}`,
   );
 }
 

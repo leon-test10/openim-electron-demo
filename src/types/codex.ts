@@ -62,6 +62,7 @@ export interface CodexBridgeMeta {
     conversationEvents?: boolean;
     sessionResumeDiagnostics?: boolean;
     openimHistoryImport?: boolean;
+    semanticContext?: boolean;
   };
   runtimePolicy?: {
     environment: string;
@@ -273,6 +274,26 @@ export interface OpenImHistoryImportResult {
   messageCount: number;
   snapshotId: string;
   requestId: string | null;
+}
+
+export interface CodexContextPreview {
+  conversationID: string;
+  conversationType: string;
+  projectPath?: string;
+  activeCodexSessionID?: string;
+  summaryIncluded: boolean;
+  summaryUpdatedAt?: number;
+  summaryEventCount?: number;
+  recentEventCount: number;
+  includedEventIDs: string[];
+  skippedEventCount: number;
+  skippedReasons: Record<string, number>;
+  roleCounts: Record<string, number>;
+  actorCounts: Record<string, number>;
+  semanticContextIncluded?: boolean;
+  semanticContextReason?: string;
+  promptPreview?: string;
+  promptRedacted: boolean;
 }
 
 export interface RuntimeProfileTestResult {

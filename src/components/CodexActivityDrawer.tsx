@@ -26,6 +26,7 @@ import {
 import {
   createRuntimeProfile,
   deleteRuntimeProfile,
+  getCodexContextPreview,
   listRuntimeProfiles,
   testRuntimeProfile,
   updateRuntimeProfile,
@@ -34,6 +35,7 @@ import CodexRuntimeTrace from "@/components/CodexRuntimeTrace";
 import { useCodexConversation } from "@/hooks/useCodexConversation";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
 import {
+  CodexContextPreview,
   CodexRuntimeEvent,
   CodexRuntimeJob,
   CodexRuntimeProfile,
@@ -65,6 +67,7 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
   const { isOverlayOpen, closeOverlay } = useOverlayVisible(ref);
   const {
     isCodexConversation,
+    conversationID,
     status,
     meta,
     error,
@@ -94,6 +97,9 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
     createEmptyProfileDraft(),
   );
   const [profileTestResult, setProfileTestResult] = useState<string>("");
+  const [contextPreview, setContextPreview] = useState<CodexContextPreview | null>(
+    null,
+  );
   const [sessionDiagnostics, setSessionDiagnostics] = useState<
     Record<string, CodexSessionDiagnostics>
   >({});
@@ -224,6 +230,15 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
       );
     }, "Runtime profile checked");
 
+  const loadContextPreview = async () =>
+    runAction(async () => {
+      if (!conversationID) {
+        return false;
+      }
+      setContextPreview(await getCodexContextPreview(conversationID, true));
+      return true;
+    }, "Context preview loaded");
+
   return (
     <Drawer
       title="Codex Activity"
@@ -319,6 +334,7 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
                 profileDraft={profileDraft}
                 runtimePolicy={meta?.runtimePolicy}
                 profileTestResult={profileTestResult}
+                contextPreview={contextPreview}
                 onRuntimeProfileChange={(profileID) => {
                   setSelectedRuntimeProfileID(profileID);
                   const profile = runtimeProfiles.find((item) => item.id === profileID);
@@ -332,6 +348,7 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
                 onSaveRuntimeProfile={saveRuntimeProfile}
                 onDeleteRuntimeProfile={removeRuntimeProfile}
                 onTestRuntimeProfile={runRuntimeProfileTest}
+                onLoadContextPreview={loadContextPreview}
                 onRebind={() =>
                   runAction(
                     () =>
@@ -686,12 +703,14 @@ function ConfigTab({
   profileDraft,
   runtimePolicy,
   profileTestResult,
+  contextPreview,
   onProjectPathChange,
   onRuntimeProfileChange,
   onProfileDraftChange,
   onSaveRuntimeProfile,
   onDeleteRuntimeProfile,
   onTestRuntimeProfile,
+  onLoadContextPreview,
   onRebind,
 }: {
   activeSession: CodexSessionRecord | null;
@@ -710,12 +729,14 @@ function ConfigTab({
       }
     | undefined;
   profileTestResult: string;
+  contextPreview: CodexContextPreview | null;
   onProjectPathChange: (value: string) => void;
   onRuntimeProfileChange: (value: string) => void;
   onProfileDraftChange: (value: RuntimeProfileDraft) => void;
   onSaveRuntimeProfile: () => Promise<boolean>;
   onDeleteRuntimeProfile: (profileID: string) => Promise<boolean>;
   onTestRuntimeProfile: (profileID: string) => Promise<boolean>;
+  onLoadContextPreview: () => Promise<boolean>;
   onRebind: () => Promise<unknown>;
 }) {
   const patchDraft = (patch: Partial<RuntimeProfileDraft>) =>
@@ -933,8 +954,54 @@ function ConfigTab({
           }
         />
       </Card>
+
+      <Card size="small" title="Context diagnostics">
+        <Space className="mb-2">
+          <Button
+            size="small"
+            loading={submitting}
+            onClick={() => void onLoadContextPreview()}
+          >
+            Load preview
+          </Button>
+          {contextPreview?.semanticContextReason ? (
+            <Tag
+              color={contextPreview.semanticContextIncluded ? "processing" : "default"}
+            >
+              {contextPreview.semanticContextReason}
+            </Tag>
+          ) : null}
+        </Space>
+        {contextPreview ? (
+          <div className="space-y-1 text-xs text-[var(--sub-text)]">
+            <div>
+              Recent: {contextPreview.recentEventCount} / skipped:{" "}
+              {contextPreview.skippedEventCount}
+            </div>
+            <div>Roles: {formatCountMap(contextPreview.roleCounts)}</div>
+            <div>Skipped: {formatCountMap(contextPreview.skippedReasons)}</div>
+            <div>
+              Summary: {contextPreview.summaryIncluded ? "included" : "not included"}
+            </div>
+            <div>
+              Prompt preview: {contextPreview.promptRedacted ? "redacted" : "none"}
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-[var(--sub-text)]">
+            Context preview is diagnostics-only and does not change OpenIM settings.
+          </div>
+        )}
+      </Card>
     </div>
   );
+}
+
+function formatCountMap(value: Record<string, number>): string {
+  const entries = Object.entries(value);
+  return entries.length
+    ? entries.map(([key, count]) => `${key}:${count}`).join(", ")
+    : "none";
 }
 
 function getSessionTitle(session: CodexSessionRecord): string {
