@@ -59,8 +59,19 @@ export interface CodexBridgeMeta {
     jobCancel?: boolean;
     jobRetry?: boolean;
     runtimeProfiles?: boolean;
+    conversationEvents?: boolean;
     sessionResumeDiagnostics?: boolean;
     openimHistoryImport?: boolean;
+  };
+  runtimePolicy?: {
+    environment: string;
+    isAdmin: boolean;
+    canModify: boolean;
+    canUseDangerFullAccess: boolean;
+    canUseCodexHomeOverride: boolean;
+  };
+  projectPathPolicy?: {
+    allowlist: string[];
   };
 }
 
@@ -103,6 +114,31 @@ export interface CodexRuntimeEvent {
   summary: string | null;
   rawEvent: Record<string, unknown>;
   createdAt: number;
+}
+
+export type CodexConversationStreamEventType =
+  | "job_created"
+  | "job_queued"
+  | "job_started"
+  | "runtime_event"
+  | "job_succeeded"
+  | "job_failed"
+  | "job_cancelled"
+  | "session_changed"
+  | "binding_changed"
+  | "history_import_requested";
+
+export interface CodexConversationStreamEvent {
+  id: number;
+  conversationId: string;
+  type: CodexConversationStreamEventType;
+  createdAt: number;
+  payload: {
+    job?: CodexRuntimeJob;
+    runtimeEvent?: CodexRuntimeEvent;
+    session?: CodexSessionRecord | null;
+    [key: string]: unknown;
+  };
 }
 
 export interface CodexConversationStatus {
@@ -213,12 +249,30 @@ export interface OpenImHistorySnapshotInput {
     clientMsgID?: string;
     serverMsgID?: string;
     sendID?: string;
+    recvID?: string;
+    groupID?: string;
     senderNickname?: string;
     contentType?: number;
     sendTime?: number;
     text?: string;
     preview?: string;
+    ex?: Record<string, unknown>;
   }>;
+}
+
+export interface OpenImHistoryImportResult {
+  conversationID: string;
+  receivedCount: number;
+  importedCount: number;
+  skippedDuplicateCount: number;
+  skippedUnsupportedCount: number;
+  earliestTimestamp?: number;
+  latestTimestamp?: number;
+  importedEventIDs: string[];
+  errors?: Array<{ index: number; reason: string }>;
+  messageCount: number;
+  snapshotId: string;
+  requestId: string | null;
 }
 
 export interface RuntimeProfileTestResult {

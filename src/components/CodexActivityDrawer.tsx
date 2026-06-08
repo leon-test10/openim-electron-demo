@@ -66,6 +66,7 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
   const {
     isCodexConversation,
     status,
+    meta,
     error,
     activeJob,
     latestJob,
@@ -316,6 +317,7 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
                 runtimeProfiles={runtimeProfiles}
                 selectedRuntimeProfileID={selectedRuntimeProfileID}
                 profileDraft={profileDraft}
+                runtimePolicy={meta?.runtimePolicy}
                 profileTestResult={profileTestResult}
                 onRuntimeProfileChange={(profileID) => {
                   setSelectedRuntimeProfileID(profileID);
@@ -682,6 +684,7 @@ function ConfigTab({
   runtimeProfiles,
   selectedRuntimeProfileID,
   profileDraft,
+  runtimePolicy,
   profileTestResult,
   onProjectPathChange,
   onRuntimeProfileChange,
@@ -699,6 +702,13 @@ function ConfigTab({
   runtimeProfiles: CodexRuntimeProfile[];
   selectedRuntimeProfileID: string;
   profileDraft: RuntimeProfileDraft;
+  runtimePolicy:
+    | {
+        canModify: boolean;
+        canUseDangerFullAccess: boolean;
+        canUseCodexHomeOverride: boolean;
+      }
+    | undefined;
   profileTestResult: string;
   onProjectPathChange: (value: string) => void;
   onRuntimeProfileChange: (value: string) => void;
@@ -710,6 +720,14 @@ function ConfigTab({
 }) {
   const patchDraft = (patch: Partial<RuntimeProfileDraft>) =>
     onProfileDraftChange({ ...profileDraft, ...patch });
+  const sandboxOptions = [
+    { label: "read-only", value: "read-only" },
+    { label: "workspace-write", value: "workspace-write" },
+    ...(runtimePolicy?.canUseDangerFullAccess === false
+      ? []
+      : [{ label: "danger-full-access", value: "danger-full-access" }]),
+  ];
+  const canModifyProfiles = runtimePolicy?.canModify !== false;
   return (
     <div className="space-y-3">
       <Card size="small" title="Runtime profile">
@@ -769,11 +787,7 @@ function ConfigTab({
               placeholder="Sandbox"
               value={profileDraft.sandboxMode || undefined}
               onChange={(value) => patchDraft({ sandboxMode: value ?? "" })}
-              options={[
-                { label: "read-only", value: "read-only" },
-                { label: "workspace-write", value: "workspace-write" },
-                { label: "danger-full-access", value: "danger-full-access" },
-              ]}
+              options={sandboxOptions}
             />
             <Select
               allowClear
@@ -814,11 +828,15 @@ function ConfigTab({
               onChange={(event) => patchDraft({ authEnvKey: event.target.value })}
             />
           </div>
-          <Input
-            placeholder="Codex home override"
-            value={profileDraft.codexHomeOverride}
-            onChange={(event) => patchDraft({ codexHomeOverride: event.target.value })}
-          />
+          {runtimePolicy?.canUseCodexHomeOverride !== false ? (
+            <Input
+              placeholder="Codex home override"
+              value={profileDraft.codexHomeOverride}
+              onChange={(event) =>
+                patchDraft({ codexHomeOverride: event.target.value })
+              }
+            />
+          ) : null}
           <Input.Password
             placeholder={
               profileDraft.apiKeyMasked
@@ -832,7 +850,7 @@ function ConfigTab({
             <Button
               size="small"
               type="primary"
-              disabled={!profileDraft.name.trim()}
+              disabled={!canModifyProfiles || !profileDraft.name.trim()}
               loading={submitting}
               onClick={() => void onSaveRuntimeProfile()}
             >
@@ -840,7 +858,7 @@ function ConfigTab({
             </Button>
             <Button
               size="small"
-              disabled={!profileDraft.id}
+              disabled={!canModifyProfiles || !profileDraft.id}
               loading={submitting}
               onClick={() =>
                 profileDraft.id && void onTestRuntimeProfile(profileDraft.id)
@@ -851,7 +869,7 @@ function ConfigTab({
             <Button
               size="small"
               danger
-              disabled={!profileDraft.id}
+              disabled={!canModifyProfiles || !profileDraft.id}
               loading={submitting}
               onClick={() =>
                 profileDraft.id && void onDeleteRuntimeProfile(profileDraft.id)

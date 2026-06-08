@@ -1,5 +1,5 @@
 import { MessageItem, ViewType } from "@openim/wasm-client-sdk";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
@@ -10,8 +10,8 @@ import {
   createCodexSession,
   deleteCodexSession,
   getCodexBridgeMeta,
+  getCodexConversationEventsStreamUrl,
   getCodexJobEvents,
-  getCodexJobEventsStreamUrl,
   getCodexSessionDiagnostics,
   getCodexSessions,
   getCodexStatus,
@@ -25,7 +25,7 @@ import { IMSDK } from "@/layout/MainContentWrap";
 import { useCodexStore, useConversationStore, useUserStore } from "@/store";
 import {
   CodexBridgeMeta,
-  CodexRuntimeEvent,
+  CodexConversationStreamEvent,
   CreateCodexSessionInput,
   RebindCodexInput,
 } from "@/types/codex";
@@ -68,6 +68,7 @@ export function useCodexConversation() {
   const appendJobEvents = useCodexStore((state) => state.appendJobEvents);
   const setError = useCodexStore((state) => state.setError);
   const importedHistoryRequestIds = useRef(new Set<string>());
+  const [conversationSseFailed, setConversationSseFailed] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!conversationID || !isCodexConversation) return;
@@ -102,12 +103,74 @@ export function useCodexConversation() {
 
   useEffect(() => {
     if (!conversationID || !isCodexConversation) return;
+    setConversationSseFailed(false);
+  }, [conversationID, isCodexConversation]);
+
+  useEffect(() => {
+    if (!conversationID || !isCodexConversation) return;
+    if (conversationSseFailed) return;
+    if (typeof EventSource === "undefined") {
+      setConversationSseFailed(true);
+      return;
+    }
+    void refresh();
+    const source = new EventSource(getCodexConversationEventsStreamUrl(conversationID));
+    const refreshOnEvent = () => {
+      void refresh();
+    };
+    const onRuntimeEvent = (event: MessageEvent<string>) => {
+      try {
+        const parsed = JSON.parse(event.data) as CodexConversationStreamEvent;
+        const runtimeEvent = parsed.payload.runtimeEvent;
+        if (runtimeEvent) {
+          appendJobEvents(conversationID, runtimeEvent.jobId, [runtimeEvent]);
+        }
+      } catch (error) {
+        setError(
+          conversationID,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    };
+    const eventTypes: Array<CodexConversationStreamEvent["type"]> = [
+      "job_created",
+      "job_queued",
+      "job_started",
+      "job_succeeded",
+      "job_failed",
+      "job_cancelled",
+      "session_changed",
+      "binding_changed",
+      "history_import_requested",
+    ];
+    eventTypes.forEach((type) => source.addEventListener(type, refreshOnEvent));
+    source.addEventListener("runtime_event", onRuntimeEvent);
+    source.onerror = () => {
+      source.close();
+      setConversationSseFailed(true);
+    };
+    return () => {
+      eventTypes.forEach((type) => source.removeEventListener(type, refreshOnEvent));
+      source.removeEventListener("runtime_event", onRuntimeEvent);
+      source.close();
+    };
+  }, [
+    appendJobEvents,
+    conversationID,
+    conversationSseFailed,
+    isCodexConversation,
+    refresh,
+    setError,
+  ]);
+
+  useEffect(() => {
+    if (!conversationID || !isCodexConversation || !conversationSseFailed) return;
     void refresh();
     const timer = window.setInterval(() => {
       void refresh();
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [conversationID, isCodexConversation, refresh]);
+  }, [conversationID, conversationSseFailed, isCodexConversation, refresh]);
 
   useEffect(() => {
     const pending = entry?.status?.pendingHistoryImport;
@@ -156,46 +219,10 @@ export function useCodexConversation() {
         }
       });
 
-    if (!activeJob?.id) {
-      return () => {
-        closed = true;
-      };
-    }
-
-    const events =
-      useCodexStore.getState().conversations[conversationID]?.eventsByJobId[
-        activeJob.id
-      ] ?? [];
-    const lastSequence = events.length ? events[events.length - 1].sequence : 0;
-    const source = new EventSource(
-      getCodexJobEventsStreamUrl(activeJob.id, lastSequence),
-    );
-    source.addEventListener("runtime_event", (event: MessageEvent<string>) => {
-      const parsed = JSON.parse(event.data) as CodexRuntimeEvent;
-      appendJobEvents(conversationID, activeJob.id, [parsed]);
-    });
-    source.addEventListener("done", () => {
-      source.close();
-      void refresh();
-    });
-    source.onerror = () => {
-      source.close();
-    };
-
     return () => {
       closed = true;
-      source.close();
     };
-  }, [
-    actionableJob?.id,
-    activeJob?.id,
-    appendJobEvents,
-    conversationID,
-    isCodexConversation,
-    refresh,
-    setError,
-    setJobEvents,
-  ]);
+  }, [actionableJob?.id, conversationID, isCodexConversation, setError, setJobEvents]);
 
   const actions = useMemo(
     () => ({

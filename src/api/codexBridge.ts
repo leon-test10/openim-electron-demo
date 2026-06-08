@@ -9,6 +9,7 @@ import {
   CodexSessionDiagnostics,
   CodexSessionRecord,
   CreateCodexSessionInput,
+  OpenImHistoryImportResult,
   OpenImHistorySnapshotInput,
   RebindCodexInput,
   RuntimeProfileTestResult,
@@ -206,7 +207,7 @@ export function postOpenImHistorySnapshot(
   conversationID: string,
   payload: OpenImHistorySnapshotInput,
 ) {
-  return requestBridge<{ id: string; messageCount: number }>(
+  return requestBridge<OpenImHistoryImportResult>(
     `/api/conversations/${encodeURIComponent(conversationID)}/openim-history-snapshots`,
     {
       method: "POST",
@@ -225,6 +226,12 @@ export function getCodexJobEvents(jobID: string, afterSequence = 0) {
 export function getCodexJobEventsStreamUrl(jobID: string, afterSequence = 0) {
   const query = afterSequence > 0 ? `?after=${afterSequence}` : "";
   return `${bridgeBaseUrl}/api/jobs/${encodeURIComponent(jobID)}/events/stream${query}`;
+}
+
+export function getCodexConversationEventsStreamUrl(conversationID: string) {
+  return `${bridgeBaseUrl}/api/conversations/${encodeURIComponent(
+    conversationID,
+  )}/events/stream`;
 }
 
 export function cancelCodexJob(jobID: string) {
