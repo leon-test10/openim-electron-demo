@@ -63,6 +63,10 @@ export interface CodexBridgeMeta {
     sessionResumeDiagnostics?: boolean;
     openimHistoryImport?: boolean;
     semanticContext?: boolean;
+    runtimeApi?: boolean;
+    codexLegacyApi?: boolean;
+    openaiCompatibleRuntime?: boolean;
+    openHandsRuntime?: boolean;
   };
   runtimePolicy?: {
     environment: string;
@@ -102,6 +106,54 @@ export interface CodexRuntimeJob {
   totalDurationMs?: number | null;
   canCancel?: boolean;
   canRetry?: boolean;
+}
+
+export type RuntimeKind = "codex_cli" | "openai_compatible" | "openhands" | "template";
+
+export interface RuntimeSessionView {
+  id: string;
+  openimConversationId: string;
+  openimDisplayUserId: string;
+  runtimeKind: RuntimeKind;
+  externalSessionId: string | null;
+  projectPath: string | null;
+  runtimeHomeDir: string | null;
+  displayName: string | null;
+  lastSummary: string | null;
+  isActive: boolean;
+  status: CodexSessionRecord["status"];
+  runtimeProfileId: string | null;
+  sandboxMode: string | null;
+  createdAt: number;
+  updatedAt: number;
+  legacyCodex?: {
+    codexSessionId: string | null;
+    codexProjectPath: string;
+    codexHomeDir: string | null;
+    codexHomeSeedMode: CodexSessionRecord["codexHomeSeedMode"];
+  };
+}
+
+export interface RuntimeJobView extends CodexRuntimeJob {
+  runtimeKind: RuntimeKind;
+  externalSessionIdBefore: string | null;
+  externalSessionIdAfter: string | null;
+  legacyCodex?: {
+    codexSessionIdBefore: string | null;
+    codexSessionIdAfter: string | null;
+  };
+}
+
+export interface RuntimeConversationStatus {
+  openimConversationId: string;
+  runtimeKind: RuntimeKind;
+  state: CodexConversationState;
+  activeSession: RuntimeSessionView | null;
+  activeJob: RuntimeJobView | null;
+  latestJob: RuntimeJobView | null;
+  recentJobs: RuntimeJobView[];
+  queuedJobCount: number;
+  pendingHistoryImport: OpenImHistoryImportRequest | null;
 }
 
 export interface CodexRuntimeEvent {

@@ -13,7 +13,10 @@ import {
   OpenImHistoryImportResult,
   OpenImHistorySnapshotInput,
   RebindCodexInput,
+  RuntimeConversationStatus,
+  RuntimeJobView,
   RuntimeProfileTestResult,
+  RuntimeSessionView,
 } from "@/types/codex";
 import { getViteEnv } from "@/utils/env";
 
@@ -73,6 +76,12 @@ export function getCodexStatus(conversationID: string) {
   );
 }
 
+export function getRuntimeStatus(conversationID: string) {
+  return requestBridge<RuntimeConversationStatus>(
+    `/api/conversations/${encodeURIComponent(conversationID)}/runtime-status`,
+  );
+}
+
 export function getCodexBinding(conversationID: string) {
   return requestBridge<CodexBindingDetail>(
     `/api/bindings/${encodeURIComponent(conversationID)}`,
@@ -84,6 +93,18 @@ export function getCodexSessions(conversationID: string) {
     `/api/conversations/${encodeURIComponent(
       conversationID,
     )}/codex-sessions?includeArchived=true`,
+  );
+}
+
+export function getRuntimeSessions(conversationID: string) {
+  return requestBridge<{
+    conversationId: string;
+    runtimeKind: RuntimeConversationStatus["runtimeKind"];
+    sessions: RuntimeSessionView[];
+  }>(
+    `/api/conversations/${encodeURIComponent(
+      conversationID,
+    )}/runtime-sessions?includeArchived=true`,
   );
 }
 
@@ -100,11 +121,39 @@ export function createCodexSession(
   );
 }
 
+export function createRuntimeSession(
+  conversationID: string,
+  payload: CreateCodexSessionInput,
+) {
+  return requestBridge<RuntimeSessionView>(
+    `/api/conversations/${encodeURIComponent(conversationID)}/runtime-sessions`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        ...payload,
+        projectPath: payload.codexProjectPath,
+      }),
+    },
+  );
+}
+
 export function activateCodexSession(conversationID: string, sessionRecordID: string) {
   return requestBridge<CodexSessionRecord>(
     `/api/conversations/${encodeURIComponent(
       conversationID,
     )}/codex-sessions/${encodeURIComponent(sessionRecordID)}/activate`,
+    { method: "POST", body: emptyJsonBody },
+  );
+}
+
+export function activateRuntimeSession(
+  conversationID: string,
+  sessionRecordID: string,
+) {
+  return requestBridge<RuntimeSessionView>(
+    `/api/conversations/${encodeURIComponent(
+      conversationID,
+    )}/runtime-sessions/${encodeURIComponent(sessionRecordID)}/activate`,
     { method: "POST", body: emptyJsonBody },
   );
 }
@@ -125,11 +174,36 @@ export function updateCodexSession(
   );
 }
 
+export function updateRuntimeSession(
+  conversationID: string,
+  sessionRecordID: string,
+  payload: { displayName: string },
+) {
+  return requestBridge<RuntimeSessionView>(
+    `/api/conversations/${encodeURIComponent(
+      conversationID,
+    )}/runtime-sessions/${encodeURIComponent(sessionRecordID)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export function archiveCodexSession(conversationID: string, sessionRecordID: string) {
   return requestBridge<CodexSessionRecord>(
     `/api/conversations/${encodeURIComponent(
       conversationID,
     )}/codex-sessions/${encodeURIComponent(sessionRecordID)}/archive`,
+    { method: "POST", body: emptyJsonBody },
+  );
+}
+
+export function archiveRuntimeSession(conversationID: string, sessionRecordID: string) {
+  return requestBridge<RuntimeSessionView>(
+    `/api/conversations/${encodeURIComponent(
+      conversationID,
+    )}/runtime-sessions/${encodeURIComponent(sessionRecordID)}/archive`,
     { method: "POST", body: emptyJsonBody },
   );
 }
@@ -231,6 +305,13 @@ export function getCodexJobEvents(jobID: string, afterSequence = 0) {
   );
 }
 
+export function getRuntimeJobEvents(jobID: string, afterSequence = 0) {
+  const query = afterSequence > 0 ? `?after=${afterSequence}` : "";
+  return requestBridge<{ jobId: string; events: CodexRuntimeEvent[] }>(
+    `/api/runtime/jobs/${encodeURIComponent(jobID)}/events${query}`,
+  );
+}
+
 export function getCodexJobEventsStreamUrl(jobID: string, afterSequence = 0) {
   const query = afterSequence > 0 ? `?after=${afterSequence}` : "";
   return `${bridgeBaseUrl}/api/jobs/${encodeURIComponent(jobID)}/events/stream${query}`;
@@ -249,9 +330,23 @@ export function cancelCodexJob(jobID: string) {
   );
 }
 
+export function cancelRuntimeJob(jobID: string) {
+  return requestBridge<RuntimeJobView>(
+    `/api/runtime/jobs/${encodeURIComponent(jobID)}/cancel`,
+    { method: "POST", body: emptyJsonBody },
+  );
+}
+
 export function retryCodexJob(jobID: string) {
   return requestBridge<CodexRuntimeJob>(
     `/api/jobs/${encodeURIComponent(jobID)}/retry`,
+    { method: "POST", body: emptyJsonBody },
+  );
+}
+
+export function retryRuntimeJob(jobID: string) {
+  return requestBridge<RuntimeJobView>(
+    `/api/runtime/jobs/${encodeURIComponent(jobID)}/retry`,
     { method: "POST", body: emptyJsonBody },
   );
 }

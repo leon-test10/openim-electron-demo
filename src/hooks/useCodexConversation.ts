@@ -3,23 +3,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
-  activateCodexSession,
+  activateCodexCompatibleSession,
+  archiveCodexCompatibleSession,
+  cancelCodexCompatibleJob,
+  createCodexCompatibleSession,
+  getCodexCompatibleJobEvents,
+  getCodexCompatibleSessions,
+  getCodexCompatibleStatus,
+  retryCodexCompatibleJob,
+  updateCodexCompatibleSession,
+} from "@/agent-runtime/codexCompatibility";
+import {
   archiveCodexConversation,
-  archiveCodexSession,
-  cancelCodexJob,
-  createCodexSession,
   deleteCodexSession,
   getCodexBridgeMeta,
   getCodexConversationEventsStreamUrl,
-  getCodexJobEvents,
   getCodexSessionDiagnostics,
-  getCodexSessions,
-  getCodexStatus,
   postOpenImHistorySnapshot,
   rebindCodexConversation,
   restoreCodexSession,
-  retryCodexJob,
-  updateCodexSession,
 } from "@/api/codexBridge";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useCodexStore, useConversationStore, useUserStore } from "@/store";
@@ -84,9 +86,9 @@ export function useCodexConversation() {
             );
           });
       }
-      const status = await getCodexStatus(conversationID);
+      const status = await getCodexCompatibleStatus(conversationID);
       setStatus(conversationID, status);
-      const sessions = await getCodexSessions(conversationID);
+      const sessions = await getCodexCompatibleSessions(conversationID);
       setSessions(conversationID, sessions.sessions);
     } catch (error) {
       setError(conversationID, error instanceof Error ? error.message : String(error));
@@ -204,7 +206,7 @@ export function useCodexConversation() {
     if (!conversationID || !isCodexConversation || !actionableJob?.id) return;
     let closed = false;
 
-    void getCodexJobEvents(actionableJob.id)
+    void getCodexCompatibleJobEvents(actionableJob.id)
       .then(({ events }) => {
         if (!closed) {
           setJobEvents(conversationID, actionableJob.id, events);
@@ -230,18 +232,18 @@ export function useCodexConversation() {
       meta,
       loadJobEvents: async (jobID: string) => {
         if (!conversationID) return;
-        const { events } = await getCodexJobEvents(jobID);
+        const { events } = await getCodexCompatibleJobEvents(jobID);
         setJobEvents(conversationID, jobID, events);
       },
       cancel: async () => {
         if (!activeJob?.id || !activeJob.canCancel) return;
-        await cancelCodexJob(activeJob.id);
+        await cancelCodexCompatibleJob(activeJob.id);
         await refresh();
       },
       retry: async (jobID?: string) => {
         const sourceJobID = jobID ?? latestJob?.id;
         if (!sourceJobID) return;
-        await retryCodexJob(sourceJobID);
+        await retryCodexCompatibleJob(sourceJobID);
         await refresh();
       },
       rebind: async (payload: RebindCodexInput) => {
@@ -260,7 +262,7 @@ export function useCodexConversation() {
       archiveSession: async (sessionRecordID: string) => {
         if (!conversationID) return;
         await ensureCapability("sessionArchive", conversationID, setMeta);
-        await archiveCodexSession(conversationID, sessionRecordID);
+        await archiveCodexCompatibleSession(conversationID, sessionRecordID);
         await refresh();
       },
       restoreSession: async (sessionRecordID: string) => {
@@ -277,28 +279,35 @@ export function useCodexConversation() {
       },
       renameSession: async (sessionRecordID: string, displayName: string) => {
         if (!conversationID) return;
-        const session = await updateCodexSession(conversationID, sessionRecordID, {
-          displayName,
-        });
-        upsertSession(conversationID, session);
+        const session = await updateCodexCompatibleSession(
+          conversationID,
+          sessionRecordID,
+          {
+            displayName,
+          },
+        );
+        if (session) upsertSession(conversationID, session);
         await refresh();
       },
       createSession: async (payload: CreateCodexSessionInput = {}) => {
         if (!conversationID) return;
         await ensureCapability("sessionActivate", conversationID, setMeta);
-        const session = await createCodexSession(conversationID, {
+        const session = await createCodexCompatibleSession(conversationID, {
           openimDisplayUserId: selfUserID,
           ...payload,
         });
-        activateSessionLocal(conversationID, session);
+        if (session) activateSessionLocal(conversationID, session);
         await refresh();
         return session;
       },
       activateSession: async (sessionRecordID: string) => {
         if (!conversationID) return;
         await ensureCapability("sessionActivate", conversationID, setMeta);
-        const session = await activateCodexSession(conversationID, sessionRecordID);
-        activateSessionLocal(conversationID, session);
+        const session = await activateCodexCompatibleSession(
+          conversationID,
+          sessionRecordID,
+        );
+        if (session) activateSessionLocal(conversationID, session);
         await refresh();
       },
       getSessionDiagnostics: async (sessionRecordID: string) => {

@@ -15,7 +15,7 @@ const stateColors: Record<CodexConversationState, string> = {
 
 const failureText: Record<CodexFailureReason, string> = {
   timeout: "Codex timed out",
-  codex_exit: "Codex CLI failed",
+  codex_exit: "Runtime failed",
   openim_send_failed: "OpenIM reply failed",
   bridge_error: "Bridge runtime error",
   missing_session: "Session missing",
