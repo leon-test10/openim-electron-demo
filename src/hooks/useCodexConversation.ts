@@ -32,7 +32,7 @@ import {
   RebindCodexInput,
 } from "@/types/codex";
 import {
-  isCodexSingleConversation,
+  isCodexConversation as isRuntimeConversation,
   resolveCodexConversationID,
 } from "@/utils/codexConversation";
 import { getViteEnv } from "@/utils/env";
@@ -50,7 +50,7 @@ export function useCodexConversation() {
     currentConversation,
     routeConversationID,
   );
-  const isCodexConversation = isCodexSingleConversation(
+  const isCodexConversation = isRuntimeConversation(
     currentConversation,
     routeConversationID,
     CODEX_BOT_USER_ID,

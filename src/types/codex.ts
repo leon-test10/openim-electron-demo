@@ -26,6 +26,7 @@ export interface CodexSessionRecord {
   id: string;
   openimConversationId: string;
   openimDisplayUserId: string;
+  runtimeKind?: RuntimeKind;
   codexSessionId: string | null;
   codexProjectPath: string;
   codexHomeDir: string | null;
@@ -85,6 +86,7 @@ export interface CodexRuntimeJob {
   sessionRecordId: string;
   semanticEventId: string;
   openimConversationId: string;
+  runtimeKind?: RuntimeKind;
   status: CodexJobStatus;
   inputText: string;
   codexSessionIdBefore: string | null;
@@ -219,6 +221,7 @@ export interface RebindCodexInput {
   userId?: string;
   codexProjectPath?: string;
   codexSessionId?: string;
+  runtimeKind?: RuntimeKind;
   runtimeProfileId?: string | null;
 }
 
@@ -227,12 +230,34 @@ export interface CreateCodexSessionInput {
   userId?: string;
   codexProjectPath?: string;
   displayName?: string;
+  runtimeKind?: RuntimeKind;
   runtimeProfileId?: string | null;
+}
+
+export type RuntimeScopeType = "shared" | "conversation" | "group";
+
+export interface RuntimeScopeConfig {
+  id: string;
+  scopeType: RuntimeScopeType;
+  scopeKey: string;
+  runtimeKind: RuntimeKind;
+  runtimeProfileId: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ResolvedRuntimeScopeConfig {
+  source: RuntimeScopeType | "env";
+  runtimeKind: RuntimeKind;
+  runtimeProfileId: string | null;
+  config: RuntimeScopeConfig | null;
+  profile: CodexRuntimeProfile | null;
 }
 
 export interface CodexRuntimeProfile {
   id: string;
   name: string;
+  runtimeKind: RuntimeKind;
   providerType: "openai" | "openai-compatible" | "oss-local";
   providerMode:
     | "openai-responses"
@@ -258,6 +283,7 @@ export interface CodexRuntimeProfile {
 
 export interface CodexRuntimeProfileInput {
   name: string;
+  runtimeKind?: RuntimeKind;
   providerType?: CodexRuntimeProfile["providerType"];
   providerMode?: CodexRuntimeProfile["providerMode"];
   model?: string | null;
@@ -350,6 +376,7 @@ export interface CodexContextPreview {
 
 export interface RuntimeProfileTestResult {
   ok: boolean;
+  runtimeKind?: RuntimeKind;
   profile: CodexRuntimeProfile;
   upstreamProbe: {
     ok: boolean;

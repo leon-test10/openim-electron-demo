@@ -15,7 +15,10 @@ import {
   RebindCodexInput,
   RuntimeConversationStatus,
   RuntimeJobView,
+  ResolvedRuntimeScopeConfig,
   RuntimeProfileTestResult,
+  RuntimeScopeConfig,
+  RuntimeScopeType,
   RuntimeSessionView,
 } from "@/types/codex";
 import { getViteEnv } from "@/utils/env";
@@ -262,6 +265,49 @@ export function testRuntimeProfile(profileID: string) {
     `/api/runtime-profiles/${encodeURIComponent(profileID)}/test`,
     {
       method: "POST",
+      body: emptyJsonBody,
+    },
+  );
+}
+
+export function getResolvedRuntimeScopeConfig(
+  conversationID?: string,
+  groupID?: string,
+) {
+  const query = new URLSearchParams();
+  if (conversationID) query.set("conversationId", conversationID);
+  if (groupID) query.set("groupId", groupID);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return requestBridge<ResolvedRuntimeScopeConfig>(
+    `/api/runtime-scope-configs/resolve${suffix}`,
+  );
+}
+
+export function upsertRuntimeScopeConfig(
+  scopeType: RuntimeScopeType,
+  scopeKey: string,
+  payload: { runtimeKind: RuntimeSessionView["runtimeKind"]; runtimeProfileId?: string | null },
+) {
+  return requestBridge<{
+    config: RuntimeScopeConfig;
+    profile: ResolvedRuntimeScopeConfig["profile"];
+  }>(
+    `/api/runtime-scope-configs/${encodeURIComponent(scopeType)}/${encodeURIComponent(scopeKey)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function deleteRuntimeScopeConfig(
+  scopeType: RuntimeScopeType,
+  scopeKey: string,
+) {
+  return requestBridge<{ deleted: RuntimeScopeConfig }>(
+    `/api/runtime-scope-configs/${encodeURIComponent(scopeType)}/${encodeURIComponent(scopeKey)}`,
+    {
+      method: "DELETE",
       body: emptyJsonBody,
     },
   );

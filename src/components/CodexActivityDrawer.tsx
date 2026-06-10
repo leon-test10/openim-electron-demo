@@ -25,15 +25,19 @@ import {
 
 import {
   createRuntimeProfile,
+  deleteRuntimeScopeConfig,
+  getResolvedRuntimeScopeConfig,
   deleteRuntimeProfile,
   getCodexContextPreview,
   listRuntimeProfiles,
   testRuntimeProfile,
+  upsertRuntimeScopeConfig,
   updateRuntimeProfile,
 } from "@/api/codexBridge";
 import CodexRuntimeTrace from "@/components/CodexRuntimeTrace";
 import { useCodexConversation } from "@/hooks/useCodexConversation";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
+import { useConversationStore } from "@/store";
 import {
   CodexContextPreview,
   CodexRuntimeEvent,
@@ -42,6 +46,9 @@ import {
   CodexRuntimeProfileInput,
   CodexSessionDiagnostics,
   CodexSessionRecord,
+  ResolvedRuntimeScopeConfig,
+  RuntimeKind,
+  RuntimeScopeType,
 } from "@/types/codex";
 import { feedbackToast } from "@/utils/common";
 import { getViteEnv } from "@/utils/env";
@@ -88,11 +95,14 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
     loadJobEvents,
     getSessionDiagnostics,
   } = useCodexConversation();
+  const currentConversation = useConversationStore((state) => state.currentConversation);
   const [selectedJobID, setSelectedJobID] = useState<string | null>(null);
   const [projectPath, setProjectPath] = useState(defaultProjectPath);
   const [submitting, setSubmitting] = useState(false);
   const [runtimeProfiles, setRuntimeProfiles] = useState<CodexRuntimeProfile[]>([]);
   const [selectedRuntimeProfileID, setSelectedRuntimeProfileID] = useState<string>("");
+  const [selectedScopeType, setSelectedScopeType] = useState<RuntimeScopeType>("shared");
+  const [resolvedScopeConfig, setResolvedScopeConfig] = useState<ResolvedRuntimeScopeConfig | null>(null);
   const [profileDraft, setProfileDraft] = useState<RuntimeProfileDraft>(
     createEmptyProfileDraft(),
   );
@@ -139,16 +149,39 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
     }
   }, [status?.activeSession?.runtimeProfileId]);
 
+  useEffect(() => {
+    const runtimeKind =
+      status?.activeSession?.runtimeKind ?? resolvedScopeConfig?.runtimeKind ?? "codex_cli";
+    setProfileDraft((current) => ({ ...current, runtimeKind }));
+  }, [resolvedScopeConfig?.runtimeKind, status?.activeSession?.runtimeKind]);
+
   const refreshRuntimeProfiles = async () => {
     const { profiles } = await listRuntimeProfiles();
     setRuntimeProfiles(profiles);
   };
 
+  const refreshResolvedScopeConfig = async () => {
+    const resolved = await getResolvedRuntimeScopeConfig(
+      conversationID ?? undefined,
+      currentConversation?.groupID ?? undefined,
+    );
+    setResolvedScopeConfig(resolved);
+    if (resolved.source !== "env") {
+      setSelectedScopeType(resolved.source);
+    }
+    if (resolved.runtimeProfileId) {
+      setSelectedRuntimeProfileID(resolved.runtimeProfileId);
+    }
+  };
+
   useEffect(() => {
     if (isOverlayOpen) {
-      void refreshRuntimeProfiles().catch((error) => feedbackToast({ error }));
+      void Promise.all([
+        refreshRuntimeProfiles(),
+        refreshResolvedScopeConfig(),
+      ]).catch((error) => feedbackToast({ error }));
     }
-  }, [isOverlayOpen]);
+  }, [conversationID, currentConversation?.groupID, isOverlayOpen]);
 
   useEffect(() => {
     if (isOverlayOpen && selectedJob?.id) {
@@ -289,31 +322,32 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
                     () =>
                       createSession({
                         codexProjectPath: projectPath,
+                        runtimeKind: profileDraft.runtimeKind,
                         runtimeProfileId: selectedRuntimeProfileID || null,
                       }),
-                    "New Codex session activated",
+                    "New runtime session activated",
                   )
                 }
                 onActivate={(session) =>
                   runAction(
                     () => activateSession(session.id),
-                    "Codex session activated",
+                    "Runtime session activated",
                   )
                 }
                 onRename={(session, displayName) =>
                   runAction(
                     () => renameSession(session.id, displayName),
-                    "Codex session renamed",
+                    "Runtime session renamed",
                   )
                 }
                 onArchive={(session) =>
-                  runAction(() => archiveSession(session.id), "Codex session archived")
+                  runAction(() => archiveSession(session.id), "Runtime session archived")
                 }
                 onRestore={(session) =>
-                  runAction(() => restoreSession(session.id), "Codex session restored")
+                  runAction(() => restoreSession(session.id), "Runtime session restored")
                 }
                 onDelete={(session) =>
-                  runAction(() => deleteSession(session.id), "Codex session deleted")
+                  runAction(() => deleteSession(session.id), "Runtime session deleted")
                 }
               />
             ),
@@ -328,9 +362,12 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
                 projectPath={projectPath}
                 hasActiveJob={hasActiveJob}
                 submitting={submitting}
+                currentConversation={currentConversation}
                 onProjectPathChange={setProjectPath}
                 runtimeProfiles={runtimeProfiles}
                 selectedRuntimeProfileID={selectedRuntimeProfileID}
+                selectedScopeType={selectedScopeType}
+                resolvedScopeConfig={resolvedScopeConfig}
                 profileDraft={profileDraft}
                 runtimePolicy={meta?.runtimePolicy}
                 profileTestResult={profileTestResult}
@@ -344,8 +381,42 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
                       : createEmptyProfileDraft(),
                   );
                 }}
+                onScopeTypeChange={setSelectedScopeType}
                 onProfileDraftChange={setProfileDraft}
                 onSaveRuntimeProfile={saveRuntimeProfile}
+                onSaveScopeConfig={(scopeType) =>
+                  runAction(
+                    async () => {
+                      const scopeKey =
+                        scopeType === "shared"
+                          ? "__shared__"
+                          : scopeType === "group"
+                            ? currentConversation?.groupID ?? ""
+                            : conversationID ?? "";
+                      await upsertRuntimeScopeConfig(scopeType, scopeKey, {
+                        runtimeKind: profileDraft.runtimeKind,
+                        runtimeProfileId: selectedRuntimeProfileID || null,
+                      });
+                      await refreshResolvedScopeConfig();
+                    },
+                    "Runtime scope saved",
+                  )
+                }
+                onClearScopeConfig={(scopeType) =>
+                  runAction(
+                    async () => {
+                      const scopeKey =
+                        scopeType === "shared"
+                          ? "__shared__"
+                          : scopeType === "group"
+                            ? currentConversation?.groupID ?? ""
+                            : conversationID ?? "";
+                      await deleteRuntimeScopeConfig(scopeType, scopeKey);
+                      await refreshResolvedScopeConfig();
+                    },
+                    "Runtime scope cleared",
+                  )
+                }
                 onDeleteRuntimeProfile={removeRuntimeProfile}
                 onTestRuntimeProfile={runRuntimeProfileTest}
                 onLoadContextPreview={loadContextPreview}
@@ -354,9 +425,10 @@ const CodexActivityDrawer: ForwardRefRenderFunction<OverlayVisibleHandle, unknow
                     () =>
                       rebind({
                         codexProjectPath: projectPath,
+                        runtimeKind: profileDraft.runtimeKind,
                         runtimeProfileId: selectedRuntimeProfileID || null,
                       }),
-                    "Codex binding changed",
+                    "Runtime binding changed",
                   )
                 }
               />
@@ -698,16 +770,22 @@ function ConfigTab({
   projectPath,
   hasActiveJob,
   submitting,
+  currentConversation,
   runtimeProfiles,
   selectedRuntimeProfileID,
+  selectedScopeType,
+  resolvedScopeConfig,
   profileDraft,
   runtimePolicy,
   profileTestResult,
   contextPreview,
   onProjectPathChange,
   onRuntimeProfileChange,
+  onScopeTypeChange,
   onProfileDraftChange,
   onSaveRuntimeProfile,
+  onSaveScopeConfig,
+  onClearScopeConfig,
   onDeleteRuntimeProfile,
   onTestRuntimeProfile,
   onLoadContextPreview,
@@ -718,8 +796,11 @@ function ConfigTab({
   projectPath: string;
   hasActiveJob: boolean;
   submitting: boolean;
+  currentConversation: { groupID?: string | null } | null | undefined;
   runtimeProfiles: CodexRuntimeProfile[];
   selectedRuntimeProfileID: string;
+  selectedScopeType: RuntimeScopeType;
+  resolvedScopeConfig: ResolvedRuntimeScopeConfig | null;
   profileDraft: RuntimeProfileDraft;
   runtimePolicy:
     | {
@@ -732,8 +813,11 @@ function ConfigTab({
   contextPreview: CodexContextPreview | null;
   onProjectPathChange: (value: string) => void;
   onRuntimeProfileChange: (value: string) => void;
+  onScopeTypeChange: (value: RuntimeScopeType) => void;
   onProfileDraftChange: (value: RuntimeProfileDraft) => void;
   onSaveRuntimeProfile: () => Promise<boolean>;
+  onSaveScopeConfig: (scopeType: RuntimeScopeType) => Promise<boolean>;
+  onClearScopeConfig: (scopeType: RuntimeScopeType) => Promise<boolean>;
   onDeleteRuntimeProfile: (profileID: string) => Promise<boolean>;
   onTestRuntimeProfile: (profileID: string) => Promise<boolean>;
   onLoadContextPreview: () => Promise<boolean>;
@@ -749,18 +833,50 @@ function ConfigTab({
       : [{ label: "danger-full-access", value: "danger-full-access" }]),
   ];
   const canModifyProfiles = runtimePolicy?.canModify !== false;
+  const showCodexFields = profileDraft.runtimeKind === "codex_cli";
+  const scopeOptions: Array<{ label: string; value: RuntimeScopeType; disabled?: boolean }> = [
+    { label: "Shared default", value: "shared" },
+    { label: "Current conversation", value: "conversation" },
+    {
+      label: "Current group",
+      value: "group",
+      disabled: !currentConversation?.groupID,
+    },
+  ];
   return (
     <div className="space-y-3">
       <Card size="small" title="Runtime profile">
         <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Select
+              value={selectedScopeType}
+              onChange={(value) => onScopeTypeChange(value)}
+              options={scopeOptions}
+            />
+            <Select
+              value={profileDraft.runtimeKind}
+              onChange={(value) =>
+                patchDraft({ runtimeKind: value as RuntimeKind })
+              }
+              options={[
+                { label: "Codex CLI", value: "codex_cli" },
+                { label: "OpenAI-compatible", value: "openai_compatible" },
+                { label: "OpenHands", value: "openhands" },
+              ]}
+            />
+          </div>
+          <div className="text-xs text-[var(--sub-text)]">
+            Current effective scope: {resolvedScopeConfig?.source ?? "env"} / runtime{" "}
+            {resolvedScopeConfig?.runtimeKind ?? profileDraft.runtimeKind}
+          </div>
           <Select
             className="w-full"
             allowClear
-            placeholder="Use default Codex CLI configuration"
+            placeholder="Use shared runtime configuration"
             value={selectedRuntimeProfileID || undefined}
             onChange={(value) => onRuntimeProfileChange(value ?? "")}
             options={runtimeProfiles.map((profile) => ({
-              label: `${profile.name}${profile.model ? ` / ${profile.model}` : ""}`,
+              label: `${profile.name} / ${profile.runtimeKind}${profile.model ? ` / ${profile.model}` : ""}`,
               value: profile.id,
             }))}
           />
@@ -770,94 +886,117 @@ function ConfigTab({
             onChange={(event) => patchDraft({ name: event.target.value })}
           />
           <div className="grid grid-cols-2 gap-2">
-            <Select
-              value={profileDraft.providerType}
-              onChange={(value) => patchDraft({ providerType: value })}
-              options={[
-                { label: "OpenAI", value: "openai" },
-                { label: "OpenAI compatible", value: "openai-compatible" },
-                { label: "OSS local", value: "oss-local" },
-              ]}
-            />
+            {showCodexFields ? (
+              <Select
+                value={profileDraft.providerType}
+                onChange={(value) => patchDraft({ providerType: value })}
+                options={[
+                  { label: "OpenAI", value: "openai" },
+                  { label: "OpenAI compatible", value: "openai-compatible" },
+                  { label: "OSS local", value: "oss-local" },
+                ]}
+              />
+            ) : (
+              <Input value={profileDraft.runtimeKind} disabled />
+            )}
             <Input
               placeholder="Model"
               value={profileDraft.model}
               onChange={(event) => patchDraft({ model: event.target.value })}
             />
           </div>
-          <Select
-            allowClear
-            placeholder="Provider mode"
-            value={profileDraft.providerMode || undefined}
-            onChange={(value) => patchDraft({ providerMode: value ?? "" })}
-            options={[
-              { label: "OpenAI Responses", value: "openai-responses" },
-              {
-                label: "DeepSeek via Responses bridge",
-                value: "deepseek-via-responses-bridge",
-              },
-              {
-                label: "Chat probe only",
-                value: "openai-chat-probe-only",
-              },
-            ]}
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <Select
-              allowClear
-              placeholder="Sandbox"
-              value={profileDraft.sandboxMode || undefined}
-              onChange={(value) => patchDraft({ sandboxMode: value ?? "" })}
-              options={sandboxOptions}
-            />
-            <Select
-              allowClear
-              placeholder="Approval"
-              value={profileDraft.approvalPolicy || undefined}
-              onChange={(value) => patchDraft({ approvalPolicy: value ?? "" })}
-              options={[
-                { label: "never", value: "never" },
-                { label: "on-request", value: "on-request" },
-                { label: "untrusted", value: "untrusted" },
-              ]}
-            />
-          </div>
-          <Input
-            placeholder="Codex profile name"
-            value={profileDraft.codexProfile}
-            onChange={(event) => patchDraft({ codexProfile: event.target.value })}
-          />
+          {showCodexFields ? (
+            <>
+              <Select
+                allowClear
+                placeholder="Provider mode"
+                value={profileDraft.providerMode || undefined}
+                onChange={(value) => patchDraft({ providerMode: value ?? "" })}
+                options={[
+                  { label: "OpenAI Responses", value: "openai-responses" },
+                  {
+                    label: "DeepSeek via Responses bridge",
+                    value: "deepseek-via-responses-bridge",
+                  },
+                  {
+                    label: "Chat probe only",
+                    value: "openai-chat-probe-only",
+                  },
+                ]}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Select
+                  allowClear
+                  placeholder="Sandbox"
+                  value={profileDraft.sandboxMode || undefined}
+                  onChange={(value) => patchDraft({ sandboxMode: value ?? "" })}
+                  options={sandboxOptions}
+                />
+                <Select
+                  allowClear
+                  placeholder="Approval"
+                  value={profileDraft.approvalPolicy || undefined}
+                  onChange={(value) => patchDraft({ approvalPolicy: value ?? "" })}
+                  options={[
+                    { label: "never", value: "never" },
+                    { label: "on-request", value: "on-request" },
+                    { label: "untrusted", value: "untrusted" },
+                  ]}
+                />
+              </div>
+              <Input
+                placeholder="Codex profile name"
+                value={profileDraft.codexProfile}
+                onChange={(event) =>
+                  patchDraft({ codexProfile: event.target.value })
+                }
+              />
+            </>
+          ) : null}
           <Input
             placeholder="Upstream base URL"
             value={profileDraft.baseUrl}
             onChange={(event) => patchDraft({ baseUrl: event.target.value })}
           />
-          <Input
-            placeholder="Responses bridge URL, for example http://127.0.0.1:38440/v1"
-            value={profileDraft.bridgeBaseUrl}
-            onChange={(event) => patchDraft({ bridgeBaseUrl: event.target.value })}
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              placeholder="wire_api"
-              value={profileDraft.wireApi}
-              onChange={(event) => patchDraft({ wireApi: event.target.value })}
-            />
-            <Input
-              placeholder="Auth env key"
-              value={profileDraft.authEnvKey}
-              onChange={(event) => patchDraft({ authEnvKey: event.target.value })}
-            />
-          </div>
-          {runtimePolicy?.canUseCodexHomeOverride !== false ? (
-            <Input
-              placeholder="Codex home override"
-              value={profileDraft.codexHomeOverride}
-              onChange={(event) =>
-                patchDraft({ codexHomeOverride: event.target.value })
-              }
-            />
-          ) : null}
+          {showCodexFields ? (
+            <>
+              <Input
+                placeholder="Responses bridge URL, for example http://127.0.0.1:38440/v1"
+                value={profileDraft.bridgeBaseUrl}
+                onChange={(event) =>
+                  patchDraft({ bridgeBaseUrl: event.target.value })
+                }
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  placeholder="wire_api"
+                  value={profileDraft.wireApi}
+                  onChange={(event) => patchDraft({ wireApi: event.target.value })}
+                />
+                <Input
+                  placeholder="Auth env key"
+                  value={profileDraft.authEnvKey}
+                  onChange={(event) =>
+                    patchDraft({ authEnvKey: event.target.value })
+                  }
+                />
+              </div>
+              {runtimePolicy?.canUseCodexHomeOverride !== false ? (
+                <Input
+                  placeholder="Codex home override"
+                  value={profileDraft.codexHomeOverride}
+                  onChange={(event) =>
+                    patchDraft({ codexHomeOverride: event.target.value })
+                  }
+                />
+              ) : null}
+            </>
+          ) : (
+            <div className="text-xs text-[var(--sub-text)]">
+              OpenHands / OpenAI-compatible profiles use `model`, `base URL`, and
+              `API key`. Project path is still bound at session level.
+            </div>
+          )}
           <Input.Password
             placeholder={
               profileDraft.apiKeyMasked
@@ -876,6 +1015,22 @@ function ConfigTab({
               onClick={() => void onSaveRuntimeProfile()}
             >
               Save profile
+            </Button>
+            <Button
+              size="small"
+              disabled={!canModifyProfiles}
+              loading={submitting}
+              onClick={() => void onSaveScopeConfig(selectedScopeType)}
+            >
+              Save scope
+            </Button>
+            <Button
+              size="small"
+              disabled={!canModifyProfiles}
+              loading={submitting}
+              onClick={() => void onClearScopeConfig(selectedScopeType)}
+            >
+              Clear scope
             </Button>
             <Button
               size="small"
@@ -912,8 +1067,8 @@ function ConfigTab({
           onChange={(event) => onProjectPathChange(event.target.value)}
         />
         <div className="mt-2 text-xs text-[var(--sub-text)]">
-          Codex CLI runs with this directory as <code>--cd</code>. This is runtime
-          configuration, not an OpenIM setting.
+          The selected runtime uses this directory as its working project path.
+          This is runtime configuration, not an OpenIM setting.
           {selectedRuntimeProfileID
             ? " Runtime profile will be bound to the new session."
             : ""}
@@ -925,7 +1080,7 @@ function ConfigTab({
           loading={submitting}
           onClick={() => void onRebind()}
         >
-          Change project and start new binding
+          Rebind current conversation
         </Button>
       </Card>
 
@@ -1038,6 +1193,7 @@ function formatProbe(probe: { ok: boolean; skipped: boolean; errorText?: string 
 type RuntimeProfileDraft = {
   id: string;
   name: string;
+  runtimeKind: RuntimeKind;
   providerType: CodexRuntimeProfile["providerType"];
   providerMode: NonNullable<CodexRuntimeProfile["providerMode"]> | "";
   model: string;
@@ -1057,6 +1213,7 @@ function createEmptyProfileDraft(): RuntimeProfileDraft {
   return {
     id: "",
     name: "",
+    runtimeKind: "codex_cli",
     providerType: "openai",
     providerMode: "",
     model: "",
@@ -1077,6 +1234,7 @@ function createDraftFromProfile(profile: CodexRuntimeProfile): RuntimeProfileDra
   return {
     id: profile.id,
     name: profile.name,
+    runtimeKind: profile.runtimeKind,
     providerType: profile.providerType,
     providerMode: profile.providerMode ?? "",
     model: profile.model ?? "",
@@ -1098,19 +1256,32 @@ function toRuntimeProfilePayload(
 ): CodexRuntimeProfileInput | Partial<CodexRuntimeProfileInput> {
   return {
     name: draft.name.trim(),
-    providerType: draft.providerType,
-    providerMode: nullableText(
-      draft.providerMode,
-    ) as CodexRuntimeProfile["providerMode"],
+    runtimeKind: draft.runtimeKind,
+    providerType:
+      draft.runtimeKind === "codex_cli" ? draft.providerType : "openai-compatible",
+    providerMode:
+      draft.runtimeKind === "codex_cli"
+        ? (nullableText(draft.providerMode) as CodexRuntimeProfile["providerMode"])
+        : null,
     model: nullableText(draft.model),
-    sandboxMode: nullableText(draft.sandboxMode),
-    approvalPolicy: nullableText(draft.approvalPolicy),
-    codexProfile: nullableText(draft.codexProfile),
+    sandboxMode:
+      draft.runtimeKind === "codex_cli" ? nullableText(draft.sandboxMode) : null,
+    approvalPolicy:
+      draft.runtimeKind === "codex_cli"
+        ? nullableText(draft.approvalPolicy)
+        : null,
+    codexProfile:
+      draft.runtimeKind === "codex_cli" ? nullableText(draft.codexProfile) : null,
     baseUrl: nullableText(draft.baseUrl),
-    bridgeBaseUrl: nullableText(draft.bridgeBaseUrl),
-    wireApi: nullableText(draft.wireApi),
-    authEnvKey: nullableText(draft.authEnvKey),
-    codexHomeOverride: nullableText(draft.codexHomeOverride),
+    bridgeBaseUrl:
+      draft.runtimeKind === "codex_cli" ? nullableText(draft.bridgeBaseUrl) : null,
+    wireApi: draft.runtimeKind === "codex_cli" ? nullableText(draft.wireApi) : null,
+    authEnvKey:
+      draft.runtimeKind === "codex_cli" ? nullableText(draft.authEnvKey) : null,
+    codexHomeOverride:
+      draft.runtimeKind === "codex_cli"
+        ? nullableText(draft.codexHomeOverride)
+        : null,
     apiKey: draft.apiKey.trim() ? draft.apiKey.trim() : undefined,
   };
 }

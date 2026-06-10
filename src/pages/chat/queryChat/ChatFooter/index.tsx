@@ -1,13 +1,23 @@
+import { SessionType } from "@openim/wasm-client-sdk";
 import { useLatest } from "ahooks";
 import { Button } from "antd";
 import { t } from "i18next";
-import { forwardRef, ForwardRefRenderFunction, memo, useState } from "react";
+import {
+  forwardRef,
+  ForwardRefRenderFunction,
+  memo,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-import CKEditor from "@/components/CKEditor";
+import CKEditor, { MentionFeedItem } from "@/components/CKEditor";
 import { getCleanText } from "@/components/CKEditor/utils";
+import useGroupMembers from "@/hooks/useGroupMembers";
 import { useCodexConversation } from "@/hooks/useCodexConversation";
 import i18n from "@/i18n";
 import { IMSDK } from "@/layout/MainContentWrap";
+import { useConversationStore } from "@/store";
 
 import SendActionBar from "./SendActionBar";
 import { useFileMessage } from "./SendActionBar/useFileMessage";
@@ -32,15 +42,48 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = () => {
   const { isCodexConversation, activeJob, queuedJobCount, cancel } =
     useCodexConversation();
 
+  const currentConversation = useConversationStore(
+    (state) => state.currentConversation,
+  );
+  const isGroupChat =
+    currentConversation?.conversationType === SessionType.Group;
+
+  const { fetchState: groupMemberState, getMemberData } = useGroupMembers(
+    isGroupChat
+      ? { groupID: currentConversation?.groupID }
+      : undefined,
+  );
+
+  useEffect(() => {
+    if (isGroupChat) {
+      void getMemberData(true);
+    }
+  }, [isGroupChat, currentConversation?.groupID, getMemberData]);
+
+  const mentionFeeds = useMemo(() => {
+    if (!isGroupChat || groupMemberState.groupMemberList.length === 0)
+      return undefined;
+    const feed: MentionFeedItem[] = groupMemberState.groupMemberList.map(
+      (member) => ({
+        id: `@${member.userID}`,
+        text: member.nickname || member.userID,
+      }),
+    );
+    return [{ marker: "@", feed, minimumCharacters: 1 }];
+  }, [isGroupChat, groupMemberState.groupMemberList]);
+
   const onChange = (value: string) => {
     setHtml(value);
   };
 
   const enterToSend = async () => {
-    const cleanText = getCleanText(latestHtml.current);
+    const cleanText = getCleanText(latestHtml.current ?? "");
+    if (!cleanText) {
+      setHtml("");
+      return;
+    }
     const message = (await IMSDK.createTextMessage(cleanText)).data;
     setHtml("");
-    if (!cleanText) return;
 
     sendMessage({ message });
   };
@@ -71,6 +114,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = () => {
             value={html}
             onEnter={() => void enterToSend()}
             onChange={onChange}
+            mentionFeeds={mentionFeeds}
           />
           <div className="flex items-center justify-end py-2 pr-3">
             <Button

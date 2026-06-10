@@ -74,6 +74,8 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.1.4",
+    "@ckeditor/ckeditor5-basic-styles": "^48.2.0",
+    "@ckeditor/ckeditor5-mention": "^48.2.0",
     "@ckeditor/ckeditor5-react": "^8.0.0",
     "@livekit/components-react": "2.6.9",
     "@livekit/components-styles": "1.1.4",

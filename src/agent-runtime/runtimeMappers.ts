@@ -10,12 +10,15 @@ import {
 export function runtimeStatusToCodexStatus(
   status: RuntimeConversationStatus,
 ): CodexConversationStatus {
+  const recentJobs = status.recentJobs
+    .map(runtimeJobToCodexJob)
+    .filter((job): job is CodexRuntimeJob => Boolean(job));
   return {
     ...status,
     activeSession: runtimeSessionToCodexSession(status.activeSession),
     activeJob: runtimeJobToCodexJob(status.activeJob),
     latestJob: runtimeJobToCodexJob(status.latestJob),
-    recentJobs: status.recentJobs.map(runtimeJobToCodexJob),
+    recentJobs,
   };
 }
 
@@ -27,6 +30,7 @@ export function runtimeSessionToCodexSession(
     id: session.id,
     openimConversationId: session.openimConversationId,
     openimDisplayUserId: session.openimDisplayUserId,
+    runtimeKind: session.runtimeKind,
     codexSessionId: session.legacyCodex?.codexSessionId ?? session.externalSessionId,
     codexProjectPath:
       session.legacyCodex?.codexProjectPath ?? session.projectPath ?? "",
@@ -53,6 +57,7 @@ export function runtimeJobToCodexJob(
   if (!job) return null;
   return {
     ...job,
+    runtimeKind: job.runtimeKind,
     codexSessionIdBefore:
       job.legacyCodex?.codexSessionIdBefore ?? job.codexSessionIdBefore ?? null,
     codexSessionIdAfter:

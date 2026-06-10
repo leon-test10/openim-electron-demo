@@ -33,18 +33,23 @@ export async function getConversationRuntimeStatus(conversationID: string) {
 }
 
 export async function getConversationRuntimeSessions(conversationID: string) {
-  const response = await withLegacyFallback(
-    () => getRuntimeSessions(conversationID),
-    () => getCodexSessions(conversationID),
-  );
-  return {
-    conversationId: response.conversationId,
-    sessions: response.sessions
-      .map((session) =>
-        "runtimeKind" in session ? runtimeSessionToCodexSession(session) : session,
-      )
-      .filter((session): session is NonNullable<typeof session> => Boolean(session)),
-  };
+  try {
+    const response = await getRuntimeSessions(conversationID);
+    return {
+      conversationId: response.conversationId,
+      runtimeKind: response.runtimeKind,
+      sessions: response.sessions
+        .map(runtimeSessionToCodexSession)
+        .filter((session): session is NonNullable<typeof session> => Boolean(session)),
+    };
+  } catch {
+    const response = await getCodexSessions(conversationID);
+    return {
+      conversationId: response.conversationId,
+      runtimeKind: "codex_cli" as const,
+      sessions: response.sessions,
+    };
+  }
 }
 
 export async function createConversationRuntimeSession(

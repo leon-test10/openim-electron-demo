@@ -310,6 +310,7 @@
     "messageAllowBeep": "新消息提示音",
     "messageNotNotify": "勿扰模式",
     "addFriends": "添加好友",
+    "friendSearchCandidates": "备选好友",
     "verifyAdd": "验证添加",
     "addGroup": "添加群组",
     "createGroup": "创建群聊",

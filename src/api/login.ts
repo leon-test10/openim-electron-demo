@@ -186,15 +186,18 @@ export const getBusinessUserInfo = async (userIDs: string[]) => {
   );
 };
 
-export const searchBusinessUserInfo = async (keyword: string) => {
+export const searchBusinessUserInfo = async (
+  keyword: string,
+  pagination: { pageNumber?: number; showNumber?: number } = {},
+) => {
   const token = (await getChatToken()) as string;
   return request.post<{ total: number; users: BusinessUserInfo[] }>(
     "/user/search/full",
     {
       keyword,
       pagination: {
-        pageNumber: 1,
-        showNumber: 1,
+        pageNumber: pagination.pageNumber ?? 1,
+        showNumber: pagination.showNumber ?? 1,
       },
     },
     {

@@ -38,6 +38,7 @@ export default function CodexStatusBadge() {
   }
 
   const state = status?.state ?? "unknown";
+  const runtimeKind = status?.activeSession?.runtimeKind ?? "codex_cli";
   const failureReason = latestJob?.failureReason;
   const detail =
     error ||
@@ -45,11 +46,18 @@ export default function CodexStatusBadge() {
     latestJob?.errorText ||
     activeJob?.status;
 
+  const runtimeLabel =
+    runtimeKind === "openhands"
+      ? "OpenHands"
+      : runtimeKind === "openai_compatible"
+        ? "OpenAI-compatible"
+        : "Codex";
+
   return (
     <div className="mt-1 flex items-center gap-2 text-xs">
       <Tooltip title={detail}>
         <Tag className="m-0" color={stateColors[state]}>
-          Codex {loading && state === "unknown" ? "loading" : state}
+          {runtimeLabel} {loading && state === "unknown" ? "loading" : state}
           {queuedJobCount > 0 ? ` +${queuedJobCount} queued` : ""}
         </Tag>
       </Tooltip>

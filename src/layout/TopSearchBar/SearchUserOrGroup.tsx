@@ -1,6 +1,6 @@
 import { CloseOutlined } from "@ant-design/icons";
 import { GroupItem, WSEvent } from "@openim/wasm-client-sdk/lib/types/entity";
-import { Button, Input, InputRef } from "antd";
+import { Button, Input, InputRef, List } from "antd";
 import { t } from "i18next";
 import {
   forwardRef,
@@ -13,6 +13,7 @@ import {
 
 import { message } from "@/AntdGlobalComp";
 import { searchBusinessUserInfo } from "@/api/login";
+import OIMAvatar from "@/components/OIMAvatar";
 import DraggableModalWrap from "@/components/DraggableModalWrap";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
 import { CardInfo } from "@/pages/common/UserCardModal";
@@ -33,6 +34,7 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
 > = ({ isSearchGroup, openUserCardWithData, openGroupCardWithData }, ref) => {
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState("");
+  const [userCandidates, setUserCandidates] = useState<CardInfo[]>([]);
   const inputRef = useRef<InputRef>(null);
   const { isOverlayOpen, closeOverlay } = useOverlayVisible(ref);
 
@@ -66,26 +68,36 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
     } else {
       try {
         const {
-          data: { total, users },
-        } = await searchBusinessUserInfo(keyword);
+          data: { users },
+        } = await searchBusinessUserInfo(keyword, {
+          pageNumber: 1,
+          showNumber: 20,
+        });
         setLoading(false);
-        if (
-          !total ||
-          (users[0].userID !== keyword && users[0].phoneNumber !== keyword)
-        ) {
+        if (!users?.length) {
+          setUserCandidates([]);
           message.warning(t("empty.noSearchResults"));
           return;
         }
-        const friendInfo = useContactStore
-          .getState()
-          .friendList.find((friend) => friend.userID === users[0].userID);
-
-        openUserCardWithData({
-          ...(friendInfo ?? {}),
-          ...users[0],
-        });
+        const normalizedKeyword = keyword.trim().toLowerCase();
+        const friendList = useContactStore.getState().friendList;
+        const candidates = users
+          .map((user) => {
+            const friendInfo = friendList.find((friend) => friend.userID === user.userID);
+            return {
+              ...(friendInfo ?? {}),
+              ...user,
+            };
+          })
+          .sort(
+            (left, right) =>
+              scoreCandidate(right, normalizedKeyword) -
+              scoreCandidate(left, normalizedKeyword),
+          );
+        setUserCandidates(candidates);
       } catch (error) {
         setLoading(false);
+        setUserCandidates([]);
         if ((error as WSEvent).errCode === 1004) {
           message.warning(t("empty.noSearchResults"));
           return;
@@ -111,6 +123,7 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
       }}
       afterClose={() => {
         setKeyword("");
+        setUserCandidates([]);
       }}
       ignoreClasses=".ignore-drag, .cursor-pointer"
       className="no-padding-modal"
@@ -135,10 +148,51 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
             value={keyword}
             addonAfter={null}
             spellCheck={false}
-            onChange={(e) => setKeyword(e.target.value)}
+            onChange={(e) => {
+              setKeyword(e.target.value);
+              if (!e.target.value.trim()) {
+                setUserCandidates([]);
+              }
+            }}
             onSearch={searchData}
           />
         </div>
+        {!isSearchGroup && userCandidates.length > 0 ? (
+          <div className="max-h-64 overflow-y-auto border-b border-[var(--gap-text)] px-5.5 py-3">
+            <div className="mb-2 text-xs text-[var(--sub-text)]">
+              {t("placeholder.friendSearchCandidates")}
+            </div>
+            <List
+              dataSource={userCandidates}
+              renderItem={(item) => (
+                <List.Item
+                  className="cursor-pointer rounded px-2 py-2 hover:bg-[var(--primary-active)]"
+                  onClick={() => openUserCardWithData(item)}
+                >
+                  <div className="flex w-full items-center gap-3">
+                    <OIMAvatar
+                      size={40}
+                      src={item.faceURL}
+                      text={item.nickname || item.userID}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">
+                        {item.nickname || item.userID}
+                      </div>
+                      <div className="truncate text-xs text-[var(--sub-text)]">
+                        {item.userID}
+                        {item.phoneNumber ? ` / ${item.phoneNumber}` : ""}
+                      </div>
+                    </div>
+                    <div className="text-xs text-[var(--primary)]">
+                      {t("placeholder.verifyAdd")}
+                    </div>
+                  </div>
+                </List.Item>
+              )}
+            />
+          </div>
+        ) : null}
         <div className="flex justify-end px-5.5 py-2.5">
           <Button
             loading={loading}
@@ -162,3 +216,16 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
 };
 
 export default memo(forwardRef(SearchUserOrGroup));
+
+function scoreCandidate(candidate: CardInfo, normalizedKeyword: string) {
+  const fields = [candidate.userID, candidate.phoneNumber, candidate.nickname]
+    .filter(Boolean)
+    .map((value) => value!.toLowerCase());
+  let score = 0;
+  for (const field of fields) {
+    if (field === normalizedKeyword) score += 100;
+    else if (field.startsWith(normalizedKeyword)) score += 10;
+    else if (field.includes(normalizedKeyword)) score += 1;
+  }
+  return score;
+}

@@ -16,7 +16,7 @@ import OIMAvatar from "@/components/OIMAvatar";
 import { OverlayVisibleHandle } from "@/hooks/useOverlayVisible";
 import { useConversationStore, useUserStore } from "@/store";
 import {
-  isCodexSingleConversation,
+  isCodexConversation as isRuntimeConversation,
   resolveCodexConversationID,
 } from "@/utils/codexConversation";
 import { getViteEnv } from "@/utils/env";
@@ -112,7 +112,7 @@ const ChatHeader = () => {
 
   const isSingleSession = currentConversation?.conversationType === SessionType.Single;
   const isGroupSession = currentConversation?.conversationType === SessionType.Group;
-  const isCodexConversation = isCodexSingleConversation(
+  const isCodexConversation = isRuntimeConversation(
     currentConversation,
     routeConversationID,
     CODEX_BOT_USER_ID,

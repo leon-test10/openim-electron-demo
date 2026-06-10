@@ -11,8 +11,14 @@ export const replaceEmoji2Str = (text: string) => {
   return text;
 };
 
+function replaceMentionToText(html: string): string {
+  const mentionRegex = /<[^>]*\sdata-mention="([^"]*)"[^>]*>[^<]*<\/[^>]+>/gi;
+  return html.replace(mentionRegex, (_match, mentionId) => mentionId);
+}
+
 export const getCleanText = (html: string) => {
   let text = replaceEmoji2Str(html);
+  text = replaceMentionToText(text);
   text = text.replace(/<\/p><p>/g, "\n");
   text = text.replace(/<br\s*[/]?>/gi, "\n");
   text = text.replace(/<[^>]+>/g, "");

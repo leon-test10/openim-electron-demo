@@ -1,15 +1,14 @@
 import "./index.scss";
 import "ckeditor5/ckeditor5.css";
 
-import { ClassicEditor } from "@ckeditor/ckeditor5-editor-classic";
-import { Essentials } from "@ckeditor/ckeditor5-essentials";
-import { Paragraph } from "@ckeditor/ckeditor5-paragraph";
 import { CKEditor } from "@ckeditor/ckeditor5-react";
+import { Bold, ClassicEditor, Essentials, Italic, Mention, Paragraph } from "ckeditor5";
 import {
   forwardRef,
   ForwardRefRenderFunction,
   memo,
   useImperativeHandle,
+  useMemo,
   useRef,
 } from "react";
 
@@ -17,11 +16,21 @@ export type CKEditorRef = {
   focus: (moveToEnd?: boolean) => void;
 };
 
+export interface MentionFeedItem {
+  id: string;
+  text: string;
+}
+
 interface CKEditorProps {
   value: string;
   placeholder?: string;
   onChange?: (value: string) => void;
   onEnter?: () => void;
+  mentionFeeds?: Array<{
+    marker: string;
+    feed: MentionFeedItem[];
+    minimumCharacters?: number;
+  }>;
 }
 
 export interface EmojiData {
@@ -35,10 +44,29 @@ const keyCodes = {
 };
 
 const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
-  { value, placeholder, onChange, onEnter },
+  { value, placeholder, onChange, onEnter, mentionFeeds },
   ref,
 ) => {
   const ckEditor = useRef<ClassicEditor | null>(null);
+
+  const plugins = useMemo(() => {
+    const base: unknown[] = [Essentials, Paragraph, Bold, Italic];
+    if (mentionFeeds && mentionFeeds.length > 0) {
+      base.push(Mention);
+    }
+    return base;
+  }, [mentionFeeds]);
+
+  const mentionConfig = useMemo(() => {
+    if (!mentionFeeds || mentionFeeds.length === 0) return undefined;
+    return {
+      feeds: mentionFeeds.map((f) => ({
+        marker: f.marker,
+        feed: f.feed,
+        minimumCharacters: f.minimumCharacters ?? 1,
+      })),
+    };
+  }, [mentionFeeds]);
 
   const focus = (moveToEnd = false) => {
     const editor = ckEditor.current;
@@ -105,7 +133,8 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
             type: "inline",
           },
         },
-        plugins: [Essentials, Paragraph],
+        plugins,
+        mention: mentionConfig,
       }}
       onReady={(editor) => {
         ckEditor.current = editor;
