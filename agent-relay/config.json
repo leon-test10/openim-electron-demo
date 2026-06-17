@@ -1,0 +1,39 @@
+{
+  "port": 9090,
+  "_note": "各 agent 的实际 CLI 调用方式详见 README。仓库已拉取到 ../codex ../opencode ../openhands。opencode 已安装并通过测试。",
+  "agents": {
+    "codex": {
+      "enabled": false,
+      "command": "codex",
+      "args": ["exec", "--ephemeral"],
+      "workDir": "..",
+      "description": "OpenAI Codex CLI — codex exec 'task'（非交互模式）",
+      "install": "npm i -g @openai/codex",
+      "auth": "export OPENAI_API_KEY=sk-..."
+    },
+    "opencode": {
+      "enabled": false,
+      "command": "opencode",
+      "args": ["run"],
+      "workDir": ".",
+      "description": "OpenCode — opencode run（stdin 方式，已安装并验证通过）",
+      "install": "npm i -g opencode-ai",
+      "test": "echo 'say hello' | opencode run"
+    },
+    "openhands": {
+      "enabled": false,
+      "command": "poetry",
+      "args": ["run", "python", "-m", "openhands.core.main", "-t"],
+      "workDir": "../openhands",
+      "description": "OpenHands headless — poetry run python -m openhands.core.main -t 'task'",
+      "install": "cd ../openhands && poetry install",
+      "auth": "export LLM_API_KEY=sk-... && export LLM_MODEL=openai/gpt-4o"
+    },
+    "stdin-pipe": {
+      "enabled": true,
+      "command": null,
+      "pipePath": "./agent-input.log",
+      "description": "通用模式：写入文件，agent 侧 tail -f 读取"
+    }
+  }
+}
