@@ -54,6 +54,25 @@
   color: #ffffff !important;
 }
 
+.terminal-dock-command-button {
+  border-color: #3c3c3c !important;
+  background: #252526 !important;
+  color: #ffffff !important;
+  font-size: 12px;
+}
+
+.terminal-dock-command-button:hover {
+  border-color: #555555 !important;
+  background: #2d2d30 !important;
+  color: #ffffff !important;
+}
+
+.terminal-dock-command-button[disabled] {
+  border-color: #2b2b2b !important;
+  background: #1e1e1e !important;
+  color: #6a6a6a !important;
+}
+
 .terminal-dock-tabs {
   display: flex;
   height: 34px;

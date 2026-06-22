@@ -168,7 +168,9 @@ const TerminalDock = () => {
   };
 
   const exportConversationContext = async () => {
-    if (!activeWorkspace || !conversationID || !window.electronAPI) return;
+    if (!activeWorkspace || !conversationID || !window.electronAPI) {
+      return undefined;
+    }
 
     linkConversationToWorkspace(activeWorkspace.id, conversationID);
     const conversationIDs = Array.from(
@@ -236,11 +238,23 @@ const TerminalDock = () => {
     setLastContextPrompt(activeWorkspace.id, prompt);
     await navigator.clipboard.writeText(prompt);
     message.success("Context exported and prompt copied");
+    return prompt;
   };
 
   const pasteContextPrompt = async () => {
     if (!activeTab || !lastContextPrompt) return;
     await writeToTab(activeTab.id, `${lastContextPrompt}\r\n`);
+    terminalApisRef.current.get(activeTab.id)?.focus();
+  };
+
+  const exportContextToTerminal = async () => {
+    if (!activeTab) return;
+    const prompt = (await exportConversationContext()) ?? lastContextPrompt;
+    if (!prompt) {
+      message.warning("No IM context available");
+      return;
+    }
+    await writeToTab(activeTab.id, `${prompt}\r\n`);
     terminalApisRef.current.get(activeTab.id)?.focus();
   };
 
@@ -333,13 +347,25 @@ const TerminalDock = () => {
             onClick={() => activeTab && void stopTab(activeTab.id)}
           />
         </Tooltip>
-        <Tooltip title="Paste Context Prompt">
+        <Tooltip title="Export current IM context and paste prompt into terminal">
+          <Button
+            size="small"
+            type="default"
+            className="terminal-dock-command-button"
+            disabled={!activeTab || !activeWorkspace || !conversationID}
+            icon={<SendOutlined rev={undefined} />}
+            onClick={() => void exportContextToTerminal()}
+          >
+            Context -&gt; Terminal
+          </Button>
+        </Tooltip>
+        <Tooltip title="Paste last copied context prompt">
           <Button
             size="small"
             type="text"
             className="terminal-dock-icon-button"
             disabled={!activeTab || !lastContextPrompt}
-            icon={<SendOutlined rev={undefined} />}
+            icon={<ExportOutlined rev={undefined} />}
             onClick={() => void pasteContextPrompt()}
           />
         </Tooltip>

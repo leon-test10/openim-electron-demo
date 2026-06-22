@@ -4,6 +4,53 @@
 
 Current branch: `feature/terminal-dock-redesign`
 
+## Follow-up Fix - White ANSI Blue and opencode Local Smoke
+
+Reason:
+
+- PowerShell and other CLIs often print paths/prompts with ANSI blue. The xterm
+  theme rendered blue too dark on the black terminal background, so terminal
+  text looked unreadable.
+- The IM-to-terminal context flow was discoverable only as separate export and
+  paste actions.
+- The user-provided local model endpoint is intended for agent runtimes such as
+  opencode, not for OpenIM to call directly.
+
+Fix:
+
+- Map ANSI `blue` to `#f2f2f2` and `brightBlue` to `#ffffff` in
+  `TerminalSurface`, so blue CLI output is shown as readable white.
+- Add a visible `Context -> Terminal` action. It exports the current IM context
+  to workspace markdown files, copies the generated context prompt, and writes
+  that prompt into the active terminal tab.
+- Keep `Paste last copied context prompt` as a secondary action.
+- Add `docs/terminal-opencode-local.md` with the verified opencode local config.
+
+opencode smoke result:
+
+```powershell
+npx.cmd -y opencode-ai@1.17.9 run --model local-openai/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf "Reply with READY only."
+```
+
+Result: `READY`.
+
+Important opencode config note:
+
+- Published package `opencode-ai@1.17.9` uses legacy `provider` config.
+- The newer source tree has v2 `providers` schema, but `providers` was rejected
+  by the published package during this smoke test.
+- OpenIM should not store this API/model config. Put opencode's own
+  `opencode.json` in the terminal workspace or rely on opencode's normal config
+  and environment handling.
+
+Electron dev note:
+
+- Renderer/CSS changes may hot-reload when the Electron window is connected to
+  Vite dev server.
+- Electron main/preload/IPC changes require restarting the Electron process.
+- If the terminal still shows old colors, reload the Electron window or restart
+  the dev Electron client.
+
 This phase rebuilds the right-side panel as a Terminal Dock rather than a
 runtime manager:
 
