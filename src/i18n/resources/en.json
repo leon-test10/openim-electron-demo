@@ -397,6 +397,7 @@
     "phaseTwoHint": "Terminal runtime is available in Electron",
     "start": "Start",
     "restart": "Restart",
+    "interrupt": "Interrupt",
     "stop": "Stop",
     "clearTranscript": "Clear",
     "sendInput": "Send Input",

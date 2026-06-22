@@ -137,6 +137,7 @@ export interface RuntimeDockStore {
   setPanelOpen: (open: boolean) => void;
   addRuntime: (conversationID: string, profileID?: RuntimeProfileID) => void;
   startRuntime: (conversationID: string, attachmentID: string) => Promise<void>;
+  interruptRuntime: (conversationID: string, attachmentID: string) => Promise<void>;
   stopRuntime: (conversationID: string, attachmentID: string) => Promise<void>;
   writeInput: (
     conversationID: string,

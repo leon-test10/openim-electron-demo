@@ -93,6 +93,9 @@ export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.runtimeStart, (event, params) => {
     return runtimeManager.start(event.sender, params);
   });
+  ipcMain.handle(IpcRenderToMain.runtimeInterrupt, (_, attachmentID) => {
+    return runtimeManager.interrupt(attachmentID);
+  });
   ipcMain.handle(IpcRenderToMain.runtimeStop, (_, attachmentID) => {
     return runtimeManager.stop(attachmentID);
   });

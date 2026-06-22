@@ -17,6 +17,7 @@ export const IpcRenderToMain = {
   getDataPath: "getDataPath",
   runtimeListProfiles: "runtime:listProfiles",
   runtimeStart: "runtime:start",
+  runtimeInterrupt: "runtime:interrupt",
   runtimeStop: "runtime:stop",
   runtimeWriteInput: "runtime:writeInput",
   runtimeResize: "runtime:resize",

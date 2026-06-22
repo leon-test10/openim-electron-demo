@@ -4,6 +4,7 @@ import {
   CloseOutlined,
   DeleteOutlined,
   DownOutlined,
+  PauseCircleOutlined,
   PlayCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -199,6 +200,7 @@ const RuntimeDock = () => {
   );
   const addRuntime = useRuntimeDockStore((state) => state.addRuntime);
   const startRuntime = useRuntimeDockStore((state) => state.startRuntime);
+  const interruptRuntime = useRuntimeDockStore((state) => state.interruptRuntime);
   const stopRuntime = useRuntimeDockStore((state) => state.stopRuntime);
   const clearTranscript = useRuntimeDockStore((state) => state.clearTranscript);
   const handleRuntimeEvent = useRuntimeDockStore((state) => state.handleRuntimeEvent);
@@ -362,6 +364,14 @@ const RuntimeDock = () => {
                     onClick={() => startRuntime(conversationID, attachment.id)}
                   >
                     {t("runtimeDock.restart")}
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<PauseCircleOutlined rev={undefined} />}
+                    disabled={!terminalAvailable || attachment.status !== "running"}
+                    onClick={() => interruptRuntime(conversationID, attachment.id)}
+                  >
+                    {t("runtimeDock.interrupt")}
                   </Button>
                   <Button
                     size="small"

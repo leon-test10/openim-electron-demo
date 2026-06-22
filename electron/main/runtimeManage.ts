@@ -299,6 +299,20 @@ export const runtimeManager = {
     };
   },
 
+  interrupt: async (attachmentID: string) => {
+    const runtime = runtimes.get(attachmentID);
+    if (!runtime) {
+      throw new Error("Runtime terminal is not running");
+    }
+
+    runtime.child.write("\x03");
+    return {
+      ok: true,
+      attachmentID,
+      interruptedAt: Date.now(),
+    };
+  },
+
   resize: async (params: { attachmentID: string; cols: number; rows: number }) => {
     const runtime = runtimes.get(params.attachmentID);
     if (!runtime) {

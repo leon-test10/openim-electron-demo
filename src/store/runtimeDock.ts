@@ -239,6 +239,14 @@ const stopRuntimeBridge = async (attachmentID: string) => {
   return window.electronAPI.ipcInvoke<RuntimeInstance>("runtime:stop", attachmentID);
 };
 
+const interruptRuntimeBridge = async (attachmentID: string) => {
+  if (!window.electronAPI) {
+    throw new Error("Terminal runtime requires the Electron app.");
+  }
+
+  return window.electronAPI.ipcInvoke("runtime:interrupt", attachmentID);
+};
+
 const writeRuntimeInputBridge = async (attachmentID: string, input: string) => {
   if (!window.electronAPI) {
     throw new Error("Terminal runtime requires the Electron app.");
@@ -345,6 +353,47 @@ export const useRuntimeDockStore = create<RuntimeDockStore>()((set) => ({
               ...item.transcript,
               createTranscriptItem("system", `Runtime failed: ${message}`),
             ],
+          }),
+        );
+        return saveAttachments(state, nextAttachments);
+      });
+    }
+  },
+  interruptRuntime: async (conversationID, attachmentID) => {
+    try {
+      await interruptRuntimeBridge(attachmentID);
+      set((state) => {
+        const nextAttachments = updateAttachment(
+          state.attachmentsByConversation,
+          conversationID,
+          attachmentID,
+          (attachment) => ({
+            ...attachment,
+            updatedAt: Date.now(),
+            transcript: appendTranscriptItem(
+              attachment.transcript,
+              createTranscriptItem("system", "^C\r\n[interrupt sent]\r\n"),
+            ),
+          }),
+        );
+        return saveAttachments(state, nextAttachments);
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      set((state) => {
+        const nextAttachments = updateAttachment(
+          state.attachmentsByConversation,
+          conversationID,
+          attachmentID,
+          (attachment) => ({
+            ...attachment,
+            status: "error",
+            lastError: message,
+            updatedAt: Date.now(),
+            transcript: appendTranscriptItem(
+              attachment.transcript,
+              createTranscriptItem("system", `Interrupt failed: ${message}`),
+            ),
           }),
         );
         return saveAttachments(state, nextAttachments);
