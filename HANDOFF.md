@@ -20,11 +20,22 @@ Fix:
 
 - Map ANSI `blue` to `#f2f2f2` and `brightBlue` to `#ffffff` in
   `TerminalSurface`, so blue CLI output is shown as readable white.
-- Add a visible `Context -> Terminal` action. It exports the current IM context
-  to workspace markdown files, copies the generated context prompt, and writes
-  that prompt into the active terminal tab.
-- Keep `Paste last copied context prompt` as a secondary action.
+- Add CSS overrides for xterm ANSI blue classes as a renderer-level fallback.
+- Replace the visible `Context -> Terminal` action with `Copy Context Prompt`.
+  It exports the current IM context to workspace markdown files and copies a
+  short, single-line prompt that references those files. It does not write the
+  prompt into terminal stdin by default.
+- Keep explicit `Paste copied prompt into terminal input` as a secondary action
+  for cases where the user is already inside a CLI prompt such as opencode TUI.
 - Add `docs/terminal-opencode-local.md` with the verified opencode local config.
+
+Follow-up correction:
+
+- Raw multi-line markdown must not be written directly into arbitrary terminal
+  stdin. If the terminal is currently in PowerShell, Python REPL, or another
+  shell, those lines are interpreted as commands and produce syntax errors.
+- The intended data flow is: OpenIM writes IM context markdown files into the
+  workspace, then the user tells opencode/codex/etc. to read those files.
 
 opencode smoke result:
 

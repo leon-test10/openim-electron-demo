@@ -30,6 +30,11 @@ import TerminalSurface, { TerminalSurfaceApi } from "./TerminalSurface";
 import TerminalTabs from "./TerminalTabs";
 import WorkspaceBar from "./WorkspaceBar";
 
+type ContextExportResult = {
+  prompt: string;
+  files: string[];
+};
+
 const stripHtml = (value?: string) =>
   (value ?? "")
     .replace(/<\/p><p>/g, "\n")
@@ -167,7 +172,9 @@ const TerminalDock = () => {
     if (result) message.warning(result);
   };
 
-  const exportConversationContext = async () => {
+  const exportConversationContext = async (): Promise<
+    ContextExportResult | undefined
+  > => {
     if (!activeWorkspace || !conversationID || !window.electronAPI) {
       return undefined;
     }
@@ -222,23 +229,18 @@ const TerminalDock = () => {
       exportedFiles.push(historyPath, manifestPath);
     }
 
-    const prompt = [
-      `# OpenIM Context`,
-      ``,
-      `Workspace: ${activeWorkspace.rootPath}`,
-      ``,
-      `Use these exported files as the current IM context:`,
-      ``,
-      ...exportedFiles.map((file) => `- ./${file}`),
-      ``,
-      `OpenIM is only providing terminal, workspace, and context files. The CLI runtime owns its own session, tools, permissions, model config, and memory.`,
-      ``,
-    ].join("\n");
+    const prompt = `Use the OpenIM context exported in this workspace. Workspace: ${
+      activeWorkspace.rootPath
+    }. Context files: ${exportedFiles
+      .map((file) => `./${file}`)
+      .join(
+        "; ",
+      )}. OpenIM only provides terminal, workspace, and context files; the CLI runtime owns its own session, tools, permissions, model config, and memory.`;
 
     setLastContextPrompt(activeWorkspace.id, prompt);
     await navigator.clipboard.writeText(prompt);
     message.success("Context exported and prompt copied");
-    return prompt;
+    return { prompt, files: exportedFiles };
   };
 
   const pasteContextPrompt = async () => {
@@ -247,15 +249,15 @@ const TerminalDock = () => {
     terminalApisRef.current.get(activeTab.id)?.focus();
   };
 
-  const exportContextToTerminal = async () => {
-    if (!activeTab) return;
-    const prompt = (await exportConversationContext()) ?? lastContextPrompt;
+  const copyContextPrompt = async () => {
+    const result = await exportConversationContext();
+    const prompt = result?.prompt ?? lastContextPrompt;
     if (!prompt) {
       message.warning("No IM context available");
       return;
     }
-    await writeToTab(activeTab.id, `${prompt}\r\n`);
-    terminalApisRef.current.get(activeTab.id)?.focus();
+    await navigator.clipboard.writeText(prompt);
+    message.success("Context prompt copied");
   };
 
   const selectionToIM = () => {
@@ -347,19 +349,19 @@ const TerminalDock = () => {
             onClick={() => activeTab && void stopTab(activeTab.id)}
           />
         </Tooltip>
-        <Tooltip title="Export current IM context and paste prompt into terminal">
+        <Tooltip title="Export current IM context files and copy a short prompt">
           <Button
             size="small"
             type="default"
             className="terminal-dock-command-button"
-            disabled={!activeTab || !activeWorkspace || !conversationID}
+            disabled={!activeWorkspace || !conversationID}
             icon={<SendOutlined rev={undefined} />}
-            onClick={() => void exportContextToTerminal()}
+            onClick={() => void copyContextPrompt()}
           >
-            Context -&gt; Terminal
+            Copy Context Prompt
           </Button>
         </Tooltip>
-        <Tooltip title="Paste last copied context prompt">
+        <Tooltip title="Paste copied prompt into terminal input">
           <Button
             size="small"
             type="text"

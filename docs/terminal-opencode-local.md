@@ -39,6 +39,21 @@ Smoke command:
 npx.cmd -y opencode-ai@1.17.9 run --model local-openai/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf "Reply with READY only."
 ```
 
+To use exported OpenIM context files, first click `Copy Context Prompt` in the
+Terminal Dock. That writes markdown files under the workspace `context/`
+directory and copies a short prompt that references those files.
+
+Then either paste the prompt inside an already-running opencode TUI, or pass it
+to `opencode run`, for example:
+
+```powershell
+npx.cmd -y opencode-ai@1.17.9 run --model local-openai/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf "Use the OpenIM context exported in this workspace. Read ./context/<conversationID>/history-<timestamp>.md and answer based on it."
+```
+
+Do not paste raw multi-line markdown into PowerShell, Python REPL, or another
+ordinary shell. It will be interpreted as commands. OpenIM exports context as
+files; the CLI runtime should read those files.
+
 Verified locally on 2026-06-22:
 
 - `GET http://127.0.0.1:8080/v1/models` returned model
