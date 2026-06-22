@@ -22,4 +22,7 @@ export const IpcRenderToMain = {
   runtimeWriteInput: "runtime:writeInput",
   runtimeResize: "runtime:resize",
   runtimeHealthCheck: "runtime:healthCheck",
+
+  workspaceGetConversationDir: "workspace:getConversationDir",
+  workspaceWriteFile: "workspace:writeFile",
 };

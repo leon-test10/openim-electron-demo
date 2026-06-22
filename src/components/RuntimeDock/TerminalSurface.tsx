@@ -7,7 +7,19 @@ import { useEffect, useMemo, useRef } from "react";
 import { RuntimeAttachment } from "@/store/runtimeDock";
 import { RuntimeResizeParams } from "@/types/globalExpose";
 
-const RuntimeTerminalSurface = ({ attachment }: { attachment: RuntimeAttachment }) => {
+export type TerminalSurfaceApi = {
+  getSelectionText: () => string;
+  clearSelection: () => void;
+  focus: () => void;
+};
+
+const RuntimeTerminalSurface = ({
+  attachment,
+  onReady,
+}: {
+  attachment: RuntimeAttachment;
+  onReady?: (attachmentID: string, api: TerminalSurfaceApi | null) => void;
+}) => {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -64,6 +76,11 @@ const RuntimeTerminalSurface = ({ attachment }: { attachment: RuntimeAttachment 
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
     renderedIdsRef.current = new Set();
+    onReady?.(attachment.id, {
+      getSelectionText: () => terminal.getSelection() ?? "",
+      clearSelection: () => terminal.clearSelection(),
+      focus: () => terminal.focus(),
+    });
 
     const resize = () => {
       const currentTerminal = terminalRef.current;
@@ -108,6 +125,7 @@ const RuntimeTerminalSurface = ({ attachment }: { attachment: RuntimeAttachment 
       terminalRef.current = null;
       fitAddonRef.current = null;
       renderedIdsRef.current = new Set();
+      onReady?.(attachment.id, null);
     };
   }, [attachment.id, attachment.status]);
 

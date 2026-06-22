@@ -1,12 +1,13 @@
 import { useLatest } from "ahooks";
 import { Button } from "antd";
 import { t } from "i18next";
-import { forwardRef, ForwardRefRenderFunction, memo, useState } from "react";
+import { forwardRef, ForwardRefRenderFunction, memo, useEffect, useState } from "react";
 
 import CKEditor from "@/components/CKEditor";
 import { getCleanText } from "@/components/CKEditor/utils";
 import i18n from "@/i18n";
 import { IMSDK } from "@/layout/MainContentWrap";
+import emitter from "@/utils/events";
 
 import SendActionBar from "./SendActionBar";
 import { useFileMessage } from "./SendActionBar/useFileMessage";
@@ -32,6 +33,27 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const onChange = (value: string) => {
     setHtml(value);
   };
+
+  useEffect(() => {
+    const escapeHtml = (text: string) =>
+      text
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
+    const onAppend = (text: string) => {
+      if (!text) return;
+      const escaped = escapeHtml(text);
+      setHtml((prev) => `${prev}<pre><code>${escaped}</code></pre>`);
+    };
+
+    emitter.on("APPEND_CHAT_INPUT", onAppend);
+    return () => {
+      emitter.off("APPEND_CHAT_INPUT", onAppend);
+    };
+  }, []);
 
   const enterToSend = async () => {
     const cleanText = getCleanText(latestHtml.current ?? "");

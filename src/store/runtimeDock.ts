@@ -5,7 +5,6 @@ import {
   RuntimeDockStore,
   RuntimeEvent,
   RuntimeInstance,
-  RuntimeProfileID,
   RuntimeTranscriptItem,
 } from "./type";
 
@@ -76,28 +75,24 @@ const getTranscriptRoleFromEvent = (
   }
 };
 
-const toRuntimeProfileID = (profileID?: string): RuntimeProfileID => {
-  if (profileID === "opencode-terminal") return "opencode-terminal";
-  return "powershell-terminal";
-};
+const toRuntimeProfileID = () => "terminal" as const;
 
 const migrateAttachment = (attachment: RuntimeAttachment): RuntimeAttachment => {
   const legacyProfileID = attachment.runtimeProfileID as string;
-  const runtimeProfileID = toRuntimeProfileID(legacyProfileID);
-  const isLegacySmoke =
-    legacyProfileID === "opencode-local" || legacyProfileID === "shell-placeholder";
+  const runtimeProfileID = toRuntimeProfileID();
+  const isLegacySmoke = legacyProfileID !== "terminal";
 
   return {
     ...attachment,
     runtimeProfileID,
-    title: isLegacySmoke ? "PowerShell Terminal" : attachment.title,
+    title: isLegacySmoke ? "Terminal" : attachment.title,
     status:
       attachment.status === "running" ? "stopped" : attachment.status ?? "detached",
     transcript: isLegacySmoke
       ? [
           createTranscriptItem(
             "system",
-            "Migrated from the old local-model smoke adapter. Previous model-chat transcript was cleared because this attachment is now a terminal host.",
+            "Migrated from the old runtime adapter. Previous transcript was cleared because this attachment is now a pure terminal host.",
             Date.now(),
           ),
         ]
@@ -148,24 +143,23 @@ const persistState = (state: StoredRuntimeDockState) => {
 
 const createRuntimeAttachment = (
   conversationID: string,
-  profileID: RuntimeProfileID = "powershell-terminal",
+  profileID = "terminal" as const,
+  initialCommand?: string,
 ): RuntimeAttachment => {
   const now = Date.now();
-  const isOpencode = profileID === "opencode-terminal";
 
   return {
     id: `rt_att_${now}_${Math.random().toString(36).slice(2, 8)}`,
     conversationID,
     runtimeProfileID: profileID,
-    title: isOpencode ? "opencode Terminal" : "PowerShell Terminal",
+    initialCommand,
+    title: "Terminal",
     status: "detached",
     createdAt: now,
     transcript: [
       createTranscriptItem(
         "system",
-        isOpencode
-          ? "opencode terminal attached. Runtime config is owned by opencode; IM only hosts the terminal."
-          : "PowerShell terminal attached. Runtime CLIs manage their own config.",
+        "Terminal attached. OpenIM only hosts the terminal; CLI runtimes manage their own sessions/config.",
         now,
       ),
     ],
@@ -218,7 +212,8 @@ const saveAttachments = (
 const startRuntimeBridge = async (
   attachmentID: string,
   conversationID: string,
-  profileID: RuntimeProfileID,
+  profileID: "terminal",
+  command?: string,
 ) => {
   if (!window.electronAPI) {
     throw new Error("Terminal runtime requires the Electron app.");
@@ -228,6 +223,7 @@ const startRuntimeBridge = async (
     attachmentID,
     conversationID,
     profileID,
+    command,
   });
 };
 
@@ -280,19 +276,25 @@ export const useRuntimeDockStore = create<RuntimeDockStore>()((set) => ({
       return { panelOpen: open };
     });
   },
-  addRuntime: (conversationID, profileID = "powershell-terminal") => {
+  addRuntime: (conversationID, profileID = "terminal", initialCommand) => {
     if (!conversationID) return;
 
+    const attachment = createRuntimeAttachment(
+      conversationID,
+      profileID,
+      initialCommand,
+    );
     set((state) => {
       const nextAttachments = {
         ...state.attachmentsByConversation,
         [conversationID]: [
           ...(state.attachmentsByConversation[conversationID] ?? []),
-          createRuntimeAttachment(conversationID, profileID),
+          attachment,
         ],
       };
       return saveAttachments(state, nextAttachments);
     });
+    return attachment.id;
   },
   startRuntime: async (conversationID, attachmentID) => {
     set((state) => {
@@ -321,7 +323,8 @@ export const useRuntimeDockStore = create<RuntimeDockStore>()((set) => ({
       const instance = await startRuntimeBridge(
         attachmentID,
         conversationID,
-        attachment.runtimeProfileID,
+        "terminal",
+        attachment.initialCommand,
       );
       set((state) => {
         const nextAttachments = updateAttachment(

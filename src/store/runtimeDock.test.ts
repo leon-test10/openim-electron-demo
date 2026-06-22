@@ -11,7 +11,7 @@ const attachment: RuntimeAttachment =
   state.attachmentsByConversation[conversationID][0];
 
 attachment.runtimeProfileID satisfies RuntimeProfileID;
-if (attachment.runtimeProfileID !== "powershell-terminal") {
-  throw new Error("default runtime should be powershell-terminal");
+if (attachment.runtimeProfileID !== "terminal") {
+  throw new Error("default runtime should be terminal");
 }
 state.removeAttachment(conversationID, attachment.id);

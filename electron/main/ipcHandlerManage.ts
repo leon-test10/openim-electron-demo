@@ -12,6 +12,10 @@ import { IpcRenderToMain } from "../constants";
 import { getStore } from "./storeManage";
 import { changeLanguage } from "../i18n";
 import { runtimeManager } from "./runtimeManage";
+import {
+  getConversationWorkspaceDir,
+  writeFileToConversationWorkspace,
+} from "./workspaceManage";
 
 const store = getStore();
 
@@ -104,6 +108,13 @@ export const setIpcMainListener = () => {
   });
   ipcMain.handle(IpcRenderToMain.runtimeResize, (_, params) => {
     return runtimeManager.resize(params);
+  });
+
+  ipcMain.handle(IpcRenderToMain.workspaceGetConversationDir, (_, conversationID) => {
+    return getConversationWorkspaceDir(conversationID);
+  });
+  ipcMain.handle(IpcRenderToMain.workspaceWriteFile, (_, params) => {
+    return writeFileToConversationWorkspace(params);
   });
   ipcMain.on(IpcRenderToMain.getDataPath, (e, key: string) => {
     switch (key) {

@@ -2,25 +2,31 @@ import {
   ApiOutlined,
   ClearOutlined,
   CloseOutlined,
-  DeleteOutlined,
-  DownOutlined,
+  CopyOutlined,
+  ExportOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
-  SendOutlined,
   StopOutlined,
 } from "@ant-design/icons";
-import { Button, Dropdown, Empty, type MenuProps, Tag, Tooltip } from "antd";
+import {
+  type MessageItem as OIMMessageItem,
+  MessageType,
+  ViewType,
+} from "@openim/wasm-client-sdk";
+import { Button, Empty, Input, message, Modal, Tabs, Tag, Tooltip } from "antd";
 import dayjs from "dayjs";
 import { t } from "i18next";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore, useRuntimeDockStore } from "@/store";
 import { RuntimeAttachment } from "@/store/runtimeDock";
+import { emit } from "@/utils/events";
 
-import RuntimeTerminalSurface from "./TerminalSurface";
+import RuntimeTerminalSurface, { TerminalSurfaceApi } from "./TerminalSurface";
 
 const statusColor: Record<RuntimeAttachment["status"], string> = {
   detached: "default",
@@ -30,162 +36,27 @@ const statusColor: Record<RuntimeAttachment["status"], string> = {
   stopped: "warning",
 };
 
-const RuntimeTranscriptPanel = ({ attachment }: { attachment: RuntimeAttachment }) => {
-  const transcriptRef = useRef<HTMLDivElement>(null);
+const stripHtml = (value?: string) =>
+  (value ?? "")
+    .replace(/<\/p><p>/g, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .trim();
 
-  useEffect(() => {
-    const node = transcriptRef.current;
-    if (!node) return;
-    node.scrollTo({
-      top: node.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [attachment.transcript]);
-
-  return (
-    <div
-      ref={transcriptRef}
-      className="max-h-64 select-text space-y-2 overflow-y-auto rounded border border-[#1e293b] bg-[#020817] px-3 py-3 font-mono text-xs leading-5 text-[#e2e8f0] shadow-inner"
-    >
-      {attachment.transcript.length === 0 ? (
-        <div className="text-[11px] text-[#94a3b8]">
-          {t("runtimeDock.transcriptEmpty")}
-        </div>
-      ) : (
-        attachment.transcript.map((item) => (
-          <div key={item.id}>
-            <div className="mb-1 flex items-center justify-between text-[11px] text-[#94a3b8]">
-              <span>{item.role}</span>
-              <span>{dayjs(item.createdAt).format("HH:mm:ss")}</span>
-            </div>
-            <div
-              className={
-                item.role === "stderr"
-                  ? "whitespace-pre-wrap break-words text-[#fca5a5]"
-                  : item.role === "system"
-                  ? "whitespace-pre-wrap break-words text-[#fde68a]"
-                  : item.role === "input"
-                  ? "whitespace-pre-wrap break-words text-[#7dd3fc]"
-                  : "whitespace-pre-wrap break-words text-[#e2e8f0]"
-              }
-            >
-              {item.content}
-            </div>
-          </div>
-        ))
-      )}
-    </div>
-  );
-};
-
-const RuntimeInputBox = ({
-  attachment,
-  conversationID,
-}: {
-  attachment: RuntimeAttachment;
-  conversationID: string;
-}) => {
-  const [input, setInput] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const [draftInput, setDraftInput] = useState("");
-  const writeInput = useRuntimeDockStore((state) => state.writeInput);
-  const disabled = attachment.status !== "running" || submitting;
-  const placeholder =
-    attachment.runtimeProfileID === "opencode-terminal"
-      ? t("runtimeDock.inputPlaceholderOpencode")
-      : t("runtimeDock.inputPlaceholderPowerShell");
-  const promptLabel =
-    attachment.runtimeProfileID === "opencode-terminal" ? "opencode>" : "PS>";
-
-  const onSend = async () => {
-    const command = input.trim();
-    if (!command) return;
-    setSubmitting(true);
-    try {
-      await writeInput(conversationID, attachment.id, `${command}\r\n`);
-      setHistory((previous) =>
-        previous[previous.length - 1] === command ? previous : [...previous, command],
-      );
-      setHistoryIndex(-1);
-      setDraftInput("");
-      setInput("");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="mt-3 space-y-2">
-      <div className="flex items-center gap-2 rounded border border-[#1e293b] bg-[#020817] px-3 py-2 font-mono text-sm text-[#e2e8f0]">
-        <span className="shrink-0 text-[#7dd3fc]">{promptLabel}</span>
-        <input
-          value={input}
-          disabled={attachment.status !== "running"}
-          placeholder={placeholder}
-          className="w-full border-0 bg-transparent text-sm text-[#e2e8f0] outline-none placeholder:text-[#64748b]"
-          onChange={(event) => setInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              void onSend();
-              return;
-            }
-
-            if (event.key === "ArrowUp") {
-              if (!history.length) return;
-              event.preventDefault();
-              if (historyIndex === -1) {
-                setDraftInput(input);
-                setHistoryIndex(history.length - 1);
-                setInput(history[history.length - 1]);
-                return;
-              }
-
-              const nextIndex = Math.max(historyIndex - 1, 0);
-              setHistoryIndex(nextIndex);
-              setInput(history[nextIndex]);
-              return;
-            }
-
-            if (event.key === "ArrowDown") {
-              if (historyIndex === -1) return;
-              event.preventDefault();
-              if (historyIndex >= history.length - 1) {
-                setHistoryIndex(-1);
-                setInput(draftInput);
-                return;
-              }
-
-              const nextIndex = historyIndex + 1;
-              setHistoryIndex(nextIndex);
-              setInput(history[nextIndex]);
-            }
-          }}
-        />
-      </div>
-      <div className="flex items-center justify-between text-[11px] text-[var(--sub-text)]">
-        <span>{t("runtimeDock.commandHint")}</span>
-        <span>
-          {history.length > 0
-            ? t("runtimeDock.historyHint", { count: history.length })
-            : t("runtimeDock.readyHint")}
-        </span>
-      </div>
-      <Button
-        block
-        size="small"
-        type="primary"
-        icon={<SendOutlined rev={undefined} />}
-        disabled={disabled || !input.trim()}
-        loading={submitting}
-        onClick={onSend}
-      >
-        {t("runtimeDock.sendInput")}
-      </Button>
-    </div>
-  );
+const formatMessageAsMarkdown = (msg: OIMMessageItem) => {
+  const timestamp = msg.sendTime
+    ? dayjs(msg.sendTime).format("YYYY-MM-DD HH:mm:ss")
+    : "";
+  const sender = msg.senderNickname ?? msg.sendID ?? "unknown";
+  if (msg.contentType === MessageType.TextMessage) {
+    return `- ${timestamp} **${sender}**: ${stripHtml(msg.textElem?.content)}`;
+  }
+  if (msg.contentType === MessageType.PictureMessage) {
+    const url =
+      msg.pictureElem?.snapshotPicture?.url ?? msg.pictureElem?.sourcePicture?.url;
+    return `- ${timestamp} **${sender}**: [image] ${url ?? ""}`.trim();
+  }
+  return `- ${timestamp} **${sender}**: [type=${msg.contentType}]`;
 };
 
 const RuntimeDock = () => {
@@ -211,19 +82,26 @@ const RuntimeDock = () => {
     ? attachmentsByConversation[conversationID] ?? []
     : [];
   const terminalAvailable = Boolean(window.electronAPI);
-  const addRuntimeMenuItems = useMemo<MenuProps["items"]>(
-    () => [
-      {
-        key: "powershell-terminal",
-        label: t("runtimeDock.profilePowerShell"),
-      },
-      {
-        key: "opencode-terminal",
-        label: t("runtimeDock.profileOpencode"),
-      },
-    ],
-    [],
+  const terminalApisRef = useRef<Map<string, TerminalSurfaceApi>>(new Map());
+  const [activeKey, setActiveKey] = useState<string | undefined>(undefined);
+  const [commandModalOpen, setCommandModalOpen] = useState(false);
+  const [commandText, setCommandText] = useState("");
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createCommand, setCreateCommand] = useState("");
+  const [lastExportRelativePath, setLastExportRelativePath] = useState<string | null>(
+    null,
   );
+
+  const activeAttachment = useMemo(
+    () => attachments.find((item) => item.id === activeKey) ?? attachments[0],
+    [attachments, activeKey],
+  );
+
+  useEffect(() => {
+    if (!activeKey && attachments.length > 0) {
+      setActiveKey(attachments[0].id);
+    }
+  }, [activeKey, attachments]);
 
   useEffect(() => {
     if (!window.electronAPI) return undefined;
@@ -232,9 +110,108 @@ const RuntimeDock = () => {
 
   if (!panelOpen) return null;
 
-  const onAddRuntimeMenuClick: MenuProps["onClick"] = ({ key }) => {
+  const ensureConversationWorkspace = async () => {
+    if (!conversationID || !window.electronAPI) return undefined;
+    return window.electronAPI.ipcInvoke<string>(
+      "workspace:getConversationDir",
+      conversationID,
+    );
+  };
+
+  const onCreateTerminal = async () => {
     if (!conversationID) return;
-    addRuntime(conversationID, key as RuntimeAttachment["runtimeProfileID"]);
+    const newID = addRuntime(
+      conversationID,
+      "terminal",
+      createCommand.trim() || undefined,
+    );
+    setCreateModalOpen(false);
+    setCreateCommand("");
+    if (!newID) return;
+    setActiveKey(newID);
+    await startRuntime(conversationID, newID);
+  };
+
+  const onRunCommand = async () => {
+    if (!conversationID || !activeAttachment) return;
+    setCommandModalOpen(false);
+    if (!commandText.trim()) return;
+    await useRuntimeDockStore
+      .getState()
+      .writeInput(conversationID, activeAttachment.id, `${commandText.trim()}\r\n`);
+    setCommandText("");
+  };
+
+  const exportRecentHistory = async () => {
+    if (!conversationID || !window.electronAPI) return;
+    const workspaceDir = await ensureConversationWorkspace();
+    if (!workspaceDir) return;
+
+    const { data } = await IMSDK.getAdvancedHistoryMessageList({
+      count: 50,
+      startClientMsgID: "",
+      conversationID,
+      viewType: ViewType.History,
+    });
+    const lines = [
+      `# OpenIM history export`,
+      ``,
+      `- conversationID: \`${conversationID}\``,
+      `- exportedAt: ${dayjs().format("YYYY-MM-DD HH:mm:ss")}`,
+      `- workspace: \`${workspaceDir}\``,
+      ``,
+      `## Messages`,
+      ``,
+      ...data.messageList.map(formatMessageAsMarkdown),
+      ``,
+    ];
+    const filename = `im-history-${dayjs().format("YYYYMMDD-HHmmss")}.md`;
+    const relativePath = `history/${filename}`;
+    await window.electronAPI.ipcInvoke("workspace:writeFile", {
+      conversationID,
+      relativePath,
+      content: lines.join("\n"),
+    });
+    setLastExportRelativePath(relativePath);
+    message.success(t("runtimeDock.exportSuccess"));
+  };
+
+  const copyContextPrompt = async () => {
+    if (!conversationID) return;
+    const workspaceDir = await ensureConversationWorkspace();
+    if (!workspaceDir) return;
+    const historyRef = lastExportRelativePath
+      ? `./${lastExportRelativePath}`
+      : "(run Export first)";
+    const prompt = [
+      `# Context`,
+      ``,
+      `You are running in this workspace directory:`,
+      ``,
+      `- Workspace: ${workspaceDir}`,
+      ``,
+      `Recent IM history is exported as:`,
+      ``,
+      `- ${historyRef}`,
+      ``,
+      `Notes: OpenIM is only providing a terminal + workspace + exported files. The CLI runtime should manage its own session, tools, permissions, memory, etc.`,
+      ``,
+    ].join("\n");
+    await navigator.clipboard.writeText(prompt);
+    message.success(t("runtimeDock.copied"));
+  };
+
+  const copySelectionToChatInput = async () => {
+    if (!activeAttachment) return;
+    const api = terminalApisRef.current.get(activeAttachment.id);
+    const selection = api?.getSelectionText().trim();
+    if (!selection) {
+      message.info(t("runtimeDock.noSelection"));
+      return;
+    }
+    await navigator.clipboard.writeText(selection);
+    emit("APPEND_CHAT_INPUT", selection);
+    message.success(t("runtimeDock.selectionAdded"));
   };
 
   return (
@@ -259,30 +236,32 @@ const RuntimeDock = () => {
         </Tooltip>
       </div>
 
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--gap-text)] px-4 py-3">
-        <div>
-          <div className="text-xs text-[var(--sub-text)]">
-            {t("runtimeDock.attachments")}
-          </div>
-          <div className="text-lg font-semibold">{attachments.length}</div>
-        </div>
-        <Dropdown
-          menu={{
-            items: addRuntimeMenuItems,
-            onClick: onAddRuntimeMenuClick,
-          }}
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--gap-text)] px-4 py-3">
+        <Button
+          type="primary"
+          size="small"
+          icon={<PlusOutlined rev={undefined} />}
           disabled={!conversationID || !terminalAvailable}
-          trigger={["click"]}
+          onClick={() => setCreateModalOpen(true)}
         >
-          <Button
-            type="primary"
-            size="small"
-            icon={<PlusOutlined rev={undefined} />}
-            disabled={!conversationID || !terminalAvailable}
-          >
-            {t("runtimeDock.addRuntime")} <DownOutlined rev={undefined} />
-          </Button>
-        </Dropdown>
+          {t("runtimeDock.newTerminal")}
+        </Button>
+        <Button
+          size="small"
+          icon={<ExportOutlined rev={undefined} />}
+          disabled={!conversationID || !terminalAvailable}
+          onClick={() => void exportRecentHistory()}
+        >
+          {t("runtimeDock.exportHistory")}
+        </Button>
+        <Button
+          size="small"
+          icon={<CopyOutlined rev={undefined} />}
+          disabled={!conversationID || !terminalAvailable}
+          onClick={() => void copyContextPrompt()}
+        >
+          {t("runtimeDock.copyContext")}
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -291,125 +270,164 @@ const RuntimeDock = () => {
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={t("runtimeDock.noConversation")}
           />
+        ) : !terminalAvailable ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={t("runtimeDock.electronRequired")}
+          />
         ) : attachments.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={
-                terminalAvailable
-                  ? t("runtimeDock.noRuntime")
-                  : t("runtimeDock.electronRequired")
-              }
+              description={t("runtimeDock.noRuntime")}
             />
             <Button
               type="primary"
               icon={<PlusOutlined rev={undefined} />}
               disabled={!terminalAvailable}
-              onClick={() => {
-                if (!conversationID) return;
-                addRuntime(conversationID, "powershell-terminal");
-              }}
+              onClick={() => setCreateModalOpen(true)}
             >
-              {t("runtimeDock.addRuntime")}
+              {t("runtimeDock.newTerminal")}
             </Button>
           </div>
         ) : (
-          <div className="space-y-3">
-            {attachments.map((attachment) => (
-              <div
-                key={attachment.id}
-                className="rounded-md border border-[var(--gap-text)] bg-[var(--gap-text)] p-3 dark:bg-[#262626]"
-              >
-                <div className="mb-2 flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">
-                      {attachment.title}
-                    </div>
-                    <div className="truncate text-xs text-[var(--sub-text)]">
-                      {attachment.runtimeProfileID}
-                    </div>
-                  </div>
-                  <Tooltip title={t("placeholder.remove")}>
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<DeleteOutlined rev={undefined} />}
-                      onClick={() => removeAttachment(conversationID, attachment.id)}
-                    />
-                  </Tooltip>
-                </div>
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <Tag color={statusColor[attachment.status]}>{attachment.status}</Tag>
+          <>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              {activeAttachment && (
+                <>
+                  <Tag color={statusColor[activeAttachment.status]}>
+                    {activeAttachment.status}
+                  </Tag>
                   <span className="text-xs text-[var(--sub-text)]">
-                    {dayjs(attachment.createdAt).format("YYYY-MM-DD HH:mm")}
+                    {dayjs(activeAttachment.createdAt).format("YYYY-MM-DD HH:mm")}
                   </span>
-                </div>
-                <div className="mb-3 flex flex-wrap gap-2">
                   <Button
                     size="small"
                     icon={<PlayCircleOutlined rev={undefined} />}
                     disabled={
-                      !terminalAvailable ||
-                      attachment.status === "running" ||
-                      attachment.status === "starting"
+                      activeAttachment.status === "running" ||
+                      activeAttachment.status === "starting"
                     }
-                    onClick={() => startRuntime(conversationID, attachment.id)}
+                    onClick={() => startRuntime(conversationID, activeAttachment.id)}
                   >
                     {t("runtimeDock.start")}
                   </Button>
                   <Button
                     size="small"
                     icon={<ReloadOutlined rev={undefined} />}
-                    disabled={!terminalAvailable || attachment.status === "starting"}
-                    onClick={() => startRuntime(conversationID, attachment.id)}
+                    disabled={activeAttachment.status === "starting"}
+                    onClick={() => startRuntime(conversationID, activeAttachment.id)}
                   >
                     {t("runtimeDock.restart")}
                   </Button>
                   <Button
                     size="small"
                     icon={<PauseCircleOutlined rev={undefined} />}
-                    disabled={!terminalAvailable || attachment.status !== "running"}
-                    onClick={() => interruptRuntime(conversationID, attachment.id)}
+                    disabled={activeAttachment.status !== "running"}
+                    onClick={() =>
+                      interruptRuntime(conversationID, activeAttachment.id)
+                    }
                   >
                     {t("runtimeDock.interrupt")}
                   </Button>
                   <Button
                     size="small"
                     icon={<StopOutlined rev={undefined} />}
-                    disabled={!terminalAvailable || attachment.status !== "running"}
-                    onClick={() => stopRuntime(conversationID, attachment.id)}
+                    disabled={activeAttachment.status !== "running"}
+                    onClick={() => stopRuntime(conversationID, activeAttachment.id)}
                   >
                     {t("runtimeDock.stop")}
                   </Button>
                   <Button
                     size="small"
                     icon={<ClearOutlined rev={undefined} />}
-                    onClick={() => clearTranscript(conversationID, attachment.id)}
+                    onClick={() => clearTranscript(conversationID, activeAttachment.id)}
                   >
                     {t("runtimeDock.clearTranscript")}
                   </Button>
-                </div>
-                {attachment.lastError && (
-                  <div className="mb-3 rounded bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-950/40">
-                    {attachment.lastError}
-                  </div>
-                )}
-                {terminalAvailable ? (
-                  <RuntimeTerminalSurface attachment={attachment} />
-                ) : (
-                  <>
-                    <RuntimeTranscriptPanel attachment={attachment} />
-                    <RuntimeInputBox
-                      attachment={attachment}
-                      conversationID={conversationID}
-                    />
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
+                  <Button
+                    size="small"
+                    icon={<CopyOutlined rev={undefined} />}
+                    onClick={() => void copySelectionToChatInput()}
+                  >
+                    {t("runtimeDock.copySelection")}
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<ExportOutlined rev={undefined} />}
+                    onClick={() => setCommandModalOpen(true)}
+                  >
+                    {t("runtimeDock.runCommand")}
+                  </Button>
+                </>
+              )}
+            </div>
+            <Tabs
+              activeKey={activeKey}
+              onChange={(key) => setActiveKey(key)}
+              type="editable-card"
+              hideAdd
+              onEdit={(targetKey, action) => {
+                if (action !== "remove") return;
+                const id = String(targetKey);
+                removeAttachment(conversationID, id);
+                terminalApisRef.current.delete(id);
+                if (activeKey === id) setActiveKey(undefined);
+              }}
+              items={attachments.map((attachment, index) => ({
+                key: attachment.id,
+                label: `${t("runtimeDock.terminalTab")} ${index + 1}`,
+                children: (
+                  <RuntimeTerminalSurface
+                    attachment={attachment}
+                    onReady={(attachmentID, api) => {
+                      if (!api) {
+                        terminalApisRef.current.delete(attachmentID);
+                        return;
+                      }
+                      terminalApisRef.current.set(attachmentID, api);
+                    }}
+                  />
+                ),
+              }))}
+            />
+          </>
         )}
       </div>
+
+      <Modal
+        title={t("runtimeDock.newTerminal")}
+        open={createModalOpen}
+        onCancel={() => setCreateModalOpen(false)}
+        onOk={() => void onCreateTerminal()}
+        okButtonProps={{ disabled: !conversationID }}
+      >
+        <div className="text-xs text-[var(--sub-text)]">
+          {t("runtimeDock.newTerminalHint")}
+        </div>
+        <Input
+          className="mt-2"
+          placeholder={t("runtimeDock.initialCommandPlaceholder")}
+          value={createCommand}
+          onChange={(e) => setCreateCommand(e.target.value)}
+          onPressEnter={() => void onCreateTerminal()}
+        />
+      </Modal>
+
+      <Modal
+        title={t("runtimeDock.runCommand")}
+        open={commandModalOpen}
+        onCancel={() => setCommandModalOpen(false)}
+        onOk={() => void onRunCommand()}
+        okButtonProps={{ disabled: !activeAttachment || !commandText.trim() }}
+      >
+        <Input.TextArea
+          rows={4}
+          placeholder={t("runtimeDock.runCommandPlaceholder")}
+          value={commandText}
+          onChange={(e) => setCommandText(e.target.value)}
+        />
+      </Modal>
     </aside>
   );
 };

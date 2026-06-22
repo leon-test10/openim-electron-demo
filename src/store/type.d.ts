@@ -122,6 +122,7 @@ export interface RuntimeAttachment {
   id: string;
   conversationID: string;
   runtimeProfileID: RuntimeProfileID;
+  initialCommand?: string;
   title: string;
   status: RuntimeAttachmentStatus;
   createdAt: number;
@@ -135,7 +136,11 @@ export interface RuntimeDockStore {
   attachmentsByConversation: Record<string, RuntimeAttachment[]>;
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
-  addRuntime: (conversationID: string, profileID?: RuntimeProfileID) => void;
+  addRuntime: (
+    conversationID: string,
+    profileID?: RuntimeProfileID,
+    initialCommand?: string,
+  ) => string | undefined;
   startRuntime: (conversationID: string, attachmentID: string) => Promise<void>;
   interruptRuntime: (conversationID: string, attachmentID: string) => Promise<void>;
   stopRuntime: (conversationID: string, attachmentID: string) => Promise<void>;

@@ -14,6 +14,8 @@ type EmitterEvents = {
   PUSH_NEW_MSG: MessageItem;
   UPDATE_ONE_MSG: MessageItem;
 
+  APPEND_CHAT_INPUT: string;
+
   SELECT_USER: SelectUserParams;
 };
 

@@ -1,10 +1,10 @@
-import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
 import { WebContents } from "electron";
 import { spawn as spawnPty, type IPty } from "node-pty";
 
 import { IpcMainToRender } from "../constants";
+import { getConversationWorkspaceDir } from "./workspaceManage";
 
 export type RuntimeInstanceStatus =
   | "detached"
@@ -22,7 +22,7 @@ export type RuntimeEventType =
   | "stopped";
 
 export interface RuntimeProfile {
-  id: "powershell-terminal" | "opencode-terminal";
+  id: "terminal";
   title: string;
   runtime: "terminal";
   shell: string;
@@ -60,78 +60,31 @@ interface ManagedRuntime {
   disposables: Array<{ dispose: () => void }>;
 }
 
-const getDefaultCwd = () => process.cwd();
+const getTerminalProfile = (cwd: string): RuntimeProfile => {
+  const isWin = process.platform === "win32";
+  const shell = isWin ? "powershell.exe" : "bash";
+  const args = isWin
+    ? ["-NoLogo", "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass"]
+    : ["-l"];
 
-const getOpencodeCwd = () => getDefaultCwd();
-
-const resolveExecutableOnPath = (command: string) => {
-  const result = spawnSync("where.exe", [command], {
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (result.status !== 0) return undefined;
-
-  const candidates = result.stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  return (
-    candidates.find((candidate) => /\.(cmd|exe|bat)$/i.test(candidate) && existsSync(candidate)) ??
-    candidates.find((candidate) => existsSync(candidate))
-  );
-};
-
-const getOpencodeStartupCommand = (resolvedExecutable?: string) =>
-  resolvedExecutable
-    ? [
-        `Write-Host '[working directory] ${getOpencodeCwd()}'`,
-        `Write-Host '[starting opencode] ${resolvedExecutable}'`,
-        "opencode",
-      ].join("; ")
-    : [
-        `Write-Host '[working directory] ${getOpencodeCwd()}'`,
-        "Write-Host '[opencode CLI not found on PATH. Staying in hosted PowerShell mode.]'",
-      ].join("; ");
-
-const profiles: RuntimeProfile[] = [
-  {
-    id: "powershell-terminal",
-    title: "PowerShell Terminal",
+  return {
+    id: "terminal",
+    title: "Terminal",
     runtime: "terminal",
-    shell: "powershell.exe",
-    args: ["-NoLogo", "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass"],
-    cwd: getDefaultCwd(),
-    env: {
-      OPENAI_BASE_URL: "http://127.0.0.1:8080/v1",
-      OPENAI_API_KEY: "local",
-    },
-    description: "Generic PowerShell terminal. Runtime CLIs manage their own config.",
-  },
-  {
-    id: "opencode-terminal",
-    title: "opencode Terminal",
-    runtime: "terminal",
-    shell: "powershell.exe",
-    args: ["-NoLogo", "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass"],
-    cwd: getOpencodeCwd(),
-    env: {
-      OPENAI_BASE_URL: "http://127.0.0.1:8080/v1",
-      OPENAI_API_KEY: "local",
-    },
+    shell,
+    args,
+    cwd,
+    env: {},
     description:
-      "PowerShell terminal prepared for opencode. opencode owns provider/model config.",
-  },
-];
+      "VS Code-like terminal host. OpenIM does not manage agent runtime internals; users can run any CLI here.",
+  };
+};
 
 const runtimes = new Map<string, ManagedRuntime>();
 
 const getProfile = (profileID: RuntimeProfile["id"]) => {
-  const profile = profiles.find((item) => item.id === profileID);
-  if (!profile) {
-    throw new Error(`Unknown runtime profile: ${profileID}`);
-  }
-  return profile;
+  if (profileID !== "terminal") throw new Error(`Unknown runtime profile: ${profileID}`);
+  return getTerminalProfile(process.cwd());
 };
 
 const emitRuntimeEvent = (
@@ -157,33 +110,29 @@ const stopExistingRuntime = (attachmentID: string) => {
 };
 
 export const runtimeManager = {
-  listProfiles: () => profiles,
+  listProfiles: () => [getTerminalProfile(process.cwd())],
 
-  healthCheck: async (profileID: RuntimeProfile["id"]) => {
-    const profile = getProfile(profileID);
-    return {
-      ok: existsSync(profile.cwd),
-      profileID,
-      checkedAt: Date.now(),
-      message: existsSync(profile.cwd)
-        ? "Runtime cwd is available"
-        : `Runtime cwd does not exist: ${profile.cwd}`,
-    };
-  },
+  healthCheck: async () => ({
+    ok: true,
+    checkedAt: Date.now(),
+    message: "ok",
+  }),
 
   start: async (
     webContents: WebContents,
     params: {
       attachmentID: string;
       conversationID: string;
-      profileID: RuntimeProfile["id"];
+      profileID?: RuntimeProfile["id"];
+      command?: string;
     },
   ) => {
     stopExistingRuntime(params.attachmentID);
 
-    const profile = getProfile(params.profileID);
+    const workspaceCwd = await getConversationWorkspaceDir(params.conversationID);
+    const profile = getTerminalProfile(workspaceCwd);
     const now = Date.now();
-    const cwd = existsSync(profile.cwd) ? profile.cwd : getDefaultCwd();
+    const cwd = existsSync(profile.cwd) ? profile.cwd : process.cwd();
     const instance: RuntimeInstance = {
       id: params.attachmentID,
       conversationID: params.conversationID,
@@ -194,20 +143,11 @@ export const runtimeManager = {
     };
 
     try {
-      const resolvedOpencode =
-        profile.id === "opencode-terminal" ? resolveExecutableOnPath("opencode") : undefined;
-      const launchDirectOpencode = Boolean(
-        resolvedOpencode && profile.id === "opencode-terminal",
-      );
-      const startupCommand =
-        profile.id === "opencode-terminal" && !launchDirectOpencode
-          ? getOpencodeStartupCommand(resolvedOpencode)
-          : profile.startupCommand;
       const child = spawnPty(
-        launchDirectOpencode ? resolvedOpencode! : profile.shell,
-        launchDirectOpencode ? [] : profile.args,
+        profile.shell,
+        profile.args,
         {
-        cwd,
+          cwd,
           env: {
             ...process.env,
             ...profile.env,
@@ -233,14 +173,7 @@ export const runtimeManager = {
       runtimes.set(params.attachmentID, runtime);
       emitRuntimeEvent(runtime, {
         type: "started",
-        data:
-          profile.id === "opencode-terminal"
-            ? `${profile.title} started in ${cwd}\r\n${
-                resolvedOpencode
-                  ? `[opencode detected] ${resolvedOpencode}\r\n`
-                  : "[opencode CLI not found on PATH]\r\n"
-              }`
-            : `${profile.title} started in ${cwd}\r\n`,
+        data: `${profile.title} started in ${cwd}\r\n`,
       });
 
       runtime.disposables.push(
@@ -270,9 +203,8 @@ export const runtimeManager = {
         }),
       );
 
-      if (startupCommand) {
-        child.write(`${startupCommand}\r\n`);
-      }
+      if (profile.startupCommand) child.write(`${profile.startupCommand}\r\n`);
+      if (params.command) child.write(`${params.command}\r\n`);
 
       return runtime.instance;
     } catch (error) {

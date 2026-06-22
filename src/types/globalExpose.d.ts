@@ -32,7 +32,7 @@ export type RuntimeEventType =
   | "stopped";
 
 export interface RuntimeProfile {
-  id: "powershell-terminal" | "opencode-terminal";
+  id: "terminal";
   title: string;
   runtime: "terminal";
   shell: string;
