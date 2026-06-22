@@ -65,6 +65,38 @@ Git status for this update:
 - Local branch is saved; remote branch may still need another push when GitHub
   connectivity is stable.
 
+## Follow-up Fix - Terminal Surface Readability/Input
+
+Reason:
+
+- The xterm `onData` callback captured the initial tab status. When the tab was
+  created as `detached` and later became `running`, keyboard input was still
+  ignored by the stale closure.
+- The terminal theme used low-contrast ANSI blue on a dark VS Code background,
+  making the PowerShell prompt/path hard to read compared with native Windows
+  Terminal.
+- The Electron bridge injected a custom `Terminal started in ...` line, which
+  made startup look less like a native PowerShell session.
+
+Fix:
+
+- Track running state through a ref and update `disableStdin` whenever tab
+  status changes.
+- Focus xterm when it is opened/running.
+- Switch xterm to a Windows Terminal-like black theme with brighter ANSI blue
+  and larger font.
+- Remove the custom startup banner and let PowerShell render its own prompt.
+
+Verification:
+
+```bash
+npm.cmd run lint -- --quiet
+npx.cmd tsc --noEmit
+```
+
+Both passed. Electron manual typing verification still needs to be repeated in
+the running client.
+
 Known limits:
 
 - Old `RuntimeDock` files remain in the repo but are no longer referenced by

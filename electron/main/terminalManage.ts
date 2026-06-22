@@ -133,7 +133,6 @@ export const terminalManager = {
       terminals.set(params.tabID, terminal);
       emitTerminalEvent(terminal, {
         type: "started",
-        data: `Terminal started in ${cwd}\r\n`,
       });
 
       terminal.disposables.push(

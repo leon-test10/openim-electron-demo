@@ -26,6 +26,7 @@ const TerminalSurface = ({
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const renderedIdsRef = useRef<Set<string>>(new Set());
+  const runningRef = useRef(tab.status === "running");
   const outputSignature = useMemo(
     () => output.map((item) => item.id).join("|"),
     [output],
@@ -39,33 +40,33 @@ const TerminalSurface = ({
       cursorBlink: true,
       fontFamily:
         'Consolas, "Cascadia Mono", "Cascadia Code", "JetBrains Mono", monospace',
-      fontSize: 12,
-      lineHeight: 1.35,
+      fontSize: 14,
+      lineHeight: 1.25,
       convertEol: false,
       allowProposedApi: false,
       disableStdin: tab.status !== "running",
       theme: {
-        background: "#1e1e1e",
-        foreground: "#d4d4d4",
-        cursor: "#aeafad",
-        cursorAccent: "#1e1e1e",
+        background: "#0c0c0c",
+        foreground: "#cccccc",
+        cursor: "#f2f2f2",
+        cursorAccent: "#0c0c0c",
         selectionBackground: "#264f78",
         black: "#000000",
-        red: "#cd3131",
-        green: "#0dbc79",
-        yellow: "#e5e510",
-        blue: "#2472c8",
-        magenta: "#bc3fbc",
-        cyan: "#11a8cd",
-        white: "#e5e5e5",
-        brightBlack: "#666666",
-        brightRed: "#f14c4c",
-        brightGreen: "#23d18b",
-        brightYellow: "#f5f543",
-        brightBlue: "#3b8eea",
-        brightMagenta: "#d670d6",
-        brightCyan: "#29b8db",
-        brightWhite: "#e5e5e5",
+        red: "#c50f1f",
+        green: "#13a10e",
+        yellow: "#c19c00",
+        blue: "#3b78ff",
+        magenta: "#881798",
+        cyan: "#3a96dd",
+        white: "#cccccc",
+        brightBlack: "#767676",
+        brightRed: "#e74856",
+        brightGreen: "#16c60c",
+        brightYellow: "#f9f1a5",
+        brightBlue: "#7aa2ff",
+        brightMagenta: "#b4009e",
+        brightCyan: "#61d6d6",
+        brightWhite: "#f2f2f2",
       },
     });
     const fitAddon = new FitAddon();
@@ -100,7 +101,7 @@ const TerminalSurface = ({
     resizeObserver.observe(host);
 
     const dataDisposable = terminal.onData((data) => {
-      if (tab.status !== "running") return;
+      if (!runningRef.current) return;
       void useTerminalDockStore
         .getState()
         .writeToTab(tab.id, data)
@@ -110,6 +111,7 @@ const TerminalSurface = ({
     const focusListener = () => terminal.focus();
     host.addEventListener("click", focusListener);
     resize();
+    terminal.focus();
 
     return () => {
       host.removeEventListener("click", focusListener);
@@ -124,8 +126,13 @@ const TerminalSurface = ({
   }, [tab.id]);
 
   useEffect(() => {
-    terminalRef.current?.options &&
-      (terminalRef.current.options.disableStdin = tab.status !== "running");
+    runningRef.current = tab.status === "running";
+    if (terminalRef.current?.options) {
+      terminalRef.current.options.disableStdin = !runningRef.current;
+      if (runningRef.current) {
+        terminalRef.current.focus();
+      }
+    }
   }, [tab.status]);
 
   useEffect(() => {
