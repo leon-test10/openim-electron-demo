@@ -1,5 +1,10 @@
-import http from "node:http";
-import https from "node:https";
+import { spawn, ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+import { WebContents } from "electron";
+
+import { IpcMainToRender } from "../constants";
 
 export type RuntimeInstanceStatus =
   | "detached"
@@ -8,15 +13,24 @@ export type RuntimeInstanceStatus =
   | "error"
   | "stopped";
 
+export type RuntimeEventType =
+  | "started"
+  | "stdout"
+  | "stderr"
+  | "exit"
+  | "error"
+  | "stopped";
+
 export interface RuntimeProfile {
-  id: "opencode-local";
+  id: "powershell-terminal" | "opencode-terminal";
   title: string;
-  runtime: "opencode";
-  adapter: "openai-compatible-local";
-  baseURL: string;
-  model: string;
-  apiKey: string;
-  offlineBundleID: string;
+  runtime: "terminal";
+  shell: string;
+  args: string[];
+  cwd: string;
+  startupCommand?: string;
+  env: Record<string, string>;
+  description: string;
 }
 
 export interface RuntimeInstance {
@@ -29,33 +43,56 @@ export interface RuntimeInstance {
   lastError?: string;
 }
 
-interface ChatCompletionMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+export interface RuntimeEvent {
+  attachmentID: string;
+  type: RuntimeEventType;
+  data?: string;
+  exitCode?: number | null;
+  signal?: string | null;
+  timestamp: number;
 }
 
-interface ChatCompletionResponse {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
+interface ManagedRuntime {
+  instance: RuntimeInstance;
+  profile: RuntimeProfile;
+  child: ChildProcessWithoutNullStreams;
+  webContents: WebContents;
 }
+
+const getDefaultCwd = () => process.cwd();
 
 const profiles: RuntimeProfile[] = [
   {
-    id: "opencode-local",
-    title: "opencode-local",
-    runtime: "opencode",
-    adapter: "openai-compatible-local",
-    baseURL: "http://127.0.0.1:8080/v1",
-    model: "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
-    apiKey: "local",
-    offlineBundleID: "opencode-win-x64-local",
+    id: "powershell-terminal",
+    title: "PowerShell Terminal",
+    runtime: "terminal",
+    shell: "powershell.exe",
+    args: ["-NoLogo", "-NoExit", "-ExecutionPolicy", "Bypass"],
+    cwd: getDefaultCwd(),
+    env: {
+      OPENAI_BASE_URL: "http://127.0.0.1:8080/v1",
+      OPENAI_API_KEY: "local",
+    },
+    description: "Generic PowerShell terminal. Runtime CLIs manage their own config.",
+  },
+  {
+    id: "opencode-terminal",
+    title: "opencode Terminal",
+    runtime: "terminal",
+    shell: "powershell.exe",
+    args: ["-NoLogo", "-NoExit", "-ExecutionPolicy", "Bypass"],
+    cwd: getDefaultCwd(),
+    startupCommand: "opencode --version",
+    env: {
+      OPENAI_BASE_URL: "http://127.0.0.1:8080/v1",
+      OPENAI_API_KEY: "local",
+    },
+    description:
+      "PowerShell terminal prepared for opencode. opencode owns provider/model config.",
   },
 ];
 
-const instances = new Map<string, RuntimeInstance>();
+const runtimes = new Map<string, ManagedRuntime>();
 
 const getProfile = (profileID: RuntimeProfile["id"]) => {
   const profile = profiles.find((item) => item.id === profileID);
@@ -65,56 +102,30 @@ const getProfile = (profileID: RuntimeProfile["id"]) => {
   return profile;
 };
 
-const requestJSON = <T>(
-  url: string,
-  init?: {
-    method?: string;
-    headers?: Record<string, string>;
-    body?: string;
-    timeoutMs?: number;
-  },
-): Promise<T> => {
-  const target = new URL(url);
-  const transport = target.protocol === "https:" ? https : http;
+const emitRuntimeEvent = (
+  runtime: Pick<ManagedRuntime, "instance" | "webContents">,
+  event: Omit<RuntimeEvent, "attachmentID" | "timestamp">,
+) => {
+  if (runtime.webContents.isDestroyed()) return;
 
-  return new Promise((resolve, reject) => {
-    const req = transport.request(
-      target,
-      {
-        method: init?.method ?? "GET",
-        headers: init?.headers,
-        timeout: init?.timeoutMs ?? 30_000,
-      },
-      (res) => {
-        let raw = "";
-        res.setEncoding("utf8");
-        res.on("data", (chunk) => {
-          raw += chunk;
-        });
-        res.on("end", () => {
-          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
-            reject(new Error(`HTTP ${res.statusCode}: ${raw.slice(0, 500)}`));
-            return;
-          }
-          try {
-            resolve(JSON.parse(raw) as T);
-          } catch (error) {
-            reject(error);
-          }
-        });
-      },
-    );
+  runtime.webContents.send(IpcMainToRender.runtimeEvent, {
+    attachmentID: runtime.instance.id,
+    timestamp: Date.now(),
+    ...event,
+  } satisfies RuntimeEvent);
+};
 
-    req.on("timeout", () => {
-      req.destroy(new Error("Runtime request timed out"));
-    });
-    req.on("error", reject);
+const stopExistingRuntime = (attachmentID: string) => {
+  const runtime = runtimes.get(attachmentID);
+  if (!runtime) return;
 
-    if (init?.body) {
-      req.write(init.body);
-    }
-    req.end();
-  });
+  runtime.child.removeAllListeners();
+  runtime.child.stdout.removeAllListeners();
+  runtime.child.stderr.removeAllListeners();
+  if (!runtime.child.killed) {
+    runtime.child.kill();
+  }
+  runtimes.delete(attachmentID);
 };
 
 export const runtimeManager = {
@@ -122,21 +133,29 @@ export const runtimeManager = {
 
   healthCheck: async (profileID: RuntimeProfile["id"]) => {
     const profile = getProfile(profileID);
-    await requestJSON(`${profile.baseURL}/models`, { timeoutMs: 5_000 });
     return {
-      ok: true,
+      ok: existsSync(profile.cwd),
       profileID,
       checkedAt: Date.now(),
+      message: existsSync(profile.cwd)
+        ? "Runtime cwd is available"
+        : `Runtime cwd does not exist: ${profile.cwd}`,
     };
   },
 
-  start: async (params: {
-    attachmentID: string;
-    conversationID: string;
-    profileID: RuntimeProfile["id"];
-  }) => {
+  start: async (
+    webContents: WebContents,
+    params: {
+      attachmentID: string;
+      conversationID: string;
+      profileID: RuntimeProfile["id"];
+    },
+  ) => {
+    stopExistingRuntime(params.attachmentID);
+
     const profile = getProfile(params.profileID);
     const now = Date.now();
+    const cwd = existsSync(profile.cwd) ? profile.cwd : getDefaultCwd();
     const instance: RuntimeInstance = {
       id: params.attachmentID,
       conversationID: params.conversationID,
@@ -145,90 +164,116 @@ export const runtimeManager = {
       createdAt: now,
       updatedAt: now,
     };
-    instances.set(params.attachmentID, instance);
 
     try {
-      await runtimeManager.healthCheck(profile.id);
-      const runningInstance = {
-        ...instance,
-        status: "running" as const,
-        updatedAt: Date.now(),
+      const child = spawn(profile.shell, profile.args, {
+        cwd,
+        env: {
+          ...process.env,
+          ...profile.env,
+        },
+      });
+      const runtime: ManagedRuntime = {
+        instance: {
+          ...instance,
+          status: "running",
+          updatedAt: Date.now(),
+        },
+        profile,
+        child,
+        webContents,
       };
-      instances.set(params.attachmentID, runningInstance);
-      return runningInstance;
+
+      runtimes.set(params.attachmentID, runtime);
+      emitRuntimeEvent(runtime, {
+        type: "started",
+        data: `${profile.title} started in ${cwd}\r\n`,
+      });
+
+      child.stdout.on("data", (chunk) => {
+        emitRuntimeEvent(runtime, {
+          type: "stdout",
+          data: chunk.toString(),
+        });
+      });
+      child.stderr.on("data", (chunk) => {
+        emitRuntimeEvent(runtime, {
+          type: "stderr",
+          data: chunk.toString(),
+        });
+      });
+      child.on("error", (error) => {
+        runtime.instance = {
+          ...runtime.instance,
+          status: "error",
+          updatedAt: Date.now(),
+          lastError: error.message,
+        };
+        emitRuntimeEvent(runtime, {
+          type: "error",
+          data: error.message,
+        });
+      });
+      child.on("exit", (exitCode, signal) => {
+        runtime.instance = {
+          ...runtime.instance,
+          status: "stopped",
+          updatedAt: Date.now(),
+        };
+        emitRuntimeEvent(runtime, {
+          type: "exit",
+          exitCode,
+          signal,
+          data: `\r\n[process exited: code=${exitCode ?? "null"} signal=${
+            signal ?? "null"
+          }]\r\n`,
+        });
+        runtimes.delete(params.attachmentID);
+      });
+
+      if (profile.startupCommand) {
+        child.stdin.write(`${profile.startupCommand}\r\n`);
+      }
+
+      return runtime.instance;
     } catch (error) {
-      const failedInstance = {
+      return {
         ...instance,
         status: "error" as const,
         updatedAt: Date.now(),
         lastError: error instanceof Error ? error.message : String(error),
       };
-      instances.set(params.attachmentID, failedInstance);
-      return failedInstance;
     }
+  },
+
+  writeInput: async (params: { attachmentID: string; input: string }) => {
+    const runtime = runtimes.get(params.attachmentID);
+    if (!runtime) {
+      throw new Error("Runtime terminal is not running");
+    }
+
+    runtime.child.stdin.write(params.input);
+    return {
+      ok: true,
+      attachmentID: params.attachmentID,
+      writtenAt: Date.now(),
+    };
   },
 
   stop: async (attachmentID: string) => {
-    const current = instances.get(attachmentID);
-    if (!current) return undefined;
+    const runtime = runtimes.get(attachmentID);
+    if (!runtime) return undefined;
 
-    const stoppedInstance = {
-      ...current,
-      status: "stopped" as const,
-      updatedAt: Date.now(),
-    };
-    instances.set(attachmentID, stoppedInstance);
-    return stoppedInstance;
-  },
-
-  sendPrompt: async (params: { attachmentID: string; prompt: string }) => {
-    const instance = instances.get(params.attachmentID);
-    if (!instance) {
-      throw new Error("Runtime instance is not started");
-    }
-    if (instance.status !== "running") {
-      throw new Error(`Runtime instance is ${instance.status}`);
-    }
-
-    const profile = getProfile(instance.profileID);
-    const messages: ChatCompletionMessage[] = [
-      {
-        role: "system",
-        content:
-          "You are the opencode-local runtime smoke adapter inside OpenIM. Reply concisely.",
-      },
-      {
-        role: "user",
-        content: params.prompt,
-      },
-    ];
-    const response = await requestJSON<ChatCompletionResponse>(
-      `${profile.baseURL}/chat/completions`,
-      {
-        method: "POST",
-        timeoutMs: 120_000,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${profile.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: profile.model,
-          messages,
-          temperature: 0,
-          max_tokens: 512,
-        }),
-      },
-    );
-
-    const output = response.choices?.[0]?.message?.content?.trim();
-    if (!output) {
-      throw new Error("Runtime returned an empty response");
-    }
+    emitRuntimeEvent(runtime, {
+      type: "stopped",
+      data: "\r\n[terminal stopped]\r\n",
+    });
+    stopExistingRuntime(attachmentID);
 
     return {
-      attachmentID: params.attachmentID,
-      output,
-      completedAt: Date.now(),
+      ...runtime.instance,
+      status: "stopped" as const,
+      updatedAt: Date.now(),
     };
   },
 };

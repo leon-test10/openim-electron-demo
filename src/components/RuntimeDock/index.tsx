@@ -11,7 +11,7 @@ import {
 import { Button, Empty, Input, Tag, Tooltip } from "antd";
 import dayjs from "dayjs";
 import { t } from "i18next";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { useConversationStore, useRuntimeDockStore } from "@/store";
@@ -27,32 +27,38 @@ const statusColor: Record<RuntimeAttachment["status"], string> = {
   stopped: "warning",
 };
 
-const RuntimePromptBox = ({
+const RuntimeInputBox = ({
   attachment,
   conversationID,
 }: {
   attachment: RuntimeAttachment;
   conversationID: string;
 }) => {
-  const [prompt, setPrompt] = useState("Reply with READY only.");
+  const [input, setInput] = useState("echo READY");
   const [submitting, setSubmitting] = useState(false);
-  const sendPrompt = useRuntimeDockStore((state) => state.sendPrompt);
+  const writeInput = useRuntimeDockStore((state) => state.writeInput);
   const disabled = attachment.status !== "running" || submitting;
 
   const onSend = async () => {
-    if (!prompt.trim()) return;
+    if (!input.trim()) return;
     setSubmitting(true);
-    await sendPrompt(conversationID, attachment.id, prompt);
+    await writeInput(conversationID, attachment.id, `${input}\r\n`);
     setSubmitting(false);
   };
 
   return (
     <div className="mt-3 space-y-2">
       <TextArea
-        value={prompt}
+        value={input}
         rows={2}
         disabled={attachment.status !== "running"}
-        onChange={(event) => setPrompt(event.target.value)}
+        onChange={(event) => setInput(event.target.value)}
+        onPressEnter={(event) => {
+          if (!event.shiftKey) {
+            event.preventDefault();
+            void onSend();
+          }
+        }}
       />
       <Button
         block
@@ -63,7 +69,7 @@ const RuntimePromptBox = ({
         loading={submitting}
         onClick={onSend}
       >
-        {t("runtimeDock.sendPrompt")}
+        {t("runtimeDock.sendInput")}
       </Button>
     </div>
   );
@@ -82,18 +88,29 @@ const RuntimeDock = () => {
   const addRuntime = useRuntimeDockStore((state) => state.addRuntime);
   const startRuntime = useRuntimeDockStore((state) => state.startRuntime);
   const stopRuntime = useRuntimeDockStore((state) => state.stopRuntime);
+  const handleRuntimeEvent = useRuntimeDockStore((state) => state.handleRuntimeEvent);
   const removeAttachment = useRuntimeDockStore((state) => state.removeAttachment);
 
   const conversationID = currentConversation?.conversationID ?? routeConversationID;
   const attachments = conversationID
     ? attachmentsByConversation[conversationID] ?? []
     : [];
+  const terminalAvailable = Boolean(window.electronAPI);
+  const defaultProfileID = useMemo(
+    () => (terminalAvailable ? "powershell-terminal" : undefined),
+    [terminalAvailable],
+  );
+
+  useEffect(() => {
+    if (!window.electronAPI) return undefined;
+    return window.electronAPI.subscribe("runtime:event", handleRuntimeEvent);
+  }, [handleRuntimeEvent]);
 
   if (!panelOpen) return null;
 
   const onAddRuntime = () => {
     if (!conversationID) return;
-    addRuntime(conversationID);
+    addRuntime(conversationID, defaultProfileID);
   };
 
   return (
@@ -129,7 +146,7 @@ const RuntimeDock = () => {
           type="primary"
           size="small"
           icon={<PlusOutlined rev={undefined} />}
-          disabled={!conversationID}
+          disabled={!conversationID || !terminalAvailable}
           onClick={onAddRuntime}
         >
           {t("runtimeDock.addRuntime")}
@@ -146,11 +163,16 @@ const RuntimeDock = () => {
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t("runtimeDock.noRuntime")}
+              description={
+                terminalAvailable
+                  ? t("runtimeDock.noRuntime")
+                  : t("runtimeDock.electronRequired")
+              }
             />
             <Button
               type="primary"
               icon={<PlusOutlined rev={undefined} />}
+              disabled={!terminalAvailable}
               onClick={onAddRuntime}
             >
               {t("runtimeDock.addRuntime")}
@@ -192,6 +214,7 @@ const RuntimeDock = () => {
                     size="small"
                     icon={<PlayCircleOutlined rev={undefined} />}
                     disabled={
+                      !terminalAvailable ||
                       attachment.status === "running" ||
                       attachment.status === "starting"
                     }
@@ -202,7 +225,7 @@ const RuntimeDock = () => {
                   <Button
                     size="small"
                     icon={<ReloadOutlined rev={undefined} />}
-                    disabled={attachment.status === "starting"}
+                    disabled={!terminalAvailable || attachment.status === "starting"}
                     onClick={() => startRuntime(conversationID, attachment.id)}
                   >
                     {t("runtimeDock.restart")}
@@ -210,7 +233,7 @@ const RuntimeDock = () => {
                   <Button
                     size="small"
                     icon={<StopOutlined rev={undefined} />}
-                    disabled={attachment.status !== "running"}
+                    disabled={!terminalAvailable || attachment.status !== "running"}
                     onClick={() => stopRuntime(conversationID, attachment.id)}
                   >
                     {t("runtimeDock.stop")}
@@ -221,20 +244,28 @@ const RuntimeDock = () => {
                     {attachment.lastError}
                   </div>
                 )}
-                <div className="max-h-56 space-y-2 overflow-y-auto rounded bg-white px-3 py-2 text-xs dark:bg-[#1f1f1f]">
+                <div className="max-h-64 space-y-2 overflow-y-auto rounded bg-[#0f172a] px-3 py-2 font-mono text-xs text-slate-100">
                   {attachment.transcript.map((item) => (
                     <div key={item.id}>
-                      <div className="mb-1 flex items-center justify-between text-[11px] text-[var(--sub-text)]">
+                      <div className="mb-1 flex items-center justify-between text-[11px] text-slate-400">
                         <span>{item.role}</span>
                         <span>{dayjs(item.createdAt).format("HH:mm:ss")}</span>
                       </div>
-                      <div className="whitespace-pre-wrap break-words text-[var(--primary-text)]">
+                      <div
+                        className={
+                          item.role === "stderr"
+                            ? "whitespace-pre-wrap break-words text-red-300"
+                            : item.role === "input"
+                            ? "whitespace-pre-wrap break-words text-sky-300"
+                            : "whitespace-pre-wrap break-words"
+                        }
+                      >
                         {item.content}
                       </div>
                     </div>
                   ))}
                 </div>
-                <RuntimePromptBox
+                <RuntimeInputBox
                   attachment={attachment}
                   conversationID={conversationID}
                 />

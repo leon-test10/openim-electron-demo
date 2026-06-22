@@ -1,7 +1,7 @@
 {
   "id": "opencode-win-x64-local",
   "runtime": "opencode",
-  "version": "phase-2-smoke",
+  "version": "terminal-host-contract",
   "platform": "win-x64",
   "archiveName": "opencode-win-x64-local.zip",
   "sha256": "TBD_AFTER_BUNDLE_BUILD",
@@ -11,21 +11,24 @@
     "args": ["run"]
   },
   "profileDefaults": {
-    "profileID": "opencode-local",
-    "baseURL": "http://127.0.0.1:8080/v1",
-    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
-    "apiKey": "local"
+    "profileID": "opencode-terminal",
+    "shell": "powershell.exe",
+    "startupCommand": "opencode --version",
+    "env": {
+      "OPENAI_BASE_URL": "http://127.0.0.1:8080/v1",
+      "OPENAI_API_KEY": "local"
+    }
   },
   "offlineInstall": [
     "Copy opencode-win-x64-local.zip to the target computer.",
     "Verify the SHA-256 checksum against this manifest after replacing TBD_AFTER_BUNDLE_BUILD.",
     "Extract the archive into the configured runtime bundle directory.",
-    "Start the local OpenAI-compatible model server on http://127.0.0.1:8080/v1.",
-    "Open Runtime Dock and start the opencode-local runtime profile."
+    "Start the local OpenAI-compatible model server on http://127.0.0.1:8080/v1 if opencode is configured to use it.",
+    "Open Runtime Dock in the Electron app and start the opencode terminal profile."
   ],
   "notes": [
     "The archive is intentionally not committed to git.",
     "This manifest records the reproducible offline contract for the first opencode runtime bundle.",
-    "The current Phase 2 smoke path validates the runtime bridge through the local OpenAI-compatible endpoint."
+    "OpenIM hosts the terminal. opencode owns provider/model/API-key configuration."
   ]
 }

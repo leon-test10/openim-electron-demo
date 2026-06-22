@@ -62,24 +62,9 @@ export default defineConfig(({ command }) => {
           return {
             host: url.hostname,
             port: +url.port,
-            proxy: {
-              "/runtime-local/v1": {
-                target: "http://127.0.0.1:8080",
-                changeOrigin: true,
-                rewrite: (apiPath) => apiPath.replace(/^\/runtime-local/, ""),
-              },
-            },
           };
         })()
-      : {
-          proxy: {
-            "/runtime-local/v1": {
-              target: "http://127.0.0.1:8080",
-              changeOrigin: true,
-              rewrite: (apiPath) => apiPath.replace(/^\/runtime-local/, ""),
-            },
-          },
-        },
+      : undefined,
     clearScreen: false,
     build: {
       sourcemap: false,

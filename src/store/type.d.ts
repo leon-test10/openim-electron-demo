@@ -12,10 +12,10 @@ import {
 
 import { BusinessUserInfo } from "@/api/login";
 import {
+  RuntimeEvent,
   RuntimeInstance,
   RuntimeInstanceStatus,
   RuntimeProfile,
-  RuntimePromptResult,
 } from "@/types/globalExpose";
 
 export type IMConnectState = "success" | "loading" | "failed";
@@ -113,7 +113,7 @@ export type RuntimeProfileID = RuntimeProfile["id"];
 
 export interface RuntimeTranscriptItem {
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "input" | "stdout" | "stderr" | "system";
   content: string;
   createdAt: number;
 }
@@ -138,12 +138,13 @@ export interface RuntimeDockStore {
   addRuntime: (conversationID: string, profileID?: RuntimeProfileID) => void;
   startRuntime: (conversationID: string, attachmentID: string) => Promise<void>;
   stopRuntime: (conversationID: string, attachmentID: string) => Promise<void>;
-  sendPrompt: (
+  writeInput: (
     conversationID: string,
     attachmentID: string,
-    prompt: string,
+    input: string,
   ) => Promise<void>;
+  handleRuntimeEvent: (event: RuntimeEvent) => void;
   removeAttachment: (conversationID: string, attachmentID: string) => void;
 }
 
-export type { RuntimeInstance, RuntimeProfile, RuntimePromptResult };
+export type { RuntimeEvent, RuntimeInstance, RuntimeProfile };

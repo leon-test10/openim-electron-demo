@@ -1,23 +1,25 @@
-# opencode Runtime Offline Smoke
+# Runtime Dock Terminal Host
 
-This phase keeps runtime binaries outside git and commits only the adapter contract,
-profile defaults, and bundle manifest.
+Runtime Dock is now terminal-first. OpenIM hosts a terminal session; each
+runtime CLI owns its own provider/model/API-key configuration.
 
-## Local Model Contract
+## Boundary
 
-- Base URL: `http://127.0.0.1:8080/v1`
-- Model: `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`
-- API key: `local`
-- Smoke prompt: `Reply with READY only.`
+- OpenIM manages terminal attachment lifecycle, display, input, output, stop,
+  and restart.
+- Runtime tools such as opencode, Codex, Claude Code, or custom CLIs manage
+  their own config.
+- `http://127.0.0.1:8080/v1` is available to runtime CLIs through their own
+  config or terminal environment. OpenIM no longer calls this endpoint directly.
 
 ## Runtime Dock Flow
 
 1. Open a chat conversation.
 2. Open `Runtime Dock`.
-3. Add `opencode-local`.
-4. Start the runtime.
-5. Send the smoke prompt.
-6. Confirm the transcript shows a local model response.
+3. Add a terminal attachment.
+4. Start the terminal in the Electron app.
+5. Run shell commands or a runtime CLI such as `opencode`.
+6. Confirm stdout/stderr appears in the Dock transcript.
 
 ## Offline Bundle Contract
 
@@ -26,7 +28,6 @@ other offline media. The git repo stores
 `runtime-bundles/opencode-win-x64-local.manifest.json`; once the archive is
 built, replace `TBD_AFTER_BUNDLE_BUILD` with the archive SHA-256.
 
-The current implementation proves the IM-to-runtime bridge against the local
-OpenAI-compatible model endpoint. The next hardening step is to replace the
-smoke adapter internals with the bundled `opencode run` process while keeping
-the same Runtime Dock IPC contract.
+The current implementation starts PowerShell through Electron main using
+`child_process.spawn`. The next hardening step is to move to `node-pty` and
+`xterm.js` for full terminal semantics.

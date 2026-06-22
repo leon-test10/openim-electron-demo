@@ -1,4 +1,44 @@
-# Session Handoff - Runtime Dock + opencode-local Smoke
+# Session Handoff - Runtime Dock Terminal Host
+
+## Latest Update - Terminal First
+
+Current branch: `UI-feature`
+
+Runtime Dock has been changed from the misleading `opencode-local` smoke adapter
+to a terminal-first host:
+
+- Removed renderer direct calls to `http://127.0.0.1:8080/v1`.
+- Removed the Vite `/runtime-local/v1` proxy.
+- Electron main now starts a real PowerShell process with `child_process.spawn`.
+- Runtime output is streamed through `runtime:event`.
+- Renderer writes terminal input through `runtime:writeInput`.
+- Existing `opencode-local` localStorage attachments migrate to `PowerShell Terminal`.
+- Old model-chat transcript is cleared during migration to avoid misleading users.
+- Runtime tools own their own config; OpenIM only hosts the terminal.
+
+Profiles currently built in:
+
+- `powershell-terminal`
+- `opencode-terminal` with startup command `opencode --version`
+
+Important limitation:
+
+- This is a stream-based PowerShell child process, not a full PTY yet.
+- `node-pty` and `xterm.js` are still recommended next for proper terminal
+  semantics.
+- Plain browser/Vite mode cannot start terminals because `window.electronAPI`
+  is absent; the UI disables terminal controls and requires Electron.
+
+Verification:
+
+```bash
+npm.cmd run lint -- --quiet
+npx.cmd tsc --noEmit
+npm.cmd run build
+```
+
+All passed. Browser verification confirmed the old smoke transcript no longer
+appears and the migrated attachment shows `PowerShell Terminal`.
 
 ## Latest Update - 2026-06-22
 

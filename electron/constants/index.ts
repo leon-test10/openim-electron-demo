@@ -1,5 +1,6 @@
 export const IpcMainToRender = {
   appResume: "appResume",
+  runtimeEvent: "runtime:event",
 };
 
 export const IpcRenderToMain = {
@@ -17,6 +18,6 @@ export const IpcRenderToMain = {
   runtimeListProfiles: "runtime:listProfiles",
   runtimeStart: "runtime:start",
   runtimeStop: "runtime:stop",
-  runtimeSendPrompt: "runtime:sendPrompt",
+  runtimeWriteInput: "runtime:writeInput",
   runtimeHealthCheck: "runtime:healthCheck",
 };

@@ -23,15 +23,24 @@ export type RuntimeInstanceStatus =
   | "error"
   | "stopped";
 
+export type RuntimeEventType =
+  | "started"
+  | "stdout"
+  | "stderr"
+  | "exit"
+  | "error"
+  | "stopped";
+
 export interface RuntimeProfile {
-  id: "opencode-local";
+  id: "powershell-terminal" | "opencode-terminal";
   title: string;
-  runtime: "opencode";
-  adapter: "openai-compatible-local";
-  baseURL: string;
-  model: string;
-  apiKey: string;
-  offlineBundleID: string;
+  runtime: "terminal";
+  shell: string;
+  args: string[];
+  cwd: string;
+  startupCommand?: string;
+  env: Record<string, string>;
+  description: string;
 }
 
 export interface RuntimeInstance {
@@ -48,6 +57,15 @@ export interface RuntimePromptResult {
   attachmentID: string;
   output: string;
   completedAt: number;
+}
+
+export interface RuntimeEvent {
+  attachmentID: string;
+  type: RuntimeEventType;
+  data?: string;
+  exitCode?: number | null;
+  signal?: string | null;
+  timestamp: number;
 }
 
 declare global {

@@ -3,9 +3,9 @@ import { create } from "zustand";
 import {
   RuntimeAttachment,
   RuntimeDockStore,
+  RuntimeEvent,
   RuntimeInstance,
   RuntimeProfileID,
-  RuntimePromptResult,
   RuntimeTranscriptItem,
 } from "./type";
 
@@ -28,25 +28,40 @@ const canUseLocalStorage = () => typeof window !== "undefined" && window.localSt
 const createTranscriptItem = (
   role: RuntimeTranscriptItem["role"],
   content: string,
+  createdAt = Date.now(),
 ): RuntimeTranscriptItem => ({
-  id: `rt_log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+  id: `rt_log_${createdAt}_${Math.random().toString(36).slice(2, 8)}`,
   role,
   content,
-  createdAt: Date.now(),
+  createdAt,
 });
+
+const toRuntimeProfileID = (profileID?: string): RuntimeProfileID => {
+  if (profileID === "opencode-terminal") return "opencode-terminal";
+  return "powershell-terminal";
+};
 
 const migrateAttachment = (attachment: RuntimeAttachment): RuntimeAttachment => {
   const legacyProfileID = attachment.runtimeProfileID as string;
-  const isLegacyPlaceholder = legacyProfileID === "shell-placeholder";
+  const runtimeProfileID = toRuntimeProfileID(legacyProfileID);
+  const isLegacySmoke =
+    legacyProfileID === "opencode-local" || legacyProfileID === "shell-placeholder";
 
   return {
     ...attachment,
-    runtimeProfileID: isLegacyPlaceholder
-      ? "opencode-local"
-      : attachment.runtimeProfileID,
-    title: isLegacyPlaceholder ? "opencode-local" : attachment.title,
-    status: attachment.status ?? "detached",
-    transcript: attachment.transcript ?? [],
+    runtimeProfileID,
+    title: isLegacySmoke ? "PowerShell Terminal" : attachment.title,
+    status:
+      attachment.status === "running" ? "stopped" : attachment.status ?? "detached",
+    transcript: isLegacySmoke
+      ? [
+          createTranscriptItem(
+            "system",
+            "Migrated from the old local-model smoke adapter. Previous model-chat transcript was cleared because this attachment is now a terminal host.",
+            Date.now(),
+          ),
+        ]
+      : attachment.transcript ?? [],
   };
 };
 
@@ -93,25 +108,26 @@ const persistState = (state: StoredRuntimeDockState) => {
 
 const createRuntimeAttachment = (
   conversationID: string,
-  profileID: RuntimeProfileID = "opencode-local",
+  profileID: RuntimeProfileID = "powershell-terminal",
 ): RuntimeAttachment => {
   const now = Date.now();
+  const isOpencode = profileID === "opencode-terminal";
 
   return {
     id: `rt_att_${now}_${Math.random().toString(36).slice(2, 8)}`,
     conversationID,
     runtimeProfileID: profileID,
-    title: "opencode-local",
+    title: isOpencode ? "opencode Terminal" : "PowerShell Terminal",
     status: "detached",
     createdAt: now,
     transcript: [
-      {
-        id: `rt_log_${now}_system`,
-        role: "system",
-        content:
-          "opencode-local profile is attached. Start it to test the local model runtime bridge.",
-        createdAt: now,
-      },
+      createTranscriptItem(
+        "system",
+        isOpencode
+          ? "opencode terminal attached. Runtime config is owned by opencode; IM only hosts the terminal."
+          : "PowerShell terminal attached. Runtime CLIs manage their own config.",
+        now,
+      ),
     ],
   };
 };
@@ -128,6 +144,26 @@ const updateAttachment = (
   ),
 });
 
+const updateAttachmentByID = (
+  attachmentsByConversation: RuntimeDockStore["attachmentsByConversation"],
+  attachmentID: string,
+  updater: (attachment: RuntimeAttachment) => RuntimeAttachment,
+) => {
+  let found = false;
+  const nextAttachments = Object.fromEntries(
+    Object.entries(attachmentsByConversation).map(([conversationID, attachments]) => [
+      conversationID,
+      attachments.map((attachment) => {
+        if (attachment.id !== attachmentID) return attachment;
+        found = true;
+        return updater(attachment);
+      }),
+    ]),
+  );
+
+  return found ? nextAttachments : attachmentsByConversation;
+};
+
 const saveAttachments = (
   state: StoredRuntimeDockState,
   attachmentsByConversation: RuntimeDockStore["attachmentsByConversation"],
@@ -139,106 +175,39 @@ const saveAttachments = (
   return { attachmentsByConversation };
 };
 
-const localModelRequest = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(`/runtime-local/v1${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: "Bearer local",
-      ...init?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-  }
-
-  return response.json() as Promise<T>;
-};
-
 const startRuntimeBridge = async (
   attachmentID: string,
   conversationID: string,
   profileID: RuntimeProfileID,
 ) => {
-  if (window.electronAPI) {
-    return window.electronAPI.ipcInvoke<RuntimeInstance>("runtime:start", {
-      attachmentID,
-      conversationID,
-      profileID,
-    });
+  if (!window.electronAPI) {
+    throw new Error("Terminal runtime requires the Electron app.");
   }
 
-  await localModelRequest("/models", { method: "GET" });
-  return {
-    id: attachmentID,
-    conversationID,
-    profileID,
-    status: "running",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  } satisfies RuntimeInstance;
-};
-
-const stopRuntimeBridge = async (
-  attachmentID: string,
-  conversationID: string,
-  profileID: RuntimeProfileID,
-) => {
-  if (window.electronAPI) {
-    return window.electronAPI.ipcInvoke<RuntimeInstance>("runtime:stop", attachmentID);
-  }
-
-  return {
-    id: attachmentID,
-    conversationID,
-    profileID,
-    status: "stopped",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  } satisfies RuntimeInstance;
-};
-
-const sendRuntimePromptBridge = async (
-  attachmentID: string,
-  prompt: string,
-): Promise<RuntimePromptResult> => {
-  if (window.electronAPI) {
-    return window.electronAPI.ipcInvoke<RuntimePromptResult>("runtime:sendPrompt", {
-      attachmentID,
-      prompt,
-    });
-  }
-
-  const response = await localModelRequest<{
-    choices?: Array<{ message?: { content?: string } }>;
-  }>("/chat/completions", {
-    method: "POST",
-    body: JSON.stringify({
-      model: "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are the opencode-local runtime smoke adapter inside OpenIM. Reply concisely.",
-        },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0,
-      max_tokens: 512,
-    }),
-  });
-
-  const output = response.choices?.[0]?.message?.content?.trim();
-  if (!output) {
-    throw new Error("Runtime returned an empty response");
-  }
-
-  return {
+  return window.electronAPI.ipcInvoke<RuntimeInstance>("runtime:start", {
     attachmentID,
-    output,
-    completedAt: Date.now(),
-  };
+    conversationID,
+    profileID,
+  });
+};
+
+const stopRuntimeBridge = async (attachmentID: string) => {
+  if (!window.electronAPI) {
+    throw new Error("Terminal runtime requires the Electron app.");
+  }
+
+  return window.electronAPI.ipcInvoke<RuntimeInstance>("runtime:stop", attachmentID);
+};
+
+const writeRuntimeInputBridge = async (attachmentID: string, input: string) => {
+  if (!window.electronAPI) {
+    throw new Error("Terminal runtime requires the Electron app.");
+  }
+
+  return window.electronAPI.ipcInvoke("runtime:writeInput", {
+    attachmentID,
+    input,
+  });
 };
 
 export const useRuntimeDockStore = create<RuntimeDockStore>()((set) => ({
@@ -263,7 +232,7 @@ export const useRuntimeDockStore = create<RuntimeDockStore>()((set) => ({
       return { panelOpen: open };
     });
   },
-  addRuntime: (conversationID, profileID = "opencode-local") => {
+  addRuntime: (conversationID, profileID = "powershell-terminal") => {
     if (!conversationID) return;
 
     set((state) => {
@@ -316,15 +285,6 @@ export const useRuntimeDockStore = create<RuntimeDockStore>()((set) => ({
             status: instance?.status ?? "running",
             lastError: instance?.lastError,
             updatedAt: Date.now(),
-            transcript: [
-              ...item.transcript,
-              createTranscriptItem(
-                instance?.status === "error" ? "system" : "assistant",
-                instance?.status === "error"
-                  ? `Runtime failed: ${instance.lastError}`
-                  : "Runtime is running. Local model endpoint is reachable.",
-              ),
-            ],
           }),
         );
         return saveAttachments(state, nextAttachments);
@@ -352,59 +312,9 @@ export const useRuntimeDockStore = create<RuntimeDockStore>()((set) => ({
     }
   },
   stopRuntime: async (conversationID, attachmentID) => {
-    const attachment = useRuntimeDockStore
-      .getState()
-      .attachmentsByConversation[conversationID]?.find(
-        (item) => item.id === attachmentID,
-      );
-    if (!attachment) return;
-
-    const instance = await stopRuntimeBridge(
-      attachmentID,
-      conversationID,
-      attachment.runtimeProfileID,
-    );
-
-    set((state) => {
-      const nextAttachments = updateAttachment(
-        state.attachmentsByConversation,
-        conversationID,
-        attachmentID,
-        (attachment) => ({
-          ...attachment,
-          status: instance?.status ?? "stopped",
-          updatedAt: Date.now(),
-          transcript: [
-            ...attachment.transcript,
-            createTranscriptItem("system", "Runtime stopped."),
-          ],
-        }),
-      );
-      return saveAttachments(state, nextAttachments);
-    });
-  },
-  sendPrompt: async (conversationID, attachmentID, prompt) => {
-    const normalizedPrompt = prompt.trim();
-    if (!normalizedPrompt) return;
-
-    set((state) => {
-      const nextAttachments = updateAttachment(
-        state.attachmentsByConversation,
-        conversationID,
-        attachmentID,
-        (attachment) => ({
-          ...attachment,
-          transcript: [
-            ...attachment.transcript,
-            createTranscriptItem("user", normalizedPrompt),
-          ],
-        }),
-      );
-      return saveAttachments(state, nextAttachments);
-    });
-
     try {
-      const result = await sendRuntimePromptBridge(attachmentID, normalizedPrompt);
+      const instance = await stopRuntimeBridge(attachmentID);
+
       set((state) => {
         const nextAttachments = updateAttachment(
           state.attachmentsByConversation,
@@ -412,14 +322,8 @@ export const useRuntimeDockStore = create<RuntimeDockStore>()((set) => ({
           attachmentID,
           (attachment) => ({
             ...attachment,
+            status: instance?.status ?? "stopped",
             updatedAt: Date.now(),
-            transcript: [
-              ...attachment.transcript,
-              createTranscriptItem(
-                "assistant",
-                result?.output ?? "Runtime returned no output.",
-              ),
-            ],
           }),
         );
         return saveAttachments(state, nextAttachments);
@@ -438,13 +342,83 @@ export const useRuntimeDockStore = create<RuntimeDockStore>()((set) => ({
             updatedAt: Date.now(),
             transcript: [
               ...attachment.transcript,
-              createTranscriptItem("system", `Prompt failed: ${message}`),
+              createTranscriptItem("system", `Stop failed: ${message}`),
             ],
           }),
         );
         return saveAttachments(state, nextAttachments);
       });
     }
+  },
+  writeInput: async (conversationID, attachmentID, input) => {
+    if (!input) return;
+
+    set((state) => {
+      const nextAttachments = updateAttachment(
+        state.attachmentsByConversation,
+        conversationID,
+        attachmentID,
+        (attachment) => ({
+          ...attachment,
+          transcript: [...attachment.transcript, createTranscriptItem("input", input)],
+        }),
+      );
+      return saveAttachments(state, nextAttachments);
+    });
+
+    try {
+      await writeRuntimeInputBridge(attachmentID, input);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      set((state) => {
+        const nextAttachments = updateAttachment(
+          state.attachmentsByConversation,
+          conversationID,
+          attachmentID,
+          (attachment) => ({
+            ...attachment,
+            status: "error",
+            lastError: message,
+            updatedAt: Date.now(),
+            transcript: [
+              ...attachment.transcript,
+              createTranscriptItem("system", `Input failed: ${message}`),
+            ],
+          }),
+        );
+        return saveAttachments(state, nextAttachments);
+      });
+    }
+  },
+  handleRuntimeEvent: (event: RuntimeEvent) => {
+    set((state) => {
+      const role =
+        event.type === "stderr" || event.type === "error" ? "stderr" : "stdout";
+      const nextAttachments = updateAttachmentByID(
+        state.attachmentsByConversation,
+        event.attachmentID,
+        (attachment) => ({
+          ...attachment,
+          status:
+            event.type === "exit" || event.type === "stopped"
+              ? "stopped"
+              : event.type === "error"
+              ? "error"
+              : event.type === "started"
+              ? "running"
+              : attachment.status,
+          updatedAt: event.timestamp,
+          lastError: event.type === "error" ? event.data : attachment.lastError,
+          transcript: event.data
+            ? [
+                ...attachment.transcript,
+                createTranscriptItem(role, event.data, event.timestamp),
+              ]
+            : attachment.transcript,
+        }),
+      );
+      return saveAttachments(state, nextAttachments);
+    });
   },
   removeAttachment: (conversationID, attachmentID) => {
     set((state) => {

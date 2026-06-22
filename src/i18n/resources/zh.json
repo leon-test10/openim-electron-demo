@@ -388,15 +388,16 @@
   "runtimeDock": {
     "title": "Runtime Dock",
     "close": "收起 Runtime Dock",
-    "attachments": "挂载的 Runtime",
-    "addRuntime": "Add Runtime",
+    "attachments": "挂载的 Terminal",
+    "addRuntime": "Add Terminal",
     "noConversation": "未选择会话",
-    "noRuntime": "No runtime attached",
-    "phaseTwoHint": "Terminal will be added in Phase 2",
+    "noRuntime": "No terminal attached",
+    "electronRequired": "Terminal runtime requires the Electron app",
+    "phaseTwoHint": "Terminal runtime is available in Electron",
     "start": "Start",
     "restart": "Restart",
     "stop": "Stop",
-    "sendPrompt": "Send Prompt"
+    "sendInput": "Send Input"
   },
   "empty": {
     "noMoments": "暂无动态",
