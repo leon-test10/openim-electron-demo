@@ -99,6 +99,9 @@ export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.runtimeWriteInput, (_, params) => {
     return runtimeManager.writeInput(params);
   });
+  ipcMain.handle(IpcRenderToMain.runtimeResize, (_, params) => {
+    return runtimeManager.resize(params);
+  });
   ipcMain.on(IpcRenderToMain.getDataPath, (e, key: string) => {
     switch (key) {
       case "public":

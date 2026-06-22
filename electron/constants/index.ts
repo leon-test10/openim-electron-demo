@@ -19,5 +19,6 @@ export const IpcRenderToMain = {
   runtimeStart: "runtime:start",
   runtimeStop: "runtime:stop",
   runtimeWriteInput: "runtime:writeInput",
+  runtimeResize: "runtime:resize",
   runtimeHealthCheck: "runtime:healthCheck",
 };

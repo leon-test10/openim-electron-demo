@@ -1,5 +1,35 @@
 # TRAE Handoff - Runtime Dock / opencode
 
+## Latest Update - PTY / xterm
+
+在上一轮 hosted terminal 改造之后，继续完成了下一步工作：
+
+1. Electron main 已从普通 `spawn + pipe` 切到 `node-pty`。
+2. Runtime Dock 前端已接入 `@xterm/xterm` + `@xterm/addon-fit`。
+3. 新增 `runtime:resize` IPC，用于把前端 terminal 尺寸同步给 PTY。
+4. `opencode Terminal` 在本机 PATH 可用时，会优先直接以 PTY 方式拉起 `opencode`；否则回退到 PowerShell hosted shell。
+
+额外修改文件：
+
+- `electron/constants/index.ts`
+- `electron/main/ipcHandlerManage.ts`
+- `src/types/globalExpose.d.ts`
+- `src/components/RuntimeDock/TerminalSurface.tsx`
+- `package.json`
+
+已验证：
+
+- `node-pty` 依赖安装成功
+- `@xterm/xterm` / `@xterm/addon-fit` 接入完成
+- `npx.cmd tsc --noEmit` 通过
+- `npm.cmd run lint -- --quiet` 通过
+
+说明：
+
+- Electron main 的新逻辑需要完整重启 Electron 才会生效，单纯前端 HMR 不够。
+
+---
+
 ## 本轮目标
 
 本轮工作在不触碰 `.git` 元数据的前提下，继续推进两件事：
@@ -75,31 +105,32 @@
 
 ## 当前架构判断
 
-### 目前仍然不是完整 PTY/xterm 终端
+### 当前已进入 PTY/xterm 阶段
 
 当前实现依然属于：
 
-> Electron main 托管子进程 + stdout/stderr 流式转发 + 前端 transcript 展示
+> Electron main 使用 `node-pty` 托管终端进程 + 前端使用 `xterm.js` 作为 terminal surface + transcript 作为持久化/回放日志
 
-还不是：
+仍未完成的部分：
 
-- `node-pty`
-- `xterm.js`
-- 完整 TTY / PTY 语义
-- 完整 ANSI 终端渲染
+- 真正的多标签 terminal 会话管理
+- `Ctrl+C` / interrupt / restart 的完整语义
+- 更细致的 ANSI/状态解析
+- 对 `opencode` 生命周期的更完整状态管理
 
 因此仍然存在天然限制：
 
-- 一些交互式 CLI 的表现仍可能和系统原生终端不同。
-- 光标控制、局部刷新、全屏 UI、ANSI 重绘等行为仍不完整。
-- `opencode` 虽然可以启动，但体验仍受“非 PTY”架构限制。
+- transcript 与 xterm surface 目前是双轨并存，仍偏工程过渡态。
+- `opencode` 已经可以走 PTY 直启，但还没有补齐 attach / fallback / interrupt 的专门 UI 状态。
+- 还没有做到真正“像独立终端应用那样”的所有行为细节。
 
 ### 目前已达到的状态
 
 - Runtime Dock 已不只是 placeholder。
-- PowerShell Hosted Terminal 的可用性比之前更好。
-- `opencode Terminal` 已有明确入口，并具备“本机安装时自动启动”的能力。
-- UI 层输入输出不再像之前那样明显混乱，终端区域已更接近实际使用习惯。
+- PowerShell 与 opencode 都已进入 PTY 托管链路。
+- Runtime Dock 已经从 transcript 面板升级到真正的 `xterm.js` terminal surface。
+- `opencode Terminal` 已有明确入口，并具备“本机安装时优先直接启动”的能力。
+- UI 层输入输出体验相比最初版本已明显接近真实终端。
 
 ---
 
@@ -107,18 +138,14 @@
 
 ### 近期优先
 
-1. 引入 `node-pty`
-   - 让 Runtime Dock 真正拥有 PTY 语义。
-   - 解决交互式 CLI 与普通 pipe 模式差异过大的问题。
+1. 补齐 `interrupt / Ctrl+C / restart` 语义
+   - 让 PTY 模式下的会话控制更接近真实终端。
 
-2. 引入 `xterm.js`
-   - 让终端输出不再只是 transcript list，而是真正的 terminal surface。
-   - 支持更自然的输入、选择、滚动、ANSI 渲染。
+2. 为 `opencode Terminal` 增加更明确的运行状态
+   - detected / launching / attached / fallback shell。
 
-3. 将 `opencode Terminal` 从“hosted shell 中自动执行 opencode”继续推进为：
-   - PTY 模式直接托管；
-   - 保留工作目录；
-   - 逐步补齐 stop / interrupt / restart 语义。
+3. 优化 transcript 与 xterm 的边界
+   - 明确哪些用于持久化、哪些只用于显示。
 
 ### 之后可做
 
@@ -161,10 +188,10 @@
 
 如果下一位继续接手，建议优先从这两个方向继续：
 
-1. `Runtime Dock terminal surface`：
-   从 transcript list 迁移到 `xterm.js`。
+1. `PTY control refinement`：
+   完成 interrupt / restart / status 语义收口。
 
-2. `Runtime PTY backend`：
-   从普通 `spawn + pipe` 迁移到 `node-pty`。
+2. `Runtime profile expansion`：
+   在当前 PTY 链路稳定后，再接 `codex` / 其他 CLI runtime。
 
-只要这两步完成，当前“像终端但又不像”的大部分体验问题都会明显下降，`opencode`/`codex`/其他 CLI runtime 的挂载形态也会自然更完整。
+当前已经跨过“只有 transcript、没有真实 terminal”的阶段，后续重点会转到控制语义和 runtime profile 扩展上。

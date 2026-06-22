@@ -19,6 +19,8 @@ import { useParams } from "react-router-dom";
 import { useConversationStore, useRuntimeDockStore } from "@/store";
 import { RuntimeAttachment } from "@/store/runtimeDock";
 
+import RuntimeTerminalSurface from "./TerminalSurface";
+
 const statusColor: Record<RuntimeAttachment["status"], string> = {
   detached: "default",
   starting: "processing",
@@ -382,11 +384,17 @@ const RuntimeDock = () => {
                     {attachment.lastError}
                   </div>
                 )}
-                <RuntimeTranscriptPanel attachment={attachment} />
-                <RuntimeInputBox
-                  attachment={attachment}
-                  conversationID={conversationID}
-                />
+                {terminalAvailable ? (
+                  <RuntimeTerminalSurface attachment={attachment} />
+                ) : (
+                  <>
+                    <RuntimeTranscriptPanel attachment={attachment} />
+                    <RuntimeInputBox
+                      attachment={attachment}
+                      conversationID={conversationID}
+                    />
+                  </>
+                )}
               </div>
             ))}
           </div>

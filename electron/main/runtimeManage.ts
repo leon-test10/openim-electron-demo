@@ -1,7 +1,8 @@
-import { spawn, spawnSync, ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
 import { WebContents } from "electron";
+import { spawn as spawnPty, type IPty } from "node-pty";
 
 import { IpcMainToRender } from "../constants";
 
@@ -54,8 +55,9 @@ export interface RuntimeEvent {
 interface ManagedRuntime {
   instance: RuntimeInstance;
   profile: RuntimeProfile;
-  child: ChildProcessWithoutNullStreams;
+  child: IPty;
   webContents: WebContents;
+  disposables: Array<{ dispose: () => void }>;
 }
 
 const getDefaultCwd = () => process.cwd();
@@ -74,7 +76,10 @@ const resolveExecutableOnPath = (command: string) => {
     .map((line) => line.trim())
     .filter(Boolean);
 
-  return candidates.find((candidate) => existsSync(candidate));
+  return (
+    candidates.find((candidate) => /\.(cmd|exe|bat)$/i.test(candidate) && existsSync(candidate)) ??
+    candidates.find((candidate) => existsSync(candidate))
+  );
 };
 
 const getOpencodeStartupCommand = (resolvedExecutable?: string) =>
@@ -146,12 +151,8 @@ const stopExistingRuntime = (attachmentID: string) => {
   const runtime = runtimes.get(attachmentID);
   if (!runtime) return;
 
-  runtime.child.removeAllListeners();
-  runtime.child.stdout.removeAllListeners();
-  runtime.child.stderr.removeAllListeners();
-  if (!runtime.child.killed) {
-    runtime.child.kill();
-  }
+  runtime.disposables.forEach((item) => item.dispose());
+  runtime.child.kill();
   runtimes.delete(attachmentID);
 };
 
@@ -195,18 +196,28 @@ export const runtimeManager = {
     try {
       const resolvedOpencode =
         profile.id === "opencode-terminal" ? resolveExecutableOnPath("opencode") : undefined;
+      const launchDirectOpencode = Boolean(
+        resolvedOpencode && profile.id === "opencode-terminal",
+      );
       const startupCommand =
-        profile.id === "opencode-terminal"
+        profile.id === "opencode-terminal" && !launchDirectOpencode
           ? getOpencodeStartupCommand(resolvedOpencode)
           : profile.startupCommand;
-      const child = spawn(profile.shell, profile.args, {
+      const child = spawnPty(
+        launchDirectOpencode ? resolvedOpencode! : profile.shell,
+        launchDirectOpencode ? [] : profile.args,
+        {
         cwd,
-        env: {
-          ...process.env,
-          ...profile.env,
+          env: {
+            ...process.env,
+            ...profile.env,
+          },
+          cols: 120,
+          rows: 30,
+          name: "xterm-color",
+          useConpty: true,
         },
-        windowsHide: true,
-      });
+      );
       const runtime: ManagedRuntime = {
         instance: {
           ...instance,
@@ -216,6 +227,7 @@ export const runtimeManager = {
         profile,
         child,
         webContents,
+        disposables: [],
       };
 
       runtimes.set(params.attachmentID, runtime);
@@ -231,49 +243,35 @@ export const runtimeManager = {
             : `${profile.title} started in ${cwd}\r\n`,
       });
 
-      child.stdout.on("data", (chunk) => {
+      runtime.disposables.push(
+        child.onData((data) => {
         emitRuntimeEvent(runtime, {
           type: "stdout",
-          data: chunk.toString(),
-        });
-      });
-      child.stderr.on("data", (chunk) => {
-        emitRuntimeEvent(runtime, {
-          type: "stderr",
-          data: chunk.toString(),
-        });
-      });
-      child.on("error", (error) => {
-        runtime.instance = {
-          ...runtime.instance,
-          status: "error",
-          updatedAt: Date.now(),
-          lastError: error.message,
-        };
-        emitRuntimeEvent(runtime, {
-          type: "error",
-          data: error.message,
-        });
-      });
-      child.on("exit", (exitCode, signal) => {
-        runtime.instance = {
-          ...runtime.instance,
-          status: "stopped",
-          updatedAt: Date.now(),
-        };
-        emitRuntimeEvent(runtime, {
-          type: "exit",
-          exitCode,
-          signal,
-          data: `\r\n[process exited: code=${exitCode ?? "null"} signal=${
-            signal ?? "null"
-          }]\r\n`,
-        });
-        runtimes.delete(params.attachmentID);
-      });
+            data,
+          });
+        }),
+      );
+      runtime.disposables.push(
+        child.onExit(({ exitCode, signal }) => {
+          runtime.instance = {
+            ...runtime.instance,
+            status: "stopped",
+            updatedAt: Date.now(),
+          };
+          emitRuntimeEvent(runtime, {
+            type: "exit",
+            exitCode,
+            signal,
+            data: `\r\n[process exited: code=${exitCode ?? "null"} signal=${
+              signal ?? "null"
+            }]\r\n`,
+          });
+          runtimes.delete(params.attachmentID);
+        }),
+      );
 
       if (startupCommand) {
-        child.stdin.write(`${startupCommand}\r\n`);
+        child.write(`${startupCommand}\r\n`);
       }
 
       return runtime.instance;
@@ -293,11 +291,25 @@ export const runtimeManager = {
       throw new Error("Runtime terminal is not running");
     }
 
-    runtime.child.stdin.write(params.input);
+    runtime.child.write(params.input);
     return {
       ok: true,
       attachmentID: params.attachmentID,
       writtenAt: Date.now(),
+    };
+  },
+
+  resize: async (params: { attachmentID: string; cols: number; rows: number }) => {
+    const runtime = runtimes.get(params.attachmentID);
+    if (!runtime) {
+      throw new Error("Runtime terminal is not running");
+    }
+
+    runtime.child.resize(Math.max(params.cols, 20), Math.max(params.rows, 5));
+    return {
+      ok: true,
+      attachmentID: params.attachmentID,
+      resizedAt: Date.now(),
     };
   },
 

@@ -68,6 +68,12 @@ export interface RuntimeEvent {
   timestamp: number;
 }
 
+export interface RuntimeResizeParams {
+  attachmentID: string;
+  cols: number;
+  rows: number;
+}
+
 declare global {
   interface Window {
     electronAPI?: IElectronAPI;
