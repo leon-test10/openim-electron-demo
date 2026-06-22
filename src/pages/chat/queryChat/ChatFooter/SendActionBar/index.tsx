@@ -9,10 +9,10 @@ import React from "react";
 
 import image from "@/assets/images/chatFooter/image.png";
 import rtc from "@/assets/images/chatFooter/rtc.png";
+import { useConversationStore } from "@/store";
 
 import { SendMessageParams } from "../useSendMessage";
 import CallPopContent from "./CallPopContent";
-import { useConversationStore } from "@/store";
 
 const sendActionList = [
   {
@@ -46,8 +46,8 @@ const SendActionBar = ({
   getImageMessage: (file: File) => Promise<MessageItem>;
 }) => {
   const [visibleState, setVisibleState] = useState(false);
-  const isGroupSession = useConversationStore(
-    (state) => !!state.currentConversation?.groupID,
+  const isGroupSession = useConversationStore((state) =>
+    Boolean(state.currentConversation?.groupID),
   );
 
   const closePop = () => setVisibleState(false);

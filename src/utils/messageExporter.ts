@@ -52,8 +52,8 @@ function serializeMessage(msg: MessageItem): RelayMessage {
       msg.sessionType === SessionType.Group
         ? "group"
         : msg.sessionType === SessionType.Notification
-          ? "notification"
-          : "single",
+        ? "notification"
+        : "single",
     groupID: msg.groupID || null,
     contentType: msg.contentType,
   };
@@ -91,7 +91,7 @@ function createConsoleWriter(): MessageWriter {
   return {
     async write(data: RelayMessage) {
       console.log(
-        `[messageExporter] [${data.timestamp}] [${data.sessionType}] ${data.sender}: ${data.content}`
+        `[messageExporter] [${data.timestamp}] [${data.sessionType}] ${data.sender}: ${data.content}`,
       );
     },
   };
@@ -129,7 +129,7 @@ export function setWriter(newWriter: MessageWriter): void {
  *
  * @param msg SDK 推送的原始消息对象
  */
-export async function exportMessage(msg: MessageItem): void {
+export async function exportMessage(msg: MessageItem): Promise<void> {
   try {
     const data = serializeMessage(msg);
     await getWriter().write(data);

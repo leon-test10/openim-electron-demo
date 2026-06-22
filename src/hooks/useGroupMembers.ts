@@ -1,6 +1,4 @@
-import {
-  GroupMemberItem,
-} from "@openim/wasm-client-sdk/lib/types/entity";
+import { GroupMemberItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { useLatest } from "ahooks";
 import { useCallback, useState } from "react";
 
@@ -37,7 +35,7 @@ export default function useGroupMembers(props?: UseGroupMembersProps) {
       if (!sourceID) return;
 
       if (
-        (latestFetchState.current.loading || !latestFetchState.current.hasMore) &&
+        (latestFetchState.current?.loading || !latestFetchState.current?.hasMore) &&
         !refresh
       )
         return;
@@ -49,7 +47,7 @@ export default function useGroupMembers(props?: UseGroupMembersProps) {
       try {
         const { data } = await IMSDK.getGroupMemberList({
           groupID: sourceID,
-          offset: refresh ? 0 : latestFetchState.current.offset,
+          offset: refresh ? 0 : latestFetchState.current?.offset ?? 0,
           count: refresh ? 500 : 100,
           filter: 0,
         });

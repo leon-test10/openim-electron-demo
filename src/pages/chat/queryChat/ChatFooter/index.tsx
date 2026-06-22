@@ -34,7 +34,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   };
 
   const enterToSend = async () => {
-    const cleanText = getCleanText(latestHtml.current);
+    const cleanText = getCleanText(latestHtml.current ?? "");
     const message = (await IMSDK.createTextMessage(cleanText)).data;
     setHtml("");
     if (!cleanText) return;

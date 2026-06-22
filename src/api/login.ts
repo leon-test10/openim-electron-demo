@@ -186,10 +186,7 @@ export const getBusinessUserInfo = async (userIDs: string[]) => {
   );
 };
 
-export const searchBusinessUserInfo = async (
-  keyword: string,
-  showNumber = 20,
-) => {
+export const searchBusinessUserInfo = async (keyword: string, showNumber = 20) => {
   const token = (await getChatToken()) as string;
   return request.post<{ total: number; users: BusinessUserInfo[] }>(
     "/user/search/full",

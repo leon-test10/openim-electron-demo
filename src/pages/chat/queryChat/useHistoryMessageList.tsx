@@ -34,7 +34,7 @@ export function useHistoryMessageList() {
   useEffect(() => {
     const pushNewMessage = (message: MessageItem) => {
       if (
-        latestLoadState.current.messageList.find(
+        latestLoadState.current?.messageList.find(
           (item) => item.clientMsgID === message.clientMsgID,
         )
       ) {
@@ -76,7 +76,7 @@ export function useHistoryMessageList() {
       const { data } = await IMSDK.getAdvancedHistoryMessageList({
         count: SPLIT_COUNT,
         startClientMsgID: loadMore
-          ? latestLoadState.current.messageList[0]?.clientMsgID
+          ? latestLoadState.current?.messageList[0]?.clientMsgID ?? ""
           : "",
         conversationID: conversationID ?? "",
         viewType: ViewType.History,

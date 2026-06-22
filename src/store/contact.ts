@@ -143,7 +143,7 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
       console.error(error);
     }
   },
-  updateRecvFriendApplication: async (application: FriendApplicationItem) => {
+  updateRecvFriendApplication: (application: FriendApplicationItem) => {
     let tmpList = [...get().recvFriendApplicationList];
     let isHandleResultUpdate = false;
     const idx = tmpList.findIndex((a) => a.fromUserID === application.fromUserID);
@@ -155,8 +155,7 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
     }
     if (idx < 0 || isHandleResultUpdate) {
       const unHandleFriendApplicationCount = tmpList.filter(
-        (application) =>
-          application.handleResult === 0,
+        (application) => application.handleResult === 0,
       ).length;
       set(() => ({
         recvFriendApplicationList: tmpList,
@@ -192,7 +191,7 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
       console.error(error);
     }
   },
-  updateRecvGroupApplication: async (application: GroupApplicationItem) => {
+  updateRecvGroupApplication: (application: GroupApplicationItem) => {
     let tmpList = [...get().recvGroupApplicationList];
     let isHandleResultUpdate = false;
     const idx = tmpList.findIndex((a) => a.userID === application.userID);
@@ -204,8 +203,7 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
     }
     if (idx < 0 || application.handleResult === ApplicationHandleResult.Unprocessed) {
       const unHandleGroupApplicationCount = tmpList.filter(
-        (application) =>
-          application.handleResult === 0
+        (application) => application.handleResult === 0,
       ).length;
       set(() => ({ recvGroupApplicationList: tmpList, unHandleGroupApplicationCount }));
       return;

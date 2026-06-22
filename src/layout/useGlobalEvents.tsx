@@ -27,8 +27,8 @@ import { useConversationStore, useUserStore } from "@/store";
 import { useContactStore } from "@/store/contact";
 import { feedbackToast } from "@/utils/common";
 import { initStore } from "@/utils/imCommon";
-import { clearIMProfile, getIMToken, getIMUserID } from "@/utils/storage";
 import { exportMessage } from "@/utils/messageExporter";
+import { clearIMProfile, getIMToken, getIMUserID } from "@/utils/storage";
 
 import { IMSDK } from "./MainContentWrap";
 
@@ -263,7 +263,7 @@ export function useGlobalEvent() {
       return;
     }
     data.map((message) => {
-      exportMessage(message);       // → 发送到 Agent Relay
+      exportMessage(message); // → 发送到 Agent Relay
       handleNewMessage(message);
     });
   };

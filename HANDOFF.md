@@ -1,4 +1,4 @@
-# Session Handoff - Runtime Dock Panel Phase 1
+# Session Handoff - Runtime Dock Verification
 
 ## Project
 
@@ -6,229 +6,220 @@
 
 ## Branch
 
-- Current branch: `feature/runtime-dock-panel`
-- Base branch: `UI-feature`
-- Scope: first-phase Runtime Dock scaffold only
+- Current branch: `UI-feature`
+- Current local base: restored snapshot commit `482ff9a`
+- Note: the previous `feature/runtime-dock-panel` branch history is not present in the current local `.git`; the current usable branch is `UI-feature`.
 
-## Goal
+## Current Scope
 
-Add a collapsible, resizable Runtime Dock beside the OpenIM chat view. This phase only provides UI and local attachment state so later phases can add xterm.js, PTY, and real CLI runtimes.
+Runtime Dock remains a Phase 1 frontend scaffold:
 
-## Completed
+- Chat route has a Runtime Dock toggle.
+- Dock opens as a right-side panel beside chat.
+- Dock stores local placeholder runtime attachments per `conversationID`.
+- Placeholder state persists in browser `localStorage`.
+- No PTY, xterm.js, real CLI process, provider config, API key config, or server-side runtime persistence is implemented.
 
-### Runtime Dock store
+## Dependency Status
 
-- Added `src/store/runtimeDock.ts`.
-- Added `RuntimeAttachment`, `RuntimeAttachmentStatus`, and `RuntimeDockStore` types in `src/store/type.d.ts`.
-- Exported the store from `src/store/index.ts`.
-- Store behavior:
-  - `panelOpen` defaults to `false`.
-  - State persists to `localStorage` under `openim_runtime_dock_state`.
-  - Attachments are grouped by `conversationID`.
-  - `addPlaceholderRuntime(conversationID)` appends a local `Shell Placeholder`.
-  - `removeAttachment(conversationID, attachmentID)` removes only from that conversation.
+Docker Desktop was started and `openim-docker` was brought up with:
 
-### Runtime Dock UI
+```bash
+docker compose up -d
+```
 
-- Added `src/components/RuntimeDock/index.tsx`.
-- Displays:
-  - `Runtime Dock` title.
-  - Current conversation ID from store, with route param fallback.
-  - Attachment count.
-  - Empty state when no conversation is selected.
-  - `No runtime attached` state for an empty conversation.
-  - `Add Runtime` button.
-  - Placeholder runtime cards with profile, status, timestamp, and remove action.
-  - `Terminal will be added in Phase 2` notice.
+Final `docker compose ps` showed these services running:
 
-### Chat layout
+- `mongo`
+- `redis`
+- `etcd`
+- `kafka`
+- `minio`
+- `openim-server` - healthy
+- `openim-chat` - healthy
+- `openim-web-front`
+- `openim-admin-front`
 
-- Updated `src/pages/chat/index.tsx`.
-- When dock is closed, original layout is unchanged: `ConversationSider + Outlet`.
-- When dock is open, layout uses `PanelGroup direction="horizontal"`:
-  - Left panel: existing chat UI.
-  - Resize handle.
-  - Right panel: `RuntimeDock`.
+Final port checks:
 
-### Top bar entry
+- `10001`: open
+- `10002`: open
+- `10008`: open
+- `10005`: open
+- `11001`: open
+- `11002`: open
+- `5173`: open
 
-- Updated `src/layout/TopSearchBar/index.tsx`.
-- Added `ApiOutlined` button with `Runtime Dock` tooltip.
-- Button only appears on `/chat` routes.
-- Clicking the button toggles the dock.
+Compose still prints warnings that `KAFKA_USERNAME`, `KAFKA_PASSWORD`, `ETCD_USERNAME`, and `ETCD_PASSWORD` are unset. The current compose file defaults them to blank and the stack still reaches healthy state.
 
-### i18n
+## Frontend Runtime
 
-- Added `runtimeDock` text group to:
-  - `src/i18n/resources/zh.json`
-  - `src/i18n/resources/en.json`
+Started with:
 
-### TDD / contract check
+```bash
+npm run dev
+```
 
-- Added `src/store/runtimeDock.test.ts` as a TypeScript contract test for the store API.
-- RED result: `npx.cmd tsc --noEmit` initially failed with missing `./runtimeDock`.
-- GREEN result: missing module error is gone after implementation.
+Vite selected:
 
-## Explicit Non-Goals
+```text
+http://localhost:5173
+```
 
-- No PTY.
-- No xterm.js.
-- No WebSocket terminal transport.
-- No real Codex/opencode/OpenHands runtime launch.
-- No API key/model/provider configuration.
-- No server-side attachment persistence.
+The earlier expected `7777` port was not used by the current `npm run dev` script.
 
-## Verification
+## Validation Evidence
 
 Commands run from `openim-electron-demo`:
 
 ```bash
-npx.cmd eslint src/components/RuntimeDock/index.tsx src/store/runtimeDock.ts src/store/runtimeDock.test.ts src/pages/chat/index.tsx src/layout/TopSearchBar/index.tsx
+npm.cmd run lint
 ```
 
-Result: exit 0. There are 9 warnings in existing `TopSearchBar` code, but 0 errors.
+Result: exit 0. Current output has 175 warnings and 0 errors.
 
 ```bash
 npx.cmd tsc --noEmit
 ```
 
-Result: exit 1 due to pre-existing project type errors outside the Runtime Dock implementation. The original missing `src/store/runtimeDock` error from the RED step is resolved.
+Result: exit 0.
 
-Known pre-existing TypeScript failures include:
+```bash
+npm.cmd run build
+```
 
-- `src/components/DraggableModalWrap/index.tsx`
-- `src/hooks/useGroupMembers.ts`
-- `src/pages/chat/queryChat/ChatFooter/index.tsx`
-- `src/pages/chat/queryChat/useHistoryMessageList.tsx`
-- `src/pages/common/ChooseModal/ChooseBox/index.tsx`
-- `src/pages/common/RtcCallModal/*`
-- `src/pages/common/UserCardModal/index.tsx`
-- `src/utils/messageExporter.ts`
+Result: exit 0. Vite build completes. Build still prints existing warnings about Terser config, `wasm_exec.js`, Ant Design `"use client"` directives, and large chunks.
 
-Full `npm.cmd run lint` is also blocked by existing repository-wide Prettier CRLF errors. Targeted lint for touched Runtime Dock files and chat entry points passes with warnings only.
+```bash
+npx.cmd prettier --check "src/**/*.{js,jsx,ts,tsx}"
+```
 
-Browser smoke test, frontend only:
+Result: exit 0 after normalizing source files to LF.
 
-- Started dev server with `npm.cmd run dev -- --host 127.0.0.1`.
-- Opened `http://127.0.0.1:5173` in the in-app Browser.
-- Verified Runtime Dock icon appears on chat route.
-- Verified dock opens and shows disabled Add Runtime when no conversation is selected.
-- Selected `Codex Bot` conversation.
-- Verified Add Runtime is enabled.
-- Added `Shell Placeholder`.
-- Verified `Terminal will be added in Phase 2` appears.
-- Closed and reopened dock.
-- Verified placeholder remained in the selected conversation.
-- Removed browser test placeholders after verification.
+## Browser Verification
 
-Important verification boundary:
+Created a local test account through `openim-chat`:
 
-- `openim-docker` was not started for this phase.
-- Docker daemon was not running during verification.
-- This is not an end-to-end OpenIM backend verification.
-- The browser test used the currently available frontend/local app state only.
+- Phone: `19900000002`
+- Password: `codex123456`
+- User ID: `3297174239`
 
-## Manual Acceptance Checklist
+Then verified in the in-app browser:
 
-- Enter `/chat`: top bar shows Runtime Dock icon.
-- Click icon: right dock opens.
-- Click close in dock: right dock collapses.
-- Drag separator: dock width changes.
-- Select a conversation and click `Add Runtime`: one `Shell Placeholder` appears.
-- Switch conversation: previous placeholder is not shown.
-- Switch back: placeholder reappears from `localStorage` state.
-- Navigate outside `/chat`: top bar dock icon is hidden.
+- Opened `http://localhost:5173`.
+- Logged in through the real login form.
+- Reached `#/chat`.
+- Runtime Dock icon appears on chat route.
+- Runtime Dock opens and shows no-conversation state.
+- Navigated to `#/chat/si_3297174239_2428632797`.
+- Dock showed the current `conversationID`.
+- Clicked `Add Runtime`.
+- Placeholder attachment appeared:
+  - `Shell Placeholder`
+  - `shell-placeholder`
+  - `detached`
+  - `Terminal will be added in Phase 2`
+- Switched to `#/chat/si_3297174239_0000000000`; previous placeholder was not shown.
+- Switched back to `#/chat/si_3297174239_2428632797`; placeholder was still shown.
+- Reloaded page; Dock open state restored.
+- Re-entered the original conversation route; placeholder attachment restored from local state.
+- Navigated to `#/contact`; Runtime Dock icon was hidden.
+
+Known browser-route behavior:
+
+- Reloading a deep `#/chat/:conversationID` route returns the app to `#/chat`; after navigating back to the same conversation route, the persisted attachment is restored.
+
+## Two-Account Message E2E
+
+Verified on 2026-06-22 against the local Docker backend and Vite frontend.
+
+Accounts:
+
+- A: `19900000002` / `codex123456` / userID `3297174239` / nickname `Codex Test 2`
+- B: `19900000003` / `codex123456` / userID `2428632797` / nickname `Codex Peer`
+
+Flow:
+
+1. Logged in as A in the browser.
+2. Searched B by userID `2428632797`.
+3. Opened B's user card.
+4. Clicked `发送消息`.
+5. Sent:
+
+```text
+E2E message 2026-06-22T01:26:30.314Z
+```
+
+6. Launched an isolated Edge/Playwright browser context.
+7. Logged in as B.
+8. Opened `#/chat/si_2428632797_3297174239`.
+9. Verified B's page contained:
+
+```text
+Codex Test 2
+E2E message 2026-06-22T01:26:30.314Z
+```
+
+Result: two-account message E2E passed.
+
+## opencode Runtime Check
+
+Current state:
+
+- `RuntimeDock` has no `opencode`, `pty`, `node-pty`, `spawn`, or `RuntimeTerminal` integration.
+- `opencode` is not available on PATH.
+- `where opencode` returned not found.
+- The local `opencode` directory is a source checkout using `packageManager: bun@1.3.14`.
+- `bun` was not detected in the current shell.
+
+Result: real opencode-in-Runtime-Dock E2E cannot be verified yet because both sides are missing:
+
+- IM Runtime Dock has no process bridge.
+- opencode CLI is not installed/runnable in the current environment.
+
+## Code Changes Made During Verification
+
+- Normalized `src/**/*.{js,jsx,ts,tsx}` to LF so Prettier/lint can pass.
+- Added `.gitattributes` to keep text files LF.
+- Fixed lint errors caused by import ordering, implicit boolean coercion, and `async` methods without `await`.
+- Fixed strict TypeScript errors in:
+  - `src/components/DraggableModalWrap/index.tsx`
+  - `src/hooks/useGroupMembers.ts`
+  - `src/pages/chat/queryChat/ChatFooter/index.tsx`
+  - `src/pages/chat/queryChat/useHistoryMessageList.tsx`
+  - `src/pages/common/ChooseModal/ChooseBox/index.tsx`
+  - `src/pages/common/RtcCallModal/index.tsx`
+  - `src/pages/common/RtcCallModal/RtcControl.tsx`
+  - `src/pages/common/RtcCallModal/RtcLayout.tsx`
+  - `src/pages/common/UserCardModal/index.tsx`
+  - `src/store/contact.ts`
+  - `src/store/type.d.ts`
+  - `src/utils/messageExporter.ts`
+
+## Known Limits
+
+- Runtime Dock still has no PTY.
+- Runtime Dock still has no xterm.js.
+- Runtime Dock still does not launch Codex, opencode, OpenHands, shell, or PowerShell.
+- Runtime Dock state is local browser state only.
+- Full lint passes but retains existing warnings.
+- Test users were created in the local OpenIM backend.
 
 ## Next Phase
 
-Phase 2 should be `Runtime Dock Terminal Surface`.
+Recommended branch from current `UI-feature`:
 
-Recommended branch:
-
-`feature/runtime-dock-terminal`
-
-Base branch:
-
-`feature/runtime-dock-panel`
-
-### Phase 2 Goal
-
-Add a terminal-looking surface inside each Runtime Dock attachment, but keep it frontend-only. The purpose is to prove the dock can host per-attachment terminal UI, input state, output state, resize behavior, and tab/card-level isolation before adding PTY or real CLI processes.
-
-### Phase 2 Scope
-
-- Add a `RuntimeTerminal` component rendered inside each `Shell Placeholder` card.
-- Prefer `xterm.js` if dependency/install friction is low; otherwise start with a styled mock terminal component and leave xterm.js for Phase 2.5.
-- Show deterministic mock output, for example:
-  - `Runtime surface ready`
-  - `Profile: shell-placeholder`
-  - `Attachment: <attachmentID>`
-  - `PTY bridge not connected`
-- Provide a local terminal input row.
-- Pressing Enter should append the typed line to that attachment's local transcript.
-- Add a clear/reset action for the local transcript.
-- Keep transcript state keyed by `RuntimeAttachment.id`, not by conversation only.
-- Preserve existing Runtime Dock behavior:
-  - Dock toggle still works.
-  - Add/remove placeholder still works.
-  - Conversation isolation still works.
-  - No backend or relay dependency is introduced.
-
-### Suggested State Additions
-
-Extend `RuntimeDockStore` with frontend-only terminal state:
-
-```ts
-interface RuntimeTerminalLine {
-  id: string;
-  kind: "system" | "input" | "output";
-  text: string;
-  createdAt: number;
-}
-
-terminalLinesByAttachment: Record<string, RuntimeTerminalLine[]>;
-appendTerminalInput: (attachmentID: string, text: string) => void;
-clearTerminalLines: (attachmentID: string) => void;
+```bash
+git checkout -b feature/runtime-dock-terminal
 ```
 
-Do not store terminal state under `conversationID` alone. Multiple runtime attachments can exist inside the same IM conversation.
+Phase 2 should be `Runtime Dock Terminal Surface`:
 
-### Suggested Files
+- Add a frontend-only terminal surface inside each runtime attachment.
+- Keep transcript state keyed by `RuntimeAttachment.id`.
+- Support local input and transcript append on Enter.
+- Keep output mocked.
+- Keep per-conversation attachment isolation.
+- Do not add PTY, WebSocket, node-pty, Codex/opencode/OpenHands launch, API keys, or model/provider config yet.
 
-- Create `src/components/RuntimeDock/RuntimeTerminal.tsx`.
-- Modify `src/components/RuntimeDock/index.tsx` to render `RuntimeTerminal` inside each attachment card.
-- Modify `src/store/runtimeDock.ts` and `src/store/type.d.ts` for transcript state/actions.
-- Update `src/store/runtimeDock.test.ts` so TypeScript contract covers per-attachment terminal lines.
-- Extend `runtimeDock` i18n keys in `zh.json` and `en.json`.
-
-### Phase 2 Non-Goals
-
-- Do not start PowerShell, bash, Codex, opencode, OpenHands, or any real child process.
-- Do not add node-pty yet.
-- Do not add WebSocket transport yet.
-- Do not send terminal input to `agent-relay`.
-- Do not add API key/model/provider configuration.
-- Do not require `openim-docker` for this phase.
-
-### Phase 2 Acceptance
-
-- Open chat route and expand Runtime Dock.
-- Select a conversation.
-- Add one `Shell Placeholder`.
-- Terminal surface appears inside that attachment.
-- Typing text and pressing Enter appends an input line only in that attachment.
-- Adding a second placeholder creates a separate terminal transcript.
-- Removing one placeholder does not affect the other placeholder.
-- Switching conversations preserves per-conversation attachments and their own terminal UI state.
-- Targeted eslint for touched files has 0 errors.
-- Any failed full-project `tsc`/lint must be documented as pre-existing unless Phase 2 introduces new errors.
-
-### Phase 3 Preview
-
-Only after Phase 2 terminal UI is stable, Phase 3 should add the PTY bridge:
-
-1. Add local bridge API/WebSocket shape.
-2. Start a mock shell or PowerShell process.
-3. Stream stdout/stderr into `RuntimeTerminal`.
-4. Send terminal input to PTY stdin.
-5. Add stop/interrupt controls.
+Phase 3 should add PTY bridge only after Phase 2 terminal UI is stable.

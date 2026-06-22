@@ -133,7 +133,9 @@ const UserCardModal: ForwardRefRenderFunction<
     };
     IMSDK.on(CbEvents.OnFriendAdded, friendAddedHandler);
     refreshData(
-      props.cardInfo ? { cardInfo: props.cardInfo } : latestFullCardInfo.current,
+      props.cardInfo
+        ? { cardInfo: props.cardInfo }
+        : latestFullCardInfo.current ?? undefined,
     );
     return () => {
       IMSDK.off(CbEvents.OnFriendAdded, friendAddedHandler);

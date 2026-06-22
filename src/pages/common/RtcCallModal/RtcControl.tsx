@@ -12,7 +12,7 @@ import {
 import clsx from "clsx";
 import { t } from "i18next";
 import { RemoteParticipant, RoomEvent, Track } from "livekit-client";
-import { useEffect, useRef } from "react";
+import { ComponentType, useEffect, useRef } from "react";
 
 import { getRtcConnectData } from "@/api/imApi";
 import rtc_accept from "@/assets/images/rtc/rtc_accept.png";
@@ -28,6 +28,10 @@ import { feedbackToast } from "@/utils/common";
 
 import { CounterHandle, ForwardCounter } from "./Counter";
 import { AuthData } from "./data";
+
+const TrackToggleComponent = TrackToggle as unknown as ComponentType<
+  Parameters<typeof TrackToggle>[0]
+>;
 
 interface IRtcControlProps {
   isWaiting: boolean;
@@ -153,7 +157,7 @@ export const RtcControl = ({
         />
       )}
       {!isWaiting && (
-        <TrackToggle
+        <TrackToggleComponent
           className="flex cursor-pointer flex-col items-center !justify-start !gap-0 !p-0"
           source={Track.Source.Microphone}
           showIcon={false}
@@ -164,7 +168,7 @@ export const RtcControl = ({
             alt=""
           />
           <span className="mt-2 text-xs text-white">{t("placeholder.microphone")}</span>
-        </TrackToggle>
+        </TrackToggleComponent>
       )}
       <div
         className={clsx("ml-12 flex cursor-pointer flex-col items-center", {
@@ -198,7 +202,7 @@ export const RtcControl = ({
         </div>
       )}
       {!isWaiting && isVideoCall && (
-        <TrackToggle
+        <TrackToggleComponent
           className="flex cursor-pointer flex-col items-center justify-start !gap-0 !p-0"
           source={Track.Source.Camera}
           showIcon={false}
@@ -209,7 +213,7 @@ export const RtcControl = ({
             alt=""
           />
           <span className="mt-2 text-xs text-white">{t("placeholder.camera")}</span>
-        </TrackToggle>
+        </TrackToggleComponent>
       )}
     </div>
   );

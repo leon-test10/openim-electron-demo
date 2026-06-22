@@ -47,8 +47,7 @@ export function useFileMessage() {
       img.src = _URL.createObjectURL(file);
     });
 
-
   return {
-    getImageMessage
+    getImageMessage,
   };
 }

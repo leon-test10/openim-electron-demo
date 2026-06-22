@@ -13,8 +13,8 @@ import {
 
 import { message } from "@/AntdGlobalComp";
 import { BusinessUserInfo, searchBusinessUserInfo } from "@/api/login";
-import OIMAvatar from "@/components/OIMAvatar";
 import DraggableModalWrap from "@/components/DraggableModalWrap";
+import OIMAvatar from "@/components/OIMAvatar";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
 import { CardInfo } from "@/pages/common/UserCardModal";
 import { useContactStore } from "@/store";
@@ -135,7 +135,9 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
     return (
       <>
         {text.slice(0, idx)}
-        <span className="text-[var(--primary)]">{text.slice(idx, idx + keyword.length)}</span>
+        <span className="text-[var(--primary)]">
+          {text.slice(idx, idx + keyword.length)}
+        </span>
         {text.slice(idx + keyword.length)}
       </>
     );
@@ -143,8 +145,7 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
 
   const renderResultItem = (item: SearchResultItem) => {
     const { user, isFriend } = item;
-    const subInfo =
-      user.phoneNumber || user.email || user.userID;
+    const subInfo = user.phoneNumber || user.email || user.userID;
 
     return (
       <div
@@ -155,13 +156,8 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
         <OIMAvatar size={40} src={user.faceURL} text={user.nickname} />
         <div className="ml-3 flex-1 overflow-hidden">
           <div className="flex items-center gap-2">
-            <span
-              className="truncate text-sm font-medium"
-              title={user.nickname}
-            >
-              {user.nickname
-                ? highlightMatch(user.nickname)
-                : user.userID}
+            <span className="truncate text-sm font-medium" title={user.nickname}>
+              {user.nickname ? highlightMatch(user.nickname) : user.userID}
             </span>
             {isFriend && (
               <span className="shrink-0 rounded bg-[var(--primary-active)] px-1.5 py-0.5 text-[10px] text-[var(--sub-text)]">
@@ -169,7 +165,10 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
               </span>
             )}
           </div>
-          <div className="mt-0.5 truncate text-xs text-[var(--sub-text)]" title={subInfo}>
+          <div
+            className="mt-0.5 truncate text-xs text-[var(--sub-text)]"
+            title={subInfo}
+          >
             {highlightMatch(subInfo)}
           </div>
         </div>
