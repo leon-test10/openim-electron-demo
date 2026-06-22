@@ -74,6 +74,36 @@ export interface RuntimeResizeParams {
   rows: number;
 }
 
+export type TerminalStatus = "detached" | "starting" | "running" | "error" | "stopped";
+
+export type TerminalEventType = "started" | "stdout" | "exit" | "error" | "stopped";
+
+export interface TerminalInstance {
+  id: string;
+  workspaceID: string;
+  cwd: string;
+  shell: string;
+  status: TerminalStatus;
+  createdAt: number;
+  updatedAt: number;
+  lastError?: string;
+}
+
+export interface TerminalEvent {
+  tabID: string;
+  type: TerminalEventType;
+  data?: string;
+  exitCode?: number | null;
+  signal?: string | null;
+  timestamp: number;
+}
+
+export interface TerminalResizeParams {
+  tabID: string;
+  cols: number;
+  rows: number;
+}
+
 declare global {
   interface Window {
     electronAPI?: IElectronAPI;

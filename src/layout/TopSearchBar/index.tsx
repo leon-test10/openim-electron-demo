@@ -28,7 +28,7 @@ import UserCardModal, { CardInfo } from "@/pages/common/UserCardModal";
 import {
   useContactStore,
   useConversationStore,
-  useRuntimeDockStore,
+  useTerminalDockStore,
   useUserStore,
 } from "@/store";
 import emitter, { OpenUserCardParams } from "@/utils/events";
@@ -101,8 +101,8 @@ const TopSearchBar = () => {
 
   const navigate = useNavigate();
   const location = useLocation();
-  const toggleRuntimeDock = useRuntimeDockStore((state) => state.togglePanel);
-  const runtimeDockOpen = useRuntimeDockStore((state) => state.panelOpen);
+  const toggleTerminalDock = useTerminalDockStore((state) => state.togglePanel);
+  const terminalDockOpen = useTerminalDockStore((state) => state.panelOpen);
   const isChatRoute = location.pathname.startsWith("/chat");
 
   // ───── Event listeners ─────
@@ -657,14 +657,14 @@ const TopSearchBar = () => {
         </div>
 
         {isChatRoute && (
-          <Tooltip title={t("runtimeDock.title")}>
+          <Tooltip title="Terminal">
             <Button
               type="text"
               size="small"
               className="app-no-drag ml-3 flex h-7 w-7 items-center justify-center text-white hover:text-white"
               icon={<ApiOutlined rev={undefined} />}
-              aria-pressed={runtimeDockOpen}
-              onClick={toggleRuntimeDock}
+              aria-pressed={terminalDockOpen}
+              onClick={toggleTerminalDock}
             />
           </Tooltip>
         )}

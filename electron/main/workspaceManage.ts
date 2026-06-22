@@ -24,18 +24,39 @@ export const getConversationWorkspaceDir = async (conversationID: string) => {
   return conversationDir;
 };
 
+export const getTerminalWorkspaceDir = async (workspaceID: string) => {
+  const root = getWorkspaceRoot();
+  await ensureDir(root);
+  const safe = sanitizeForPath(workspaceID || "default");
+  const workspaceDir = path.join(root, safe);
+  await ensureDir(workspaceDir);
+  return workspaceDir;
+};
+
+const ensurePathInsideRoot = (root: string, relativePath: string) => {
+  const resolvedTarget = path.resolve(root, relativePath);
+  const resolvedRoot = path.resolve(root);
+
+  if (
+    resolvedTarget !== resolvedRoot &&
+    !resolvedTarget.startsWith(`${resolvedRoot}${path.sep}`)
+  ) {
+    throw new Error("Invalid workspace path");
+  }
+
+  return resolvedTarget;
+};
+
 export const writeFileToConversationWorkspace = async (params: {
   conversationID: string;
   relativePath: string;
   content: string;
 }) => {
   const conversationDir = await getConversationWorkspaceDir(params.conversationID);
-  const resolvedTarget = path.resolve(conversationDir, params.relativePath);
-  const resolvedRoot = path.resolve(conversationDir);
-
-  if (!resolvedTarget.startsWith(resolvedRoot)) {
-    throw new Error("Invalid workspace path");
-  }
+  const resolvedTarget = ensurePathInsideRoot(
+    conversationDir,
+    params.relativePath,
+  );
 
   await ensureDir(path.dirname(resolvedTarget));
   await fs.promises.writeFile(resolvedTarget, params.content, "utf8");
@@ -45,3 +66,18 @@ export const writeFileToConversationWorkspace = async (params: {
   };
 };
 
+export const writeFileToTerminalWorkspace = async (params: {
+  workspaceID: string;
+  relativePath: string;
+  content: string;
+}) => {
+  const workspaceDir = await getTerminalWorkspaceDir(params.workspaceID);
+  const resolvedTarget = ensurePathInsideRoot(workspaceDir, params.relativePath);
+
+  await ensureDir(path.dirname(resolvedTarget));
+  await fs.promises.writeFile(resolvedTarget, params.content, "utf8");
+  return {
+    ok: true,
+    path: resolvedTarget,
+  };
+};

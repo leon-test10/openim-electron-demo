@@ -1,4 +1,80 @@
-# Session Handoff - Runtime Dock Terminal Host
+# Session Handoff - Terminal Dock Redesign
+
+## Latest Update - VS Code-like Terminal Dock
+
+Current branch: `feature/terminal-dock-redesign`
+
+This phase rebuilds the right-side panel as a Terminal Dock rather than a
+runtime manager:
+
+- Chat now mounts `TerminalDock`; the old `RuntimeDock` is no longer mounted.
+- The top chat-route button opens `Terminal`, not `Runtime Dock`.
+- New renderer store: `src/store/terminalDock.ts`.
+- New UI: `src/components/TerminalDock/*`.
+- New Electron main bridge: `electron/main/terminalManage.ts`.
+- New IPC channels: `terminal:start`, `terminal:write`, `terminal:resize`,
+  `terminal:interrupt`, `terminal:stop`, `terminal:event`,
+  `terminal:getWorkspaceDir`, `terminal:openWorkspace`.
+- Terminal tabs are workspace-bound, not conversation-bound.
+- OpenIM does not manage agent runtime internals, API keys, model names,
+  provider config, memory, resume IDs, tool calls, or sandbox policy.
+- Users run `codex`, `opencode`, `claude`, `gemini`, `openhands`, or any other
+  CLI as normal terminal commands.
+
+Current user-facing behavior:
+
+- Ordinary browser/Vite mode shows the new Terminal Dock shell but cannot start
+  PTY terminals because `window.electronAPI` is absent.
+- Electron mode can create a workspace, create terminal tabs, and start a PTY
+  shell through `node-pty`.
+- IM context export writes markdown and attachment manifest files into the
+  active workspace.
+- Context prompt can be copied and pasted into the active terminal.
+- Terminal selection can be appended to the current IM input box.
+- Automatic "final answer" capture is intentionally not implemented.
+
+Verification for this update:
+
+```bash
+npm.cmd run lint -- --quiet
+npx.cmd tsc --noEmit
+npm.cmd run build
+```
+
+All passed during implementation. Build still prints existing Vite/Ant Design
+and chunk-size warnings.
+
+Browser/Vite verification:
+
+- Started `npm run dev` and verified `http://localhost:5173`.
+- Opened `#/chat/si_2428632797_3297174239`.
+- The page showed the new `Terminal` panel shell.
+- Browser mode correctly showed `Terminal is available only in the Electron
+  client`.
+- `Runtime Dock` and `opencode-local` text were absent from the page body.
+
+Electron verification not completed in this pass; PTY launch should be checked
+manually in the packaged/dev Electron app.
+
+Known limits:
+
+- Old `RuntimeDock` files remain in the repo but are no longer referenced by
+  chat.
+- Multi-conversation selection UI is not implemented yet; the data model
+  supports linked conversations, and export links the current conversation.
+- Terminal output is intentionally in-memory only; tab metadata persists, and
+  tabs restart as stopped/detached after reload.
+- The Chinese resource file already contains mojibake in this checkout, so this
+  update avoids large edits to `zh.json`.
+
+Next recommended phase:
+
+- Add a workspace/conversation picker for exporting multiple IM conversations
+  into the same workspace.
+- Add attachment copying/downloading into workspace when local files are
+  available.
+- Add command-template snippets for common CLIs without storing runtime config.
+- Add Electron manual test coverage for PTY launch and xterm resize.
 
 ## Latest Update - Terminal First
 

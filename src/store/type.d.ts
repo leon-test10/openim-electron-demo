@@ -16,6 +16,9 @@ import {
   RuntimeInstance,
   RuntimeInstanceStatus,
   RuntimeProfile,
+  TerminalEvent,
+  TerminalInstance,
+  TerminalStatus,
 } from "@/types/globalExpose";
 
 export type IMConnectState = "success" | "loading" | "failed";
@@ -155,3 +158,59 @@ export interface RuntimeDockStore {
 }
 
 export type { RuntimeEvent, RuntimeInstance, RuntimeProfile };
+
+export interface TerminalWorkspace {
+  id: string;
+  title: string;
+  rootPath: string;
+  linkedConversationIDs: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TerminalTab {
+  id: string;
+  workspaceID: string;
+  title: string;
+  shell: string;
+  cwd: string;
+  status: TerminalStatus;
+  createdAt: number;
+  updatedAt: number;
+  lastError?: string;
+}
+
+export interface TerminalOutputChunk {
+  id: string;
+  tabID: string;
+  content: string;
+  createdAt: number;
+}
+
+export interface TerminalDockStore {
+  panelOpen: boolean;
+  workspaces: TerminalWorkspace[];
+  activeWorkspaceID?: string;
+  tabsByWorkspace: Record<string, TerminalTab[]>;
+  activeTabByWorkspace: Record<string, string | undefined>;
+  outputByTab: Record<string, TerminalOutputChunk[]>;
+  lastContextPromptByWorkspace: Record<string, string | undefined>;
+  togglePanel: () => void;
+  setPanelOpen: (open: boolean) => void;
+  createWorkspace: (title?: string) => Promise<string | undefined>;
+  setActiveWorkspace: (workspaceID: string) => void;
+  linkConversationToWorkspace: (workspaceID: string, conversationID: string) => void;
+  createTab: (workspaceID: string) => Promise<string | undefined>;
+  setActiveTab: (workspaceID: string, tabID: string) => void;
+  startTab: (tabID: string) => Promise<void>;
+  restartTab: (tabID: string) => Promise<void>;
+  interruptTab: (tabID: string) => Promise<void>;
+  stopTab: (tabID: string) => Promise<void>;
+  writeToTab: (tabID: string, data: string) => Promise<void>;
+  clearTabOutput: (tabID: string) => void;
+  removeTab: (workspaceID: string, tabID: string) => Promise<void>;
+  handleTerminalEvent: (event: TerminalEvent) => void;
+  setLastContextPrompt: (workspaceID: string, prompt: string) => void;
+}
+
+export type { TerminalEvent, TerminalInstance };

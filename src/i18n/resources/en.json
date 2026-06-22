@@ -410,6 +410,9 @@
     "noSelection": "No terminal selection",
     "selectionAdded": "Copied and appended to input"
   },
+  "terminalDock": {
+    "title": "Terminal"
+  },
   "empty": {
     "noMoments": "No moments available",
     "noMoreMessage": "No more messages",

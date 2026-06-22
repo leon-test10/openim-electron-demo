@@ -1,4 +1,4 @@
-import { BrowserWindow, Menu, app, dialog, ipcMain } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
 import {
   clearCache,
   closeWindow,
@@ -12,9 +12,12 @@ import { IpcRenderToMain } from "../constants";
 import { getStore } from "./storeManage";
 import { changeLanguage } from "../i18n";
 import { runtimeManager } from "./runtimeManage";
+import { terminalManager } from "./terminalManage";
 import {
   getConversationWorkspaceDir,
+  getTerminalWorkspaceDir,
   writeFileToConversationWorkspace,
+  writeFileToTerminalWorkspace,
 } from "./workspaceManage";
 
 const store = getStore();
@@ -109,12 +112,37 @@ export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.runtimeResize, (_, params) => {
     return runtimeManager.resize(params);
   });
+  ipcMain.handle(IpcRenderToMain.terminalStart, (event, params) => {
+    return terminalManager.start(event.sender, params);
+  });
+  ipcMain.handle(IpcRenderToMain.terminalInterrupt, (_, tabID) => {
+    return terminalManager.interrupt(tabID);
+  });
+  ipcMain.handle(IpcRenderToMain.terminalStop, (_, tabID) => {
+    return terminalManager.stop(tabID);
+  });
+  ipcMain.handle(IpcRenderToMain.terminalWrite, (_, params) => {
+    return terminalManager.write(params);
+  });
+  ipcMain.handle(IpcRenderToMain.terminalResize, (_, params) => {
+    return terminalManager.resize(params);
+  });
+  ipcMain.handle(IpcRenderToMain.terminalGetWorkspaceDir, (_, workspaceID) => {
+    return getTerminalWorkspaceDir(workspaceID);
+  });
+  ipcMain.handle(IpcRenderToMain.terminalOpenWorkspace, async (_, workspaceID) => {
+    const workspaceDir = await getTerminalWorkspaceDir(workspaceID);
+    return shell.openPath(workspaceDir);
+  });
 
   ipcMain.handle(IpcRenderToMain.workspaceGetConversationDir, (_, conversationID) => {
     return getConversationWorkspaceDir(conversationID);
   });
   ipcMain.handle(IpcRenderToMain.workspaceWriteFile, (_, params) => {
     return writeFileToConversationWorkspace(params);
+  });
+  ipcMain.handle(IpcRenderToMain.workspaceWriteWorkspaceFile, (_, params) => {
+    return writeFileToTerminalWorkspace(params);
   });
   ipcMain.on(IpcRenderToMain.getDataPath, (e, key: string) => {
     switch (key) {

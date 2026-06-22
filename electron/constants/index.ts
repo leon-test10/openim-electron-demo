@@ -1,6 +1,7 @@
 export const IpcMainToRender = {
   appResume: "appResume",
   runtimeEvent: "runtime:event",
+  terminalEvent: "terminal:event",
 };
 
 export const IpcRenderToMain = {
@@ -22,7 +23,15 @@ export const IpcRenderToMain = {
   runtimeWriteInput: "runtime:writeInput",
   runtimeResize: "runtime:resize",
   runtimeHealthCheck: "runtime:healthCheck",
+  terminalStart: "terminal:start",
+  terminalInterrupt: "terminal:interrupt",
+  terminalStop: "terminal:stop",
+  terminalWrite: "terminal:write",
+  terminalResize: "terminal:resize",
+  terminalGetWorkspaceDir: "terminal:getWorkspaceDir",
+  terminalOpenWorkspace: "terminal:openWorkspace",
 
   workspaceGetConversationDir: "workspace:getConversationDir",
   workspaceWriteFile: "workspace:writeFile",
+  workspaceWriteWorkspaceFile: "workspace:writeWorkspaceFile",
 };
