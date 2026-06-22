@@ -51,7 +51,13 @@ All passed. Build still prints existing Vite/Ant Design/chunk-size warnings.
 
 Important limitation: this is an `opencode-local` runtime adapter smoke using the local OpenAI-compatible model endpoint. It does not yet execute a bundled `opencode run` binary. The offline manifest records the intended external opencode bundle contract; the actual archive checksum is still `TBD_AFTER_BUNDLE_BUILD`.
 
-GitHub push status: not completed yet in this handoff section. The machine did not have `gh` installed during planning; install/auth/push still need to be performed after the runtime commit.
+GitHub push status:
+
+- `gh` was installed successfully with `winget`.
+- `gh auth login --hostname github.com --git-protocol https --web` failed before showing a device code because the request to GitHub timed out.
+- `Test-NetConnection github.com -Port 443` returned `TcpTestSucceeded: False`.
+- `git ls-remote https://github.com/leon-test10/openim-electron-demo.git` failed with `Recv failure: Connection was reset`.
+- Local commits are saved, but remote create/push is blocked by current GitHub network connectivity from this machine.
 
 Recommended next phase:
 
