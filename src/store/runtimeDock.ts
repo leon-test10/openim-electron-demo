@@ -36,6 +36,46 @@ const createTranscriptItem = (
   createdAt,
 });
 
+const appendTranscriptItem = (
+  transcript: RuntimeTranscriptItem[],
+  item: RuntimeTranscriptItem,
+) => {
+  const lastItem = transcript[transcript.length - 1];
+  if (
+    lastItem &&
+    lastItem.role === item.role &&
+    item.role !== "input" &&
+    item.createdAt - lastItem.createdAt < 1000
+  ) {
+    return [
+      ...transcript.slice(0, -1),
+      {
+        ...lastItem,
+        content: `${lastItem.content}${item.content}`,
+        createdAt: item.createdAt,
+      },
+    ];
+  }
+
+  return [...transcript, item];
+};
+
+const getTranscriptRoleFromEvent = (
+  event: RuntimeEvent,
+): RuntimeTranscriptItem["role"] => {
+  switch (event.type) {
+    case "stderr":
+    case "error":
+      return "stderr";
+    case "started":
+    case "exit":
+    case "stopped":
+      return "system";
+    default:
+      return "stdout";
+  }
+};
+
 const toRuntimeProfileID = (profileID?: string): RuntimeProfileID => {
   if (profileID === "opencode-terminal") return "opencode-terminal";
   return "powershell-terminal";
@@ -353,19 +393,6 @@ export const useRuntimeDockStore = create<RuntimeDockStore>()((set) => ({
   writeInput: async (conversationID, attachmentID, input) => {
     if (!input) return;
 
-    set((state) => {
-      const nextAttachments = updateAttachment(
-        state.attachmentsByConversation,
-        conversationID,
-        attachmentID,
-        (attachment) => ({
-          ...attachment,
-          transcript: [...attachment.transcript, createTranscriptItem("input", input)],
-        }),
-      );
-      return saveAttachments(state, nextAttachments);
-    });
-
     try {
       await writeRuntimeInputBridge(attachmentID, input);
     } catch (error) {
@@ -380,20 +407,34 @@ export const useRuntimeDockStore = create<RuntimeDockStore>()((set) => ({
             status: "error",
             lastError: message,
             updatedAt: Date.now(),
-            transcript: [
-              ...attachment.transcript,
+            transcript: appendTranscriptItem(
+              attachment.transcript,
               createTranscriptItem("system", `Input failed: ${message}`),
-            ],
+            ),
           }),
         );
         return saveAttachments(state, nextAttachments);
       });
     }
   },
+  clearTranscript: (conversationID, attachmentID) => {
+    set((state) => {
+      const nextAttachments = updateAttachment(
+        state.attachmentsByConversation,
+        conversationID,
+        attachmentID,
+        (attachment) => ({
+          ...attachment,
+          transcript: [],
+          updatedAt: Date.now(),
+        }),
+      );
+      return saveAttachments(state, nextAttachments);
+    });
+  },
   handleRuntimeEvent: (event: RuntimeEvent) => {
     set((state) => {
-      const role =
-        event.type === "stderr" || event.type === "error" ? "stderr" : "stdout";
+      const role = getTranscriptRoleFromEvent(event);
       const nextAttachments = updateAttachmentByID(
         state.attachmentsByConversation,
         event.attachmentID,
@@ -410,10 +451,10 @@ export const useRuntimeDockStore = create<RuntimeDockStore>()((set) => ({
           updatedAt: event.timestamp,
           lastError: event.type === "error" ? event.data : attachment.lastError,
           transcript: event.data
-            ? [
-                ...attachment.transcript,
+            ? appendTranscriptItem(
+                attachment.transcript,
                 createTranscriptItem(role, event.data, event.timestamp),
-              ]
+              )
             : attachment.transcript,
         }),
       );

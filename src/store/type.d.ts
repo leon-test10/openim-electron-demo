@@ -143,6 +143,7 @@ export interface RuntimeDockStore {
     attachmentID: string,
     input: string,
   ) => Promise<void>;
+  clearTranscript: (conversationID: string, attachmentID: string) => void;
   handleRuntimeEvent: (event: RuntimeEvent) => void;
   removeAttachment: (conversationID: string, attachmentID: string) => void;
 }

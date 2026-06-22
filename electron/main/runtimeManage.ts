@@ -1,6 +1,5 @@
-import { spawn, ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync, ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
 
 import { WebContents } from "electron";
 
@@ -61,13 +60,42 @@ interface ManagedRuntime {
 
 const getDefaultCwd = () => process.cwd();
 
+const getOpencodeCwd = () => getDefaultCwd();
+
+const resolveExecutableOnPath = (command: string) => {
+  const result = spawnSync("where.exe", [command], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.status !== 0) return undefined;
+
+  const candidates = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return candidates.find((candidate) => existsSync(candidate));
+};
+
+const getOpencodeStartupCommand = (resolvedExecutable?: string) =>
+  resolvedExecutable
+    ? [
+        `Write-Host '[working directory] ${getOpencodeCwd()}'`,
+        `Write-Host '[starting opencode] ${resolvedExecutable}'`,
+        "opencode",
+      ].join("; ")
+    : [
+        `Write-Host '[working directory] ${getOpencodeCwd()}'`,
+        "Write-Host '[opencode CLI not found on PATH. Staying in hosted PowerShell mode.]'",
+      ].join("; ");
+
 const profiles: RuntimeProfile[] = [
   {
     id: "powershell-terminal",
     title: "PowerShell Terminal",
     runtime: "terminal",
     shell: "powershell.exe",
-    args: ["-NoLogo", "-NoExit", "-ExecutionPolicy", "Bypass"],
+    args: ["-NoLogo", "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass"],
     cwd: getDefaultCwd(),
     env: {
       OPENAI_BASE_URL: "http://127.0.0.1:8080/v1",
@@ -80,9 +108,8 @@ const profiles: RuntimeProfile[] = [
     title: "opencode Terminal",
     runtime: "terminal",
     shell: "powershell.exe",
-    args: ["-NoLogo", "-NoExit", "-ExecutionPolicy", "Bypass"],
-    cwd: getDefaultCwd(),
-    startupCommand: "opencode --version",
+    args: ["-NoLogo", "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass"],
+    cwd: getOpencodeCwd(),
     env: {
       OPENAI_BASE_URL: "http://127.0.0.1:8080/v1",
       OPENAI_API_KEY: "local",
@@ -166,12 +193,19 @@ export const runtimeManager = {
     };
 
     try {
+      const resolvedOpencode =
+        profile.id === "opencode-terminal" ? resolveExecutableOnPath("opencode") : undefined;
+      const startupCommand =
+        profile.id === "opencode-terminal"
+          ? getOpencodeStartupCommand(resolvedOpencode)
+          : profile.startupCommand;
       const child = spawn(profile.shell, profile.args, {
         cwd,
         env: {
           ...process.env,
           ...profile.env,
         },
+        windowsHide: true,
       });
       const runtime: ManagedRuntime = {
         instance: {
@@ -187,7 +221,14 @@ export const runtimeManager = {
       runtimes.set(params.attachmentID, runtime);
       emitRuntimeEvent(runtime, {
         type: "started",
-        data: `${profile.title} started in ${cwd}\r\n`,
+        data:
+          profile.id === "opencode-terminal"
+            ? `${profile.title} started in ${cwd}\r\n${
+                resolvedOpencode
+                  ? `[opencode detected] ${resolvedOpencode}\r\n`
+                  : "[opencode CLI not found on PATH]\r\n"
+              }`
+            : `${profile.title} started in ${cwd}\r\n`,
       });
 
       child.stdout.on("data", (chunk) => {
@@ -231,8 +272,8 @@ export const runtimeManager = {
         runtimes.delete(params.attachmentID);
       });
 
-      if (profile.startupCommand) {
-        child.stdin.write(`${profile.startupCommand}\r\n`);
+      if (startupCommand) {
+        child.stdin.write(`${startupCommand}\r\n`);
       }
 
       return runtime.instance;

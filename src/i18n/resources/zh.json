@@ -390,6 +390,8 @@
     "close": "收起 Runtime Dock",
     "attachments": "挂载的 Terminal",
     "addRuntime": "Add Terminal",
+    "profilePowerShell": "PowerShell Terminal",
+    "profileOpencode": "opencode Terminal",
     "noConversation": "未选择会话",
     "noRuntime": "No terminal attached",
     "electronRequired": "Terminal runtime requires the Electron app",
@@ -397,7 +399,14 @@
     "start": "Start",
     "restart": "Restart",
     "stop": "Stop",
-    "sendInput": "Send Input"
+    "clearTranscript": "清屏",
+    "sendInput": "Send Input",
+    "inputPlaceholderPowerShell": "输入 PowerShell 命令，例如 Get-Location",
+    "inputPlaceholderOpencode": "输入命令，例如 /help",
+    "commandHint": "Enter 发送，↑/↓ 浏览历史命令",
+    "historyHint": "已记录 {{count}} 条命令",
+    "readyHint": "终端已就绪",
+    "transcriptEmpty": "终端输出已清空"
   },
   "empty": {
     "noMoments": "暂无动态",

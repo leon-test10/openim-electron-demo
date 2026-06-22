@@ -389,6 +389,8 @@
     "close": "Collapse Runtime Dock",
     "attachments": "Attached terminals",
     "addRuntime": "Add Terminal",
+    "profilePowerShell": "PowerShell Terminal",
+    "profileOpencode": "opencode Terminal",
     "noConversation": "No conversation selected",
     "noRuntime": "No terminal attached",
     "electronRequired": "Terminal runtime requires the Electron app",
@@ -396,7 +398,14 @@
     "start": "Start",
     "restart": "Restart",
     "stop": "Stop",
-    "sendInput": "Send Input"
+    "clearTranscript": "Clear",
+    "sendInput": "Send Input",
+    "inputPlaceholderPowerShell": "Enter a PowerShell command, for example Get-Location",
+    "inputPlaceholderOpencode": "Enter a command, for example /help",
+    "commandHint": "Press Enter to send, use ↑/↓ for history",
+    "historyHint": "{{count}} commands in history",
+    "readyHint": "Terminal ready",
+    "transcriptEmpty": "Terminal output has been cleared"
   },
   "empty": {
     "noMoments": "No moments available",
