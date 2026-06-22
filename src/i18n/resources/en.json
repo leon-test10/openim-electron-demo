@@ -391,7 +391,11 @@
     "addRuntime": "Add Runtime",
     "noConversation": "No conversation selected",
     "noRuntime": "No runtime attached",
-    "phaseTwoHint": "Terminal will be added in Phase 2"
+    "phaseTwoHint": "Terminal will be added in Phase 2",
+    "start": "Start",
+    "restart": "Restart",
+    "stop": "Stop",
+    "sendPrompt": "Send Prompt"
   },
   "empty": {
     "noMoments": "No moments available",

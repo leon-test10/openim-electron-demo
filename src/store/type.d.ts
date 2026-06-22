@@ -11,6 +11,12 @@ import {
 } from "@openim/wasm-client-sdk/lib/types/entity";
 
 import { BusinessUserInfo } from "@/api/login";
+import {
+  RuntimeInstance,
+  RuntimeInstanceStatus,
+  RuntimeProfile,
+  RuntimePromptResult,
+} from "@/types/globalExpose";
 
 export type IMConnectState = "success" | "loading" | "failed";
 
@@ -101,15 +107,27 @@ export interface ContactStore {
   clearContactStore: () => void;
 }
 
-export type RuntimeAttachmentStatus = "detached";
+export type RuntimeAttachmentStatus = RuntimeInstanceStatus;
+
+export type RuntimeProfileID = RuntimeProfile["id"];
+
+export interface RuntimeTranscriptItem {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  createdAt: number;
+}
 
 export interface RuntimeAttachment {
   id: string;
   conversationID: string;
-  runtimeProfileID: "shell-placeholder";
+  runtimeProfileID: RuntimeProfileID;
   title: string;
   status: RuntimeAttachmentStatus;
   createdAt: number;
+  updatedAt?: number;
+  lastError?: string;
+  transcript: RuntimeTranscriptItem[];
 }
 
 export interface RuntimeDockStore {
@@ -117,6 +135,15 @@ export interface RuntimeDockStore {
   attachmentsByConversation: Record<string, RuntimeAttachment[]>;
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
-  addPlaceholderRuntime: (conversationID: string) => void;
+  addRuntime: (conversationID: string, profileID?: RuntimeProfileID) => void;
+  startRuntime: (conversationID: string, attachmentID: string) => Promise<void>;
+  stopRuntime: (conversationID: string, attachmentID: string) => Promise<void>;
+  sendPrompt: (
+    conversationID: string,
+    attachmentID: string,
+    prompt: string,
+  ) => Promise<void>;
   removeAttachment: (conversationID: string, attachmentID: string) => void;
 }
+
+export type { RuntimeInstance, RuntimeProfile, RuntimePromptResult };

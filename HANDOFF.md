@@ -1,4 +1,65 @@
-# Session Handoff - Runtime Dock Verification
+# Session Handoff - Runtime Dock + opencode-local Smoke
+
+## Latest Update - 2026-06-22
+
+Current branch: `UI-feature`
+
+Local baseline commit saved before runtime work:
+
+```text
+5f2cd46 chore: save verified UI-feature baseline
+```
+
+Runtime work added after that baseline:
+
+- Electron main runtime manager: `electron/main/runtimeManage.ts`
+- Runtime IPC channels: `runtime:listProfiles`, `runtime:start`, `runtime:stop`, `runtime:sendPrompt`, `runtime:healthCheck`
+- Runtime Dock UI upgraded from placeholder-only to Start / Restart / Stop / Send Prompt.
+- `opencode-local` profile added as the first runtime profile.
+- Browser dev fallback added through Vite proxy `/runtime-local/v1 -> http://127.0.0.1:8080/v1` so the in-app browser at `localhost:5173` can verify the runtime smoke without Electron IPC.
+- Offline bundle contract added:
+  - `runtime-bundles/opencode-win-x64-local.manifest.json`
+  - `docs/runtime-opencode-offline.md`
+
+Local model contract verified:
+
+- Base URL: `http://127.0.0.1:8080/v1`
+- Model: `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`
+- Smoke prompt: `Reply with READY only.`
+- Result: local model returned `READY`.
+
+Runtime Dock browser smoke passed on `http://localhost:5173/#/chat/si_2428632797_3297174239`:
+
+1. Opened Runtime Dock.
+2. Started first `opencode-local` attachment.
+3. Dock state changed to `running`.
+4. Transcript showed `Runtime is running. Local model endpoint is reachable.`
+5. Sent `Reply with READY only.`
+6. Transcript showed assistant response `READY`.
+7. Stopped runtime.
+8. Dock state changed to `stopped` and transcript showed `Runtime stopped.`
+
+Verification commands after runtime work:
+
+```bash
+npm.cmd run lint -- --quiet
+npx.cmd tsc --noEmit
+npm.cmd run build
+```
+
+All passed. Build still prints existing Vite/Ant Design/chunk-size warnings.
+
+Important limitation: this is an `opencode-local` runtime adapter smoke using the local OpenAI-compatible model endpoint. It does not yet execute a bundled `opencode run` binary. The offline manifest records the intended external opencode bundle contract; the actual archive checksum is still `TBD_AFTER_BUNDLE_BUILD`.
+
+GitHub push status: not completed yet in this handoff section. The machine did not have `gh` installed during planning; install/auth/push still need to be performed after the runtime commit.
+
+Recommended next phase:
+
+- Build the actual `opencode-win-x64-local.zip` offline runtime bundle.
+- Replace manifest `sha256` with the real archive checksum.
+- Wire `runtimeManage.ts` to launch bundled `opencode run` when the bundle is present.
+- Keep the current local OpenAI-compatible smoke adapter as a fallback health test.
+- Add process log streaming and cancellation semantics before adding other runtimes.
 
 ## Project
 

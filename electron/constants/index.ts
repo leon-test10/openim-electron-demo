@@ -14,4 +14,9 @@ export const IpcRenderToMain = {
   getKeyStoreSync: "getKeyStoreSync",
   showInputContextMenu: "showInputContextMenu",
   getDataPath: "getDataPath",
+  runtimeListProfiles: "runtime:listProfiles",
+  runtimeStart: "runtime:start",
+  runtimeStop: "runtime:stop",
+  runtimeSendPrompt: "runtime:sendPrompt",
+  runtimeHealthCheck: "runtime:healthCheck",
 };

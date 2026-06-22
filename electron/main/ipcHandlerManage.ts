@@ -11,6 +11,7 @@ import { t } from "i18next";
 import { IpcRenderToMain } from "../constants";
 import { getStore } from "./storeManage";
 import { changeLanguage } from "../i18n";
+import { runtimeManager } from "./runtimeManage";
 
 const store = getStore();
 
@@ -82,6 +83,21 @@ export const setIpcMainListener = () => {
     menu.popup({
       window: BrowserWindow.getFocusedWindow()!,
     });
+  });
+  ipcMain.handle(IpcRenderToMain.runtimeListProfiles, () => {
+    return runtimeManager.listProfiles();
+  });
+  ipcMain.handle(IpcRenderToMain.runtimeHealthCheck, (_, profileID) => {
+    return runtimeManager.healthCheck(profileID);
+  });
+  ipcMain.handle(IpcRenderToMain.runtimeStart, (_, params) => {
+    return runtimeManager.start(params);
+  });
+  ipcMain.handle(IpcRenderToMain.runtimeStop, (_, attachmentID) => {
+    return runtimeManager.stop(attachmentID);
+  });
+  ipcMain.handle(IpcRenderToMain.runtimeSendPrompt, (_, params) => {
+    return runtimeManager.sendPrompt(params);
   });
   ipcMain.on(IpcRenderToMain.getDataPath, (e, key: string) => {
     switch (key) {

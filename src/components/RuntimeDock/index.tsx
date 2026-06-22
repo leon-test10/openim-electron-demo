@@ -2,14 +2,72 @@ import {
   ApiOutlined,
   CloseOutlined,
   DeleteOutlined,
+  PlayCircleOutlined,
   PlusOutlined,
+  ReloadOutlined,
+  SendOutlined,
+  StopOutlined,
 } from "@ant-design/icons";
-import { Button, Empty, Tag, Tooltip } from "antd";
+import { Button, Empty, Input, Tag, Tooltip } from "antd";
 import dayjs from "dayjs";
 import { t } from "i18next";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { useConversationStore, useRuntimeDockStore } from "@/store";
+import { RuntimeAttachment } from "@/store/runtimeDock";
+
+const { TextArea } = Input;
+
+const statusColor: Record<RuntimeAttachment["status"], string> = {
+  detached: "default",
+  starting: "processing",
+  running: "success",
+  error: "error",
+  stopped: "warning",
+};
+
+const RuntimePromptBox = ({
+  attachment,
+  conversationID,
+}: {
+  attachment: RuntimeAttachment;
+  conversationID: string;
+}) => {
+  const [prompt, setPrompt] = useState("Reply with READY only.");
+  const [submitting, setSubmitting] = useState(false);
+  const sendPrompt = useRuntimeDockStore((state) => state.sendPrompt);
+  const disabled = attachment.status !== "running" || submitting;
+
+  const onSend = async () => {
+    if (!prompt.trim()) return;
+    setSubmitting(true);
+    await sendPrompt(conversationID, attachment.id, prompt);
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="mt-3 space-y-2">
+      <TextArea
+        value={prompt}
+        rows={2}
+        disabled={attachment.status !== "running"}
+        onChange={(event) => setPrompt(event.target.value)}
+      />
+      <Button
+        block
+        size="small"
+        type="primary"
+        icon={<SendOutlined rev={undefined} />}
+        disabled={disabled}
+        loading={submitting}
+        onClick={onSend}
+      >
+        {t("runtimeDock.sendPrompt")}
+      </Button>
+    </div>
+  );
+};
 
 const RuntimeDock = () => {
   const { conversationID: routeConversationID } = useParams();
@@ -21,9 +79,9 @@ const RuntimeDock = () => {
   const attachmentsByConversation = useRuntimeDockStore(
     (state) => state.attachmentsByConversation,
   );
-  const addPlaceholderRuntime = useRuntimeDockStore(
-    (state) => state.addPlaceholderRuntime,
-  );
+  const addRuntime = useRuntimeDockStore((state) => state.addRuntime);
+  const startRuntime = useRuntimeDockStore((state) => state.startRuntime);
+  const stopRuntime = useRuntimeDockStore((state) => state.stopRuntime);
   const removeAttachment = useRuntimeDockStore((state) => state.removeAttachment);
 
   const conversationID = currentConversation?.conversationID ?? routeConversationID;
@@ -35,7 +93,7 @@ const RuntimeDock = () => {
 
   const onAddRuntime = () => {
     if (!conversationID) return;
-    addPlaceholderRuntime(conversationID);
+    addRuntime(conversationID);
   };
 
   return (
@@ -124,14 +182,62 @@ const RuntimeDock = () => {
                   </Tooltip>
                 </div>
                 <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <Tag color="default">{attachment.status}</Tag>
+                  <Tag color={statusColor[attachment.status]}>{attachment.status}</Tag>
                   <span className="text-xs text-[var(--sub-text)]">
                     {dayjs(attachment.createdAt).format("YYYY-MM-DD HH:mm")}
                   </span>
                 </div>
-                <div className="rounded bg-white px-3 py-2 text-xs text-[var(--sub-text)] dark:bg-[#1f1f1f]">
-                  {t("runtimeDock.phaseTwoHint")}
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <Button
+                    size="small"
+                    icon={<PlayCircleOutlined rev={undefined} />}
+                    disabled={
+                      attachment.status === "running" ||
+                      attachment.status === "starting"
+                    }
+                    onClick={() => startRuntime(conversationID, attachment.id)}
+                  >
+                    {t("runtimeDock.start")}
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<ReloadOutlined rev={undefined} />}
+                    disabled={attachment.status === "starting"}
+                    onClick={() => startRuntime(conversationID, attachment.id)}
+                  >
+                    {t("runtimeDock.restart")}
+                  </Button>
+                  <Button
+                    size="small"
+                    icon={<StopOutlined rev={undefined} />}
+                    disabled={attachment.status !== "running"}
+                    onClick={() => stopRuntime(conversationID, attachment.id)}
+                  >
+                    {t("runtimeDock.stop")}
+                  </Button>
                 </div>
+                {attachment.lastError && (
+                  <div className="mb-3 rounded bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-950/40">
+                    {attachment.lastError}
+                  </div>
+                )}
+                <div className="max-h-56 space-y-2 overflow-y-auto rounded bg-white px-3 py-2 text-xs dark:bg-[#1f1f1f]">
+                  {attachment.transcript.map((item) => (
+                    <div key={item.id}>
+                      <div className="mb-1 flex items-center justify-between text-[11px] text-[var(--sub-text)]">
+                        <span>{item.role}</span>
+                        <span>{dayjs(item.createdAt).format("HH:mm:ss")}</span>
+                      </div>
+                      <div className="whitespace-pre-wrap break-words text-[var(--primary-text)]">
+                        {item.content}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <RuntimePromptBox
+                  attachment={attachment}
+                  conversationID={conversationID}
+                />
               </div>
             ))}
           </div>

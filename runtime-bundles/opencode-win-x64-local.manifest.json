@@ -1,0 +1,31 @@
+{
+  "id": "opencode-win-x64-local",
+  "runtime": "opencode",
+  "version": "phase-2-smoke",
+  "platform": "win-x64",
+  "archiveName": "opencode-win-x64-local.zip",
+  "sha256": "TBD_AFTER_BUNDLE_BUILD",
+  "entry": {
+    "type": "external-archive",
+    "executable": "opencode.cmd",
+    "args": ["run"]
+  },
+  "profileDefaults": {
+    "profileID": "opencode-local",
+    "baseURL": "http://127.0.0.1:8080/v1",
+    "model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "apiKey": "local"
+  },
+  "offlineInstall": [
+    "Copy opencode-win-x64-local.zip to the target computer.",
+    "Verify the SHA-256 checksum against this manifest after replacing TBD_AFTER_BUNDLE_BUILD.",
+    "Extract the archive into the configured runtime bundle directory.",
+    "Start the local OpenAI-compatible model server on http://127.0.0.1:8080/v1.",
+    "Open Runtime Dock and start the opencode-local runtime profile."
+  ],
+  "notes": [
+    "The archive is intentionally not committed to git.",
+    "This manifest records the reproducible offline contract for the first opencode runtime bundle.",
+    "The current Phase 2 smoke path validates the runtime bridge through the local OpenAI-compatible endpoint."
+  ]
+}

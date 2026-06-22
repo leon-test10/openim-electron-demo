@@ -16,6 +16,40 @@ export interface IElectronAPI {
   getFileByPath: (filePath: string) => Promise<File | null>;
 }
 
+export type RuntimeInstanceStatus =
+  | "detached"
+  | "starting"
+  | "running"
+  | "error"
+  | "stopped";
+
+export interface RuntimeProfile {
+  id: "opencode-local";
+  title: string;
+  runtime: "opencode";
+  adapter: "openai-compatible-local";
+  baseURL: string;
+  model: string;
+  apiKey: string;
+  offlineBundleID: string;
+}
+
+export interface RuntimeInstance {
+  id: string;
+  conversationID: string;
+  profileID: RuntimeProfile["id"];
+  status: RuntimeInstanceStatus;
+  createdAt: number;
+  updatedAt: number;
+  lastError?: string;
+}
+
+export interface RuntimePromptResult {
+  attachmentID: string;
+  output: string;
+  completedAt: number;
+}
+
 declare global {
   interface Window {
     electronAPI?: IElectronAPI;
