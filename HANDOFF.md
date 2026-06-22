@@ -56,6 +56,15 @@ Browser/Vite verification:
 Electron verification not completed in this pass; PTY launch should be checked
 manually in the packaged/dev Electron app.
 
+Git status for this update:
+
+- Local commit: `8c7fab0 feat: redesign terminal dock panel`
+- First push attempt:
+  `git push -u origin feature/terminal-dock-redesign`
+- Result: failed with `Recv failure: Connection was reset`.
+- Local branch is saved; remote branch may still need another push when GitHub
+  connectivity is stable.
+
 Known limits:
 
 - Old `RuntimeDock` files remain in the repo but are no longer referenced by
