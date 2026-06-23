@@ -13,6 +13,32 @@ export type TerminalSurfaceApi = {
   focus: () => void;
 };
 
+const ANSI_ESCAPE = String.fromCharCode(27);
+const ANSI_SGR_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[([0-9;]*)m`, "g");
+const ANSI_TRUECOLOR_PATTERN = new RegExp(
+  `${ANSI_ESCAPE}\\[38;2;[0-9]+;[0-9]+;[0-9]+m`,
+  "g",
+);
+
+const normalizeAnsiColors = (value: string) =>
+  value
+    .replace(ANSI_SGR_PATTERN, (match, codes: string) => {
+      const parts = codes.split(";").filter(Boolean);
+      if (parts.includes("34") || parts.includes("94")) {
+        return `${ANSI_ESCAPE}[${parts
+          .map((part) => (part === "34" || part === "94" ? "37" : part))
+          .join(";")}m`;
+      }
+      return match;
+    })
+    .replace(ANSI_TRUECOLOR_PATTERN, (match) => {
+      const values = match.match(/[0-9]+/g)?.map(Number) ?? [];
+      const [r, g, b] = values.slice(2);
+      return b > r + 24 && b > g + 24 && r < 100 && g < 140
+        ? `${ANSI_ESCAPE}[37m`
+        : match;
+    });
+
 const TerminalSurface = ({
   tab,
   output,
@@ -42,6 +68,7 @@ const TerminalSurface = ({
         'Consolas, "Cascadia Mono", "Cascadia Code", "JetBrains Mono", monospace',
       fontSize: 14,
       lineHeight: 1.25,
+      minimumContrastRatio: 7,
       convertEol: false,
       allowProposedApi: false,
       disableStdin: tab.status !== "running",
@@ -142,7 +169,7 @@ const TerminalSurface = ({
     const renderedIds = renderedIdsRef.current;
     output.forEach((item) => {
       if (renderedIds.has(item.id)) return;
-      terminal.write(item.content);
+      terminal.write(normalizeAnsiColors(item.content));
       renderedIds.add(item.id);
     });
     terminal.scrollToBottom();

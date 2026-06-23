@@ -227,6 +227,8 @@ export interface TerminalDockStore {
     templateID: string,
     patch: Partial<Omit<TerminalCommandTemplate, "id">>,
   ) => void;
+  addCommandTemplate: () => void;
+  removeCommandTemplate: (templateID: string) => void;
   resetCommandTemplates: () => void;
 }
 

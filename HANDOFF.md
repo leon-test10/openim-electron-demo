@@ -91,6 +91,20 @@ Expected opencode path:
   only when one-shot behavior is desired.
 - Offline path: point the command template to the offline opencode executable.
 
+Follow-up correction:
+
+- Terminal readability now also normalizes dark-blue ANSI/truecolor output to
+  white before writing into xterm, and xterm uses a higher minimum contrast
+  ratio.
+- Toolbar actions with ambiguous duplicate icons now use visible labels:
+  `Start`, `Paste Prompt`, `Selection -> IM`, and `Clear`.
+- `Command Templates` now supports adding custom command templates and removing
+  non-built-in templates. The built-in `opencode` template can be edited but not
+  removed.
+- `Selection -> IM` first reads the browser/window text selection, then falls
+  back to xterm selection, so selected opencode output can be sent back to IM
+  even when xterm focus/selection APIs miss it.
+
 This phase rebuilds the right-side panel as a Terminal Dock rather than a
 runtime manager:
 

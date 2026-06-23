@@ -4,8 +4,9 @@ import {
   CloseOutlined,
   CodeOutlined,
   CopyOutlined,
+  DeleteOutlined,
   DownOutlined,
-  ExportOutlined,
+  FileTextOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
@@ -125,6 +126,10 @@ const TerminalDock = () => {
   );
   const updateCommandTemplate = useTerminalDockStore(
     (state) => state.updateCommandTemplate,
+  );
+  const addCommandTemplate = useTerminalDockStore((state) => state.addCommandTemplate);
+  const removeCommandTemplate = useTerminalDockStore(
+    (state) => state.removeCommandTemplate,
   );
   const resetCommandTemplates = useTerminalDockStore(
     (state) => state.resetCommandTemplates,
@@ -303,7 +308,9 @@ const TerminalDock = () => {
 
   const selectionToIM = () => {
     if (!activeTab) return;
-    const selection = terminalApisRef.current.get(activeTab.id)?.getSelectionText();
+    const browserSelection = window.getSelection()?.toString();
+    const selection =
+      browserSelection || terminalApisRef.current.get(activeTab.id)?.getSelectionText();
     if (!selection?.trim()) {
       message.info("No terminal selection");
       return;
@@ -408,15 +415,17 @@ const TerminalDock = () => {
             Run <DownOutlined rev={undefined} />
           </Button>
         </Dropdown>
-        <Tooltip title="Start">
+        <Tooltip title="Start selected terminal">
           <Button
             size="small"
-            type="text"
-            className="terminal-dock-icon-button"
+            type="default"
+            className="terminal-dock-command-button"
             disabled={!activeTab || activeTab.status === "running"}
             icon={<PlayCircleOutlined rev={undefined} />}
             onClick={() => activeTab && void startTab(activeTab.id)}
-          />
+          >
+            Start
+          </Button>
         </Tooltip>
         <Tooltip title="Restart">
           <Button
@@ -454,7 +463,7 @@ const TerminalDock = () => {
             type="default"
             className="terminal-dock-command-button"
             disabled={!activeWorkspace || !conversationID}
-            icon={<SendOutlined rev={undefined} />}
+            icon={<FileTextOutlined rev={undefined} />}
             onClick={() => void copyContextPrompt()}
           >
             Copy Context Prompt
@@ -463,32 +472,38 @@ const TerminalDock = () => {
         <Tooltip title="Paste copied prompt into terminal input">
           <Button
             size="small"
-            type="text"
-            className="terminal-dock-icon-button"
+            type="default"
+            className="terminal-dock-command-button"
             disabled={!activeTab || !lastContextPrompt}
-            icon={<ExportOutlined rev={undefined} />}
+            icon={<SendOutlined rev={undefined} />}
             onClick={() => void pasteContextPrompt()}
-          />
+          >
+            Paste Prompt
+          </Button>
         </Tooltip>
         <Tooltip title="Selection to IM Input">
           <Button
             size="small"
-            type="text"
-            className="terminal-dock-icon-button"
+            type="default"
+            className="terminal-dock-command-button"
             disabled={!activeTab}
             icon={<CopyOutlined rev={undefined} />}
             onClick={selectionToIM}
-          />
+          >
+            Selection -&gt; IM
+          </Button>
         </Tooltip>
         <Tooltip title="Clear Terminal">
           <Button
             size="small"
-            type="text"
-            className="terminal-dock-icon-button"
+            type="default"
+            className="terminal-dock-command-button"
             disabled={!activeTab}
-            icon={<ExportOutlined rev={undefined} />}
+            icon={<DeleteOutlined rev={undefined} />}
             onClick={() => activeTab && clearTabOutput(activeTab.id)}
-          />
+          >
+            Clear
+          </Button>
         </Tooltip>
       </div>
 
@@ -583,6 +598,9 @@ const TerminalDock = () => {
         open={commandModalOpen}
         onCancel={() => setCommandModalOpen(false)}
         footer={[
+          <Button key="add" onClick={addCommandTemplate}>
+            Add Template
+          </Button>,
           <Button key="reset" onClick={resetCommandTemplates}>
             Reset
           </Button>,
@@ -594,18 +612,28 @@ const TerminalDock = () => {
         <div className="terminal-dock-template-list">
           {commandTemplates.map((template) => (
             <div key={template.id} className="terminal-dock-template-item">
-              <Checkbox
-                checked={template.enabled}
-                onChange={(event) =>
-                  updateCommandTemplate(template.id, {
-                    enabled: event.target.checked,
-                  })
-                }
-              >
-                Enabled
-              </Checkbox>
+              <div className="terminal-dock-template-row">
+                <Checkbox
+                  checked={template.enabled}
+                  onChange={(event) =>
+                    updateCommandTemplate(template.id, {
+                      enabled: event.target.checked,
+                    })
+                  }
+                >
+                  Enabled
+                </Checkbox>
+                <Button
+                  size="small"
+                  danger
+                  disabled={template.id === "opencode"}
+                  icon={<DeleteOutlined rev={undefined} />}
+                  onClick={() => removeCommandTemplate(template.id)}
+                />
+              </div>
               <Input
                 size="small"
+                placeholder="Menu title"
                 value={template.title}
                 onChange={(event) =>
                   updateCommandTemplate(template.id, {
@@ -615,6 +643,7 @@ const TerminalDock = () => {
               />
               <Input
                 size="small"
+                placeholder="Command to inject"
                 value={template.command}
                 onChange={(event) =>
                   updateCommandTemplate(template.id, {
@@ -624,6 +653,7 @@ const TerminalDock = () => {
               />
               <Input
                 size="small"
+                placeholder="Description"
                 value={template.description}
                 onChange={(event) =>
                   updateCommandTemplate(template.id, {

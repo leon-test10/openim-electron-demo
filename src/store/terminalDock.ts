@@ -487,6 +487,33 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
       }),
     );
   },
+  addCommandTemplate: () => {
+    const id = createID("command");
+    set((state) =>
+      save(state, {
+        commandTemplates: [
+          ...state.commandTemplates,
+          {
+            id,
+            title: "Run command",
+            command: "",
+            description: "Custom terminal command",
+            enabled: true,
+          },
+        ],
+      }),
+    );
+  },
+  removeCommandTemplate: (templateID) => {
+    if (templateID === "opencode") return;
+    set((state) =>
+      save(state, {
+        commandTemplates: state.commandTemplates.filter(
+          (template) => template.id !== templateID,
+        ),
+      }),
+    );
+  },
   resetCommandTemplates: () => {
     set((state) =>
       save(state, {
