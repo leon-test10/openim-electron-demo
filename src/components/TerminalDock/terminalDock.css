@@ -219,21 +219,11 @@
   flex-direction: column;
   gap: 4px;
   color: #8c8c8c;
-  font-family:
-    Consolas,
-    "Cascadia Mono",
-    "Cascadia Code",
-    "JetBrains Mono",
-    monospace;
+  font-family: Consolas, "Cascadia Mono", "Cascadia Code", "JetBrains Mono", monospace;
 }
 
 .terminal-dock-context-preview {
-  font-family:
-    Consolas,
-    "Cascadia Mono",
-    "Cascadia Code",
-    "JetBrains Mono",
-    monospace;
+  font-family: Consolas, "Cascadia Mono", "Cascadia Code", "JetBrains Mono", monospace;
 }
 
 .terminal-dock-context-empty {
@@ -242,6 +232,65 @@
   color: #8c8c8c;
   font-size: 12px;
   text-align: center;
+}
+
+.terminal-dock-context-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #303030;
+  padding-top: 12px;
+}
+
+.terminal-dock-context-history-header,
+.terminal-dock-context-history-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.terminal-dock-context-history-list {
+  display: flex;
+  max-height: 260px;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+}
+
+.terminal-dock-context-history-item {
+  border: 1px solid #303030;
+  background: #1f1f1f;
+  padding: 8px;
+}
+
+.terminal-dock-context-history-title,
+.terminal-dock-context-history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #cccccc;
+  font-size: 11px;
+}
+
+.terminal-dock-context-history-meta {
+  margin-top: 4px;
+  color: #9d9d9d;
+}
+
+.terminal-dock-context-history-path {
+  overflow: hidden;
+  color: #8c8c8c;
+  font-family: Consolas, "Cascadia Mono", "Cascadia Code", "JetBrains Mono", monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-dock-context-history-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
 }
 
 .terminal-dock-template-item {

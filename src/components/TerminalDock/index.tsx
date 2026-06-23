@@ -35,7 +35,7 @@ import {
   useMessageSelectionStore,
   useTerminalDockStore,
 } from "@/store";
-import { TerminalTab } from "@/store/type";
+import { TerminalContextBundleRecord, TerminalTab } from "@/store/type";
 import emitter, { emit, TerminalContextActionParams } from "@/utils/events";
 import { ContextBundle, createContextBundle } from "@/utils/imContextBuilder";
 
@@ -125,6 +125,9 @@ const TerminalDock = () => {
   const lastContextPromptByWorkspace = useTerminalDockStore(
     (state) => state.lastContextPromptByWorkspace,
   );
+  const contextBundlesByWorkspace = useTerminalDockStore(
+    (state) => state.contextBundlesByWorkspace,
+  );
   const commandTemplates = useTerminalDockStore((state) => state.commandTemplates);
   const autoReceiveEnabled = useTerminalDockStore((state) => state.autoReceiveEnabled);
   const autoSendEnabled = useTerminalDockStore((state) => state.autoSendEnabled);
@@ -151,6 +154,12 @@ const TerminalDock = () => {
   );
   const setLastContextPrompt = useTerminalDockStore(
     (state) => state.setLastContextPrompt,
+  );
+  const addContextBundleRecord = useTerminalDockStore(
+    (state) => state.addContextBundleRecord,
+  );
+  const clearContextBundleHistory = useTerminalDockStore(
+    (state) => state.clearContextBundleHistory,
   );
   const updateCommandTemplate = useTerminalDockStore(
     (state) => state.updateCommandTemplate,
@@ -211,6 +220,9 @@ const TerminalDock = () => {
   const lastContextPrompt = activeWorkspaceID
     ? lastContextPromptByWorkspace[activeWorkspaceID]
     : undefined;
+  const contextBundleHistory = activeWorkspaceID
+    ? contextBundlesByWorkspace[activeWorkspaceID] ?? []
+    : [];
   const activeTabOutput = activeTab ? outputByTab[activeTab.id] ?? [] : [];
   const activeTabOutputSignature = useMemo(
     () => activeTabOutput.map((item) => item.id).join("|"),
@@ -459,6 +471,20 @@ const TerminalDock = () => {
     });
 
     setLastContextPrompt(activeWorkspace.id, bundle.promptText);
+    addContextBundleRecord(activeWorkspace.id, {
+      id: bundle.id,
+      workspaceID: activeWorkspace.id,
+      createdAt: bundle.createdAt,
+      sourceKind: bundle.source.kind,
+      conversationID: bundle.source.conversationID,
+      messageCount: bundle.stats.messageCount,
+      attachmentCount: bundle.stats.attachmentCount,
+      approxChars: bundle.stats.approxChars,
+      markdownPath: bundle.files.markdownPath,
+      manifestPath: bundle.files.manifestPath,
+      promptText: bundle.promptText,
+    });
+
     return {
       prompt: bundle.promptText,
       files: [bundle.files.markdownPath, bundle.files.manifestPath],
@@ -582,6 +608,26 @@ const TerminalDock = () => {
     }
     await writeToTab(activeTab.id, `${lastContextPrompt}\r\n`);
     terminalApisRef.current.get(activeTab.id)?.focus();
+  };
+
+  const copyContextRecordPrompt = async (record: TerminalContextBundleRecord) => {
+    if (!activeWorkspace) return;
+    setLastContextPrompt(activeWorkspace.id, record.promptText);
+    await navigator.clipboard.writeText(record.promptText);
+    message.success("Context prompt copied");
+  };
+
+  const sendContextRecordPrompt = async (record: TerminalContextBundleRecord) => {
+    if (!activeWorkspace) return;
+    if (!activeTab) {
+      message.warning("No active terminal");
+      return;
+    }
+
+    setLastContextPrompt(activeWorkspace.id, record.promptText);
+    await writeToTab(activeTab.id, `${record.promptText}\r\n`);
+    terminalApisRef.current.get(activeTab.id)?.focus();
+    message.success("Context prompt sent to terminal");
   };
 
   const selectionToIM = () => {
@@ -1201,6 +1247,71 @@ const TerminalDock = () => {
               Create a preview to write a context bundle into the active workspace.
             </div>
           )}
+          <div className="terminal-dock-context-history">
+            <div className="terminal-dock-context-history-header">
+              <div>
+                <div className="text-xs text-[#cccccc]">Context History</div>
+                <div className="text-[11px] text-[#8c8c8c]">
+                  Latest workspace bundles. Files stay on disk; this list stores prompt
+                  metadata only.
+                </div>
+              </div>
+              <Button
+                size="small"
+                disabled={!activeWorkspace || contextBundleHistory.length === 0}
+                onClick={() =>
+                  activeWorkspace && clearContextBundleHistory(activeWorkspace.id)
+                }
+              >
+                Clear History
+              </Button>
+            </div>
+            {contextBundleHistory.length > 0 ? (
+              <div className="terminal-dock-context-history-list">
+                {contextBundleHistory.map((record) => (
+                  <div key={record.id} className="terminal-dock-context-history-item">
+                    <div className="min-w-0 flex-1">
+                      <div className="terminal-dock-context-history-title">
+                        <span>{record.sourceKind}</span>
+                        <span>{new Date(record.createdAt).toLocaleString()}</span>
+                      </div>
+                      <div className="terminal-dock-context-history-meta">
+                        <span>{record.messageCount} messages</span>
+                        <span>{record.attachmentCount} attachments</span>
+                        <span>{record.approxChars} chars</span>
+                      </div>
+                      <div className="terminal-dock-context-history-path">
+                        {record.markdownPath}
+                      </div>
+                      <div className="terminal-dock-context-history-path">
+                        {record.manifestPath}
+                      </div>
+                    </div>
+                    <div className="terminal-dock-context-history-actions">
+                      <Button
+                        size="small"
+                        onClick={() => void copyContextRecordPrompt(record)}
+                      >
+                        Copy
+                      </Button>
+                      <Button
+                        size="small"
+                        type="primary"
+                        disabled={!activeTab}
+                        onClick={() => void sendContextRecordPrompt(record)}
+                      >
+                        Send
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="terminal-dock-context-empty">
+                No context bundles in this workspace yet.
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
 

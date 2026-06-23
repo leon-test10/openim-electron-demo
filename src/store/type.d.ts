@@ -197,6 +197,20 @@ export interface TerminalOutputChunk {
 
 export type TerminalCaptureSource = "screen" | "raw" | "auto";
 
+export interface TerminalContextBundleRecord {
+  id: string;
+  workspaceID: string;
+  createdAt: number;
+  sourceKind: "recentMessages" | "selectedMessages";
+  conversationID: string;
+  messageCount: number;
+  attachmentCount: number;
+  approxChars: number;
+  markdownPath: string;
+  manifestPath: string;
+  promptText: string;
+}
+
 export interface TerminalDockStore {
   panelOpen: boolean;
   workspaces: TerminalWorkspace[];
@@ -205,6 +219,7 @@ export interface TerminalDockStore {
   activeTabByWorkspace: Record<string, string | undefined>;
   outputByTab: Record<string, TerminalOutputChunk[]>;
   lastContextPromptByWorkspace: Record<string, string | undefined>;
+  contextBundlesByWorkspace: Record<string, TerminalContextBundleRecord[]>;
   commandTemplates: TerminalCommandTemplate[];
   autoReceiveEnabled: boolean;
   autoSendEnabled: boolean;
@@ -229,6 +244,11 @@ export interface TerminalDockStore {
   removeTab: (workspaceID: string, tabID: string) => Promise<void>;
   handleTerminalEvent: (event: TerminalEvent) => void;
   setLastContextPrompt: (workspaceID: string, prompt: string) => void;
+  addContextBundleRecord: (
+    workspaceID: string,
+    record: TerminalContextBundleRecord,
+  ) => void;
+  clearContextBundleHistory: (workspaceID: string) => void;
   updateCommandTemplate: (
     templateID: string,
     patch: Partial<Omit<TerminalCommandTemplate, "id">>,

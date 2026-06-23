@@ -1,5 +1,51 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Workspace Context Bundle History
+
+Current branch: `feature/terminal-dock-redesign`
+
+Scope completed in this pass:
+
+- Added workspace-level context bundle history metadata in
+  `src/store/terminalDock.ts`.
+- Persisted the last 20 context bundle records per workspace in localStorage.
+- Each history record stores metadata only:
+  - bundle id;
+  - source kind;
+  - conversation id;
+  - message / attachment / character counts;
+  - markdown and manifest paths;
+  - short prompt text.
+- `Create Context` now shows `Context History` for the active workspace.
+- History rows can `Copy` the prompt or `Send` the prompt to the active terminal.
+- `Clear History` removes only local metadata; already written workspace files are
+  not deleted.
+
+Important semantics:
+
+- Context markdown and manifest files remain the source of truth on disk.
+- History does not persist full markdown content in localStorage.
+- Sending a history item still writes only the short prompt that references
+  files; it does not paste raw chat history into terminal stdin.
+- No runtime profile, API key, model config, or agent session management was
+  added.
+
+Known limits after this pass:
+
+- History entries do not re-open the markdown file content yet; preview remains
+  tied to the most recently generated bundle in memory.
+- Date-range and multi-conversation context sources are still not implemented.
+- Attachment binary export remains future work.
+
+Recommended next implementation slice:
+
+1. Add `Open context folder` / `Copy markdown path` actions to context history.
+2. Add attachment file copy/download into workspace when local file paths or
+   downloadable URLs are available.
+3. Add date-range context after recent and selected-message flows feel stable.
+4. Keep full `@bot` automation behind explicit trigger/pending-prompt safety
+   gates.
+
 ## Latest Update - Direct Selected Context Toolbar Actions
 
 Current branch: `feature/terminal-dock-redesign`
@@ -442,7 +488,7 @@ Browser/Vite verification:
 - Opened `#/chat/si_2428632797_3297174239`.
 - The page showed the new `Terminal` panel shell.
 - Browser mode correctly showed `Terminal is available only in the Electron
-  client`.
+client`.
 - `Runtime Dock` and `opencode-local` text were absent from the page body.
 
 Electron verification not completed in this pass; PTY launch should be checked

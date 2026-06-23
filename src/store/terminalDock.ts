@@ -3,6 +3,7 @@ import { create } from "zustand";
 import {
   TerminalCaptureSource,
   TerminalCommandTemplate,
+  TerminalContextBundleRecord,
   TerminalDockStore,
   TerminalEvent,
   TerminalInstance,
@@ -15,6 +16,7 @@ export type { TerminalTab, TerminalWorkspace } from "./type";
 
 const STORAGE_KEY = "openim_terminal_dock_state";
 const LEGACY_RUNTIME_KEY = "openim_runtime_dock_state";
+const MAX_CONTEXT_BUNDLE_HISTORY = 20;
 
 const DEFAULT_COMMAND_TEMPLATES: TerminalCommandTemplate[] = [
   {
@@ -34,6 +36,7 @@ type StoredTerminalDockState = Pick<
   | "tabsByWorkspace"
   | "activeTabByWorkspace"
   | "lastContextPromptByWorkspace"
+  | "contextBundlesByWorkspace"
   | "commandTemplates"
   | "autoReceiveEnabled"
   | "autoSendEnabled"
@@ -47,6 +50,7 @@ const defaultState: StoredTerminalDockState = {
   tabsByWorkspace: {},
   activeTabByWorkspace: {},
   lastContextPromptByWorkspace: {},
+  contextBundlesByWorkspace: {},
   commandTemplates: DEFAULT_COMMAND_TEMPLATES,
   autoReceiveEnabled: false,
   autoSendEnabled: false,
@@ -98,6 +102,63 @@ const normalizeCommandTemplates = (templates: unknown): TerminalCommandTemplate[
   });
 
   return Array.from(byID.values());
+};
+
+const normalizeContextBundleHistory = (
+  bundlesByWorkspace: unknown,
+): Record<string, TerminalContextBundleRecord[]> => {
+  if (!bundlesByWorkspace || typeof bundlesByWorkspace !== "object") return {};
+
+  const normalized: Record<string, TerminalContextBundleRecord[]> = {};
+
+  Object.entries(bundlesByWorkspace as Record<string, unknown>).forEach(
+    ([workspaceID, records]) => {
+      if (!Array.isArray(records)) return;
+
+      const normalizedRecords = records
+        .map((record) => {
+          if (!record || typeof record !== "object") return undefined;
+          const item = record as Partial<TerminalContextBundleRecord>;
+          if (
+            typeof item.id !== "string" ||
+            typeof item.workspaceID !== "string" ||
+            typeof item.createdAt !== "number" ||
+            (item.sourceKind !== "recentMessages" &&
+              item.sourceKind !== "selectedMessages") ||
+            typeof item.conversationID !== "string" ||
+            typeof item.markdownPath !== "string" ||
+            typeof item.manifestPath !== "string" ||
+            typeof item.promptText !== "string"
+          ) {
+            return undefined;
+          }
+
+          return {
+            id: item.id,
+            workspaceID: item.workspaceID,
+            createdAt: item.createdAt,
+            sourceKind: item.sourceKind,
+            conversationID: item.conversationID,
+            messageCount: typeof item.messageCount === "number" ? item.messageCount : 0,
+            attachmentCount:
+              typeof item.attachmentCount === "number" ? item.attachmentCount : 0,
+            approxChars: typeof item.approxChars === "number" ? item.approxChars : 0,
+            markdownPath: item.markdownPath,
+            manifestPath: item.manifestPath,
+            promptText: item.promptText,
+          };
+        })
+        .filter((record): record is TerminalContextBundleRecord => Boolean(record))
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, MAX_CONTEXT_BUNDLE_HISTORY);
+
+      if (normalizedRecords.length > 0) {
+        normalized[workspaceID] = normalizedRecords;
+      }
+    },
+  );
+
+  return normalized;
 };
 
 const readLegacyPanelOpen = () => {
@@ -154,6 +215,9 @@ const readStoredState = (): StoredTerminalDockState => {
         typeof parsed.lastContextPromptByWorkspace === "object"
           ? parsed.lastContextPromptByWorkspace
           : {},
+      contextBundlesByWorkspace: normalizeContextBundleHistory(
+        parsed.contextBundlesByWorkspace,
+      ),
       commandTemplates: normalizeCommandTemplates(parsed.commandTemplates),
       autoReceiveEnabled:
         typeof parsed.autoReceiveEnabled === "boolean"
@@ -186,6 +250,7 @@ const toStoredState = (state: TerminalDockStore): StoredTerminalDockState => ({
   tabsByWorkspace: state.tabsByWorkspace,
   activeTabByWorkspace: state.activeTabByWorkspace,
   lastContextPromptByWorkspace: state.lastContextPromptByWorkspace,
+  contextBundlesByWorkspace: state.contextBundlesByWorkspace,
   commandTemplates: state.commandTemplates,
   autoReceiveEnabled: state.autoReceiveEnabled,
   autoSendEnabled: state.autoSendEnabled,
@@ -506,6 +571,29 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
         },
       }),
     );
+  },
+  addContextBundleRecord: (workspaceID, record) => {
+    set((state) => {
+      const currentRecords = state.contextBundlesByWorkspace[workspaceID] ?? [];
+      const contextBundlesByWorkspace = {
+        ...state.contextBundlesByWorkspace,
+        [workspaceID]: [
+          record,
+          ...currentRecords.filter((item) => item.id !== record.id),
+        ].slice(0, MAX_CONTEXT_BUNDLE_HISTORY),
+      };
+
+      return save(state, { contextBundlesByWorkspace });
+    });
+  },
+  clearContextBundleHistory: (workspaceID) => {
+    set((state) => {
+      const contextBundlesByWorkspace = {
+        ...state.contextBundlesByWorkspace,
+      };
+      delete contextBundlesByWorkspace[workspaceID];
+      return save(state, { contextBundlesByWorkspace });
+    });
   },
   updateCommandTemplate: (templateID, patch) => {
     set((state) =>
