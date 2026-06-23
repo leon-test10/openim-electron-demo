@@ -1,5 +1,44 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Message Search and Range Context MVP
+
+Current branch: `feature/terminal-dock-redesign`
+
+Plan source:
+
+- `C:\Users\leon\Desktop\# Plan IM-native Message Actions, H.txt`
+
+Scope completed in this pass:
+
+- Extended `MessageHistoryDrawer` with Phase 5 search/filter controls.
+- Added current-conversation keyword search via `IMSDK.searchLocalMessages`.
+- Added message type filter for `All types`, `Text`, and `Image`.
+- Added date range picker and frontend range filtering.
+- Search results reuse the same `useMessageSelectionStore` as regular chat and
+  history selection.
+- `Create Context` works from selected search results through the existing
+  selected-message context flow.
+- `Reset` returns the drawer to the currently loaded history result set.
+
+Important semantics and limits:
+
+- Keyword search is the OpenIM local-message search path.
+- Date range and message type are currently frontend filters over returned
+  search results or currently loaded history messages.
+- Without a keyword, `Apply` filters the history messages already loaded in the
+  drawer; it does not scan the full local database.
+- `searchTimePosition` / `searchTimePeriod` are not wired yet because their SDK
+  semantics need a separate compatibility check.
+- Context creation still uses `TERMINAL_CONTEXT_ACTION` for compatibility.
+
+Recommended next implementation slice:
+
+1. Validate OpenIM SDK time-search semantics and wire range search server-side
+   or local-DB-side if reliable.
+2. Add search-result export.
+3. Extract a neutral IM context action/service before expanding to
+   multi-conversation context.
+
 ## Latest Update - IM History Drawer MVP
 
 Current branch: `feature/terminal-dock-redesign`
