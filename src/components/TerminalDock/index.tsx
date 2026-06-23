@@ -67,6 +67,11 @@ const AUTO_SEND_MIN_INTERVAL = 5000;
 const AUTO_SEND_WARNING =
   "Terminal output may include logs, local paths, command output, or sensitive data. Auto-sending terminal output is experimental.";
 
+const joinWorkspacePath = (rootPath: string, relativePath: string) => {
+  if (!rootPath) return relativePath;
+  return `${rootPath.replace(/[\\/]+$/, "")}\\${relativePath.replaceAll("/", "\\")}`;
+};
+
 const hashText = (value: string) => {
   let hash = 5381;
   for (let index = 0; index < value.length; index += 1) {
@@ -628,6 +633,27 @@ const TerminalDock = () => {
     await writeToTab(activeTab.id, `${record.promptText}\r\n`);
     terminalApisRef.current.get(activeTab.id)?.focus();
     message.success("Context prompt sent to terminal");
+  };
+
+  const copyContextRecordPath = async (
+    record: TerminalContextBundleRecord,
+    pathKind: "markdown" | "manifest" | "fullMarkdown",
+  ) => {
+    if (!activeWorkspace) return;
+
+    const pathToCopy =
+      pathKind === "manifest"
+        ? record.manifestPath
+        : pathKind === "fullMarkdown"
+        ? joinWorkspacePath(activeWorkspace.rootPath, record.markdownPath)
+        : record.markdownPath;
+
+    await navigator.clipboard.writeText(pathToCopy);
+    message.success("Context path copied");
+  };
+
+  const openContextRecordWorkspace = async () => {
+    await openWorkspaceFolder();
   };
 
   const selectionToIM = () => {
@@ -1292,7 +1318,34 @@ const TerminalDock = () => {
                         size="small"
                         onClick={() => void copyContextRecordPrompt(record)}
                       >
-                        Copy
+                        Copy Prompt
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => void copyContextRecordPath(record, "markdown")}
+                      >
+                        Copy MD
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => void copyContextRecordPath(record, "manifest")}
+                      >
+                        Copy Manifest
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() =>
+                          void copyContextRecordPath(record, "fullMarkdown")
+                        }
+                      >
+                        Copy Full Path
+                      </Button>
+                      <Button
+                        size="small"
+                        disabled={!activeWorkspace}
+                        onClick={() => void openContextRecordWorkspace()}
+                      >
+                        Open
                       </Button>
                       <Button
                         size="small"

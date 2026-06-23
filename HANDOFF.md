@@ -1,5 +1,41 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Context History Path Actions
+
+Current branch: `feature/terminal-dock-redesign`
+
+Scope completed in this pass:
+
+- Added path-level actions to each `Context History` record:
+  - `Copy Prompt`;
+  - `Copy MD`;
+  - `Copy Manifest`;
+  - `Copy Full Path`;
+  - `Open`;
+  - `Send`.
+- `Copy MD` and `Copy Manifest` copy workspace-relative paths, which are useful
+  inside terminal agents already running from the workspace root.
+- `Copy Full Path` copies the absolute markdown file path for external tools or
+  manual debugging.
+- `Open` opens the active workspace folder through the existing
+  `terminal:openWorkspace` IPC.
+- History action buttons now wrap in narrow dock widths.
+
+Important semantics:
+
+- This pass did not add a file-read IPC or load markdown content back into the
+  renderer.
+- This pass did not auto-inject file contents into terminal stdin.
+- Context files are still consumed by CLIs through file paths and explicit user
+  actions.
+
+Recommended next implementation slice:
+
+1. Add attachment binary export into workspace when local paths or downloadable
+   URLs are available.
+2. Add `Copy manifest full path` if external non-workspace tools need it.
+3. Add context file preview reload only if a safe read IPC is introduced.
+
 ## Latest Update - Workspace Context Bundle History
 
 Current branch: `feature/terminal-dock-redesign`

@@ -290,7 +290,10 @@
 .terminal-dock-context-history-actions {
   display: flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
+  max-width: 260px;
 }
 
 .terminal-dock-template-item {
