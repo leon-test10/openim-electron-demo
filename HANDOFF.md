@@ -1,5 +1,54 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Context Builder Recent Messages MVP
+
+Current branch: `feature/terminal-dock-redesign`
+
+Scope completed in this pass:
+
+- Added a reusable IM Context Builder utility:
+  `src/utils/imContextBuilder.ts`.
+- Added `ContextBundle`, `ContextSource`, markdown generation, manifest
+  generation, short prompt generation, and message time ordering.
+- Reworked Terminal Dock IM -> Terminal controls:
+  - `Context` dropdown;
+  - `Create from recent messages...`;
+  - `Copy Prompt`;
+  - `Send Prompt`.
+- Added a `Create Context` dialog for current-conversation recent messages.
+- The dialog lets the user choose a recent message count, create a preview,
+  copy the generated prompt, or send the prompt to the active terminal.
+- Context files are written into the active terminal workspace:
+  - `context/bundle_*.md`;
+  - `context/bundle_*.manifest.json`.
+- Added `docs/terminal-bot-routing-spec-v0.md` as the safety/spec foundation
+  for future `@bot` routing.
+
+Important semantics:
+
+- The prompt is intentionally short and references exported files.
+- OpenIM does not paste the whole chat history into terminal stdin.
+- `Send Prompt` means write the current generated prompt to the active terminal
+  and press Enter.
+- No full `@bot` trigger, auto-inject, or auto-reply behavior is implemented.
+
+Known limits after this pass:
+
+- Selected-message context is not implemented yet.
+- Date-range and multi-conversation context are not implemented yet.
+- Attachment files are referenced in the manifest when metadata is available;
+  this pass does not download/copy binary attachments into workspace folders.
+- Manual Electron verification should still be repeated for the full terminal
+  flow.
+
+Recommended next implementation slice:
+
+1. Add message multi-select mode in the current conversation message list.
+2. Store selected message IDs in a small UI store.
+3. Add `Create from selected messages` to the `Context` menu.
+4. Reuse `createContextBundle` with `source.kind = "selectedMessages"`.
+5. Add context preview and prompt send behavior to the selected-message flow.
+
 ## Next Phase - IM Context Builder
 
 Current branch: `feature/terminal-dock-redesign`

@@ -189,6 +189,61 @@
   gap: 10px;
 }
 
+.terminal-dock-context-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.terminal-dock-context-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.terminal-dock-context-limit {
+  width: 96px;
+}
+
+.terminal-dock-context-stats,
+.terminal-dock-context-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #bdbdbd;
+  font-size: 11px;
+}
+
+.terminal-dock-context-files {
+  flex-direction: column;
+  gap: 4px;
+  color: #8c8c8c;
+  font-family:
+    Consolas,
+    "Cascadia Mono",
+    "Cascadia Code",
+    "JetBrains Mono",
+    monospace;
+}
+
+.terminal-dock-context-preview {
+  font-family:
+    Consolas,
+    "Cascadia Mono",
+    "Cascadia Code",
+    "JetBrains Mono",
+    monospace;
+}
+
+.terminal-dock-context-empty {
+  border: 1px dashed #3c3c3c;
+  padding: 20px;
+  color: #8c8c8c;
+  font-size: 12px;
+  text-align: center;
+}
+
 .terminal-dock-template-item {
   display: grid;
   grid-template-columns: 136px 1fr;

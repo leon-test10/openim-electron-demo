@@ -14,11 +14,7 @@ import {
   SettingOutlined,
   StopOutlined,
 } from "@ant-design/icons";
-import {
-  type MessageItem as OIMMessageItem,
-  MessageType,
-  ViewType,
-} from "@openim/wasm-client-sdk";
+import { ViewType } from "@openim/wasm-client-sdk";
 import {
   Button,
   Checkbox,
@@ -30,7 +26,6 @@ import {
   Switch,
   Tooltip,
 } from "antd";
-import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -38,6 +33,7 @@ import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore, useTerminalDockStore } from "@/store";
 import { TerminalTab } from "@/store/type";
 import { emit } from "@/utils/events";
+import { ContextBundle, createContextBundle } from "@/utils/imContextBuilder";
 
 import TerminalSurface, { TerminalSurfaceApi } from "./TerminalSurface";
 import TerminalTabs from "./TerminalTabs";
@@ -46,46 +42,13 @@ import WorkspaceBar from "./WorkspaceBar";
 type ContextExportResult = {
   prompt: string;
   files: string[];
+  bundle: ContextBundle;
 };
 
 type TerminalSelectionFallbackState = {
   open: boolean;
   text: string;
   source: "screen" | "recent";
-};
-
-const stripHtml = (value?: string) =>
-  (value ?? "")
-    .replace(/<\/p><p>/g, "\n")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .trim();
-
-const formatMessageAsMarkdown = (msg: OIMMessageItem) => {
-  const timestamp = msg.sendTime
-    ? dayjs(msg.sendTime).format("YYYY-MM-DD HH:mm:ss")
-    : "";
-  const sender = msg.senderNickname ?? msg.sendID ?? "unknown";
-
-  if (msg.contentType === MessageType.TextMessage) {
-    return `- ${timestamp} **${sender}**: ${stripHtml(msg.textElem?.content)}`;
-  }
-
-  if (msg.contentType === MessageType.PictureMessage) {
-    const url =
-      msg.pictureElem?.snapshotPicture?.url ?? msg.pictureElem?.sourcePicture?.url;
-    return `- ${timestamp} **${sender}**: [image] ${url ?? ""}`.trim();
-  }
-
-  const fileName = msg.fileElem?.fileName;
-  const fileUrl = msg.fileElem?.sourceUrl;
-  if (fileName || fileUrl) {
-    return `- ${timestamp} **${sender}**: [file] ${fileName ?? ""} ${
-      fileUrl ?? ""
-    }`.trim();
-  }
-
-  return `- ${timestamp} **${sender}**: [messageType=${msg.contentType}]`;
 };
 
 const getTabStats = (tab?: TerminalTab) => {
@@ -202,6 +165,9 @@ const TerminalDock = () => {
 
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [commandModalOpen, setCommandModalOpen] = useState(false);
+  const [contextModalOpen, setContextModalOpen] = useState(false);
+  const [contextMessageLimit, setContextMessageLimit] = useState("50");
+  const [contextPreviewBundle, setContextPreviewBundle] = useState<ContextBundle>();
   const [workspaceTitle, setWorkspaceTitle] = useState("");
   const [selectionFallback, setSelectionFallback] =
     useState<TerminalSelectionFallbackState>({
@@ -418,92 +384,115 @@ const TerminalDock = () => {
     if (result) message.warning(result);
   };
 
-  const exportConversationContext = async (): Promise<
-    ContextExportResult | undefined
-  > => {
+  const buildRecentContextBundle = async (): Promise<ContextBundle | undefined> => {
     if (!activeWorkspace || !conversationID || !window.electronAPI) {
       return undefined;
     }
 
-    linkConversationToWorkspace(activeWorkspace.id, conversationID);
-    const conversationIDs = Array.from(
-      new Set([...activeWorkspace.linkedConversationIDs, conversationID]),
+    const limit = Math.min(
+      Math.max(Number.parseInt(contextMessageLimit, 10) || 50, 1),
+      200,
     );
-    const exportedFiles: string[] = [];
+    linkConversationToWorkspace(activeWorkspace.id, conversationID);
 
-    for (const linkedConversationID of conversationIDs) {
-      const { data } = await IMSDK.getAdvancedHistoryMessageList({
-        count: 50,
-        startClientMsgID: "",
-        conversationID: linkedConversationID,
-        viewType: ViewType.History,
-      });
-      const timestamp = dayjs().format("YYYYMMDD-HHmmss");
-      const historyPath = `context/${linkedConversationID}/history-${timestamp}.md`;
-      const manifestPath = `context/${linkedConversationID}/attachments-manifest-${timestamp}.json`;
-      const nonTextMessages = data.messageList
-        .filter((item) => item.contentType !== MessageType.TextMessage)
-        .map((item) => ({
-          clientMsgID: item.clientMsgID,
-          contentType: item.contentType,
-          sendTime: item.sendTime,
-          senderNickname: item.senderNickname,
-        }));
-      const markdown = [
-        `# OpenIM Context`,
-        ``,
-        `- workspace: ${activeWorkspace.rootPath}`,
-        `- conversationID: ${linkedConversationID}`,
-        `- exportedAt: ${dayjs().format("YYYY-MM-DD HH:mm:ss")}`,
-        ``,
-        `## Messages`,
-        ``,
-        ...data.messageList.map(formatMessageAsMarkdown),
-        ``,
-      ].join("\n");
+    const { data } = await IMSDK.getAdvancedHistoryMessageList({
+      count: limit,
+      startClientMsgID: "",
+      conversationID,
+      viewType: ViewType.History,
+    });
 
-      await window.electronAPI.ipcInvoke("workspace:writeWorkspaceFile", {
-        workspaceID: activeWorkspace.id,
-        relativePath: historyPath,
-        content: markdown,
-      });
-      await window.electronAPI.ipcInvoke("workspace:writeWorkspaceFile", {
-        workspaceID: activeWorkspace.id,
-        relativePath: manifestPath,
-        content: JSON.stringify(nonTextMessages, null, 2),
-      });
-      exportedFiles.push(historyPath, manifestPath);
-    }
-
-    const prompt = `Use the OpenIM context exported in this workspace. Workspace: ${
-      activeWorkspace.rootPath
-    }. Context files: ${exportedFiles
-      .map((file) => `./${file}`)
-      .join(
-        "; ",
-      )}. OpenIM only provides terminal, workspace, and context files; the CLI runtime owns its own session, tools, permissions, model config, and memory.`;
-
-    setLastContextPrompt(activeWorkspace.id, prompt);
-    await navigator.clipboard.writeText(prompt);
-    message.success("Context exported and prompt copied");
-    return { prompt, files: exportedFiles };
+    return createContextBundle({
+      workspacePath: activeWorkspace.rootPath,
+      source: {
+        kind: "recentMessages",
+        conversationID,
+        limit,
+      },
+      messages: data.messageList,
+    });
   };
 
-  const pasteContextPrompt = async () => {
-    if (!activeTab || !lastContextPrompt) return;
-    await writeToTab(activeTab.id, `${lastContextPrompt}\r\n`);
-    terminalApisRef.current.get(activeTab.id)?.focus();
+  const persistContextBundle = async (
+    bundle: ContextBundle,
+  ): Promise<ContextExportResult | undefined> => {
+    if (!activeWorkspace || !window.electronAPI) return undefined;
+
+    await window.electronAPI.ipcInvoke("workspace:writeWorkspaceFile", {
+      workspaceID: activeWorkspace.id,
+      relativePath: bundle.files.markdownPath,
+      content: bundle.markdown,
+    });
+    await window.electronAPI.ipcInvoke("workspace:writeWorkspaceFile", {
+      workspaceID: activeWorkspace.id,
+      relativePath: bundle.files.manifestPath,
+      content: JSON.stringify(bundle.manifest, null, 2),
+    });
+
+    setLastContextPrompt(activeWorkspace.id, bundle.promptText);
+    return {
+      prompt: bundle.promptText,
+      files: [bundle.files.markdownPath, bundle.files.manifestPath],
+      bundle,
+    };
+  };
+
+  const createRecentContext = async (
+    options: { copyPrompt?: boolean; sendPrompt?: boolean } = {},
+  ) => {
+    const bundle = await buildRecentContextBundle();
+    if (!bundle) {
+      message.warning("No IM context available");
+      return undefined;
+    }
+
+    const result = await persistContextBundle(bundle);
+    if (!result) {
+      message.warning("No active workspace");
+      return undefined;
+    }
+
+    setContextPreviewBundle(bundle);
+    if (options.copyPrompt) {
+      await navigator.clipboard.writeText(bundle.promptText);
+      message.success("Context prompt copied");
+    } else {
+      message.success("Context bundle created");
+    }
+
+    if (options.sendPrompt) {
+      if (!activeTab) {
+        message.warning("No active terminal");
+        return result;
+      }
+      await writeToTab(activeTab.id, `${bundle.promptText}\r\n`);
+      terminalApisRef.current.get(activeTab.id)?.focus();
+      message.success("Context prompt sent to terminal");
+    }
+
+    return result;
   };
 
   const copyContextPrompt = async () => {
-    const result = await exportConversationContext();
-    const prompt = result?.prompt ?? lastContextPrompt;
-    if (!prompt) {
-      message.warning("No IM context available");
+    if (!lastContextPrompt) {
+      await createRecentContext({ copyPrompt: true });
       return;
     }
-    await navigator.clipboard.writeText(prompt);
+    await navigator.clipboard.writeText(lastContextPrompt);
     message.success("Context prompt copied");
+  };
+
+  const sendContextPrompt = async () => {
+    if (!activeTab) {
+      message.warning("No active terminal");
+      return;
+    }
+    if (!lastContextPrompt) {
+      message.warning("Create a context bundle first");
+      return;
+    }
+    await writeToTab(activeTab.id, `${lastContextPrompt}\r\n`);
+    terminalApisRef.current.get(activeTab.id)?.focus();
   };
 
   const selectionToIM = () => {
@@ -609,6 +598,28 @@ const TerminalDock = () => {
     },
   ];
 
+  const contextMenuItems = [
+    {
+      key: "create-recent",
+      label: "Create from recent messages...",
+    },
+    {
+      key: "copy-prompt",
+      label: "Copy Prompt",
+      disabled: !activeWorkspace || !conversationID,
+    },
+    {
+      key: "send-prompt",
+      label: "Send Prompt",
+      disabled: !activeTab || !lastContextPrompt,
+    },
+    {
+      key: "preview",
+      label: "Preview current context",
+      disabled: !contextPreviewBundle,
+    },
+  ];
+
   const onRunMenuClick = ({ key }: { key: string }) => {
     if (key.startsWith("template:")) {
       void onRunCommandTemplate(key.replace("template:", ""));
@@ -622,6 +633,24 @@ const TerminalDock = () => {
 
     if (key === "templates") {
       setCommandModalOpen(true);
+    }
+  };
+
+  const onContextMenuClick = ({ key }: { key: string }) => {
+    if (key === "create-recent") {
+      setContextModalOpen(true);
+      return;
+    }
+    if (key === "copy-prompt") {
+      void copyContextPrompt();
+      return;
+    }
+    if (key === "send-prompt") {
+      void sendContextPrompt();
+      return;
+    }
+    if (key === "preview" && contextPreviewBundle) {
+      setContextModalOpen(true);
     }
   };
 
@@ -658,7 +687,7 @@ const TerminalDock = () => {
         onChangeWorkspace={setActiveWorkspace}
         onOpenWorkspace={() => void openWorkspaceFolder()}
         onCopyPath={() => void copyWorkspacePath()}
-        onExportContext={() => void exportConversationContext()}
+        onExportContext={() => setContextModalOpen(true)}
       />
 
       <div className="terminal-dock-toolbar">
@@ -722,28 +751,34 @@ const TerminalDock = () => {
             onClick={() => activeTab && void stopTab(activeTab.id)}
           />
         </Tooltip>
-        <Tooltip title="Export current IM context files and copy a short prompt">
+        <Dropdown
+          menu={{
+            items: contextMenuItems,
+            onClick: onContextMenuClick,
+          }}
+          trigger={["click"]}
+          disabled={!activeWorkspace || !conversationID}
+        >
           <Button
             size="small"
             type="default"
             className="terminal-dock-command-button"
             disabled={!activeWorkspace || !conversationID}
             icon={<FileTextOutlined rev={undefined} />}
-            onClick={() => void copyContextPrompt()}
           >
-            Copy Context Prompt
+            Context <DownOutlined rev={undefined} />
           </Button>
-        </Tooltip>
-        <Tooltip title="Paste copied prompt into terminal input">
+        </Dropdown>
+        <Tooltip title="Send the current generated prompt to the active terminal and press Enter">
           <Button
             size="small"
             type="default"
             className="terminal-dock-command-button"
             disabled={!activeTab || !lastContextPrompt}
             icon={<SendOutlined rev={undefined} />}
-            onClick={() => void pasteContextPrompt()}
+            onClick={() => void sendContextPrompt()}
           >
-            Paste Prompt
+            Send Prompt
           </Button>
         </Tooltip>
         <Tooltip title="Append selected terminal text to the current IM draft. If a TUI blocks terminal selection, this opens a selectable screen snapshot.">
@@ -970,6 +1005,87 @@ const TerminalDock = () => {
               />
             </div>
           ))}
+        </div>
+      </Modal>
+
+      <Modal
+        title="Create Context"
+        open={contextModalOpen}
+        width={820}
+        onCancel={() => setContextModalOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setContextModalOpen(false)}>
+            Close
+          </Button>,
+          <Button
+            key="preview"
+            disabled={!activeWorkspace || !conversationID}
+            onClick={() => void createRecentContext()}
+          >
+            Create Preview
+          </Button>,
+          <Button
+            key="copy"
+            disabled={!activeWorkspace || !conversationID}
+            onClick={() => void createRecentContext({ copyPrompt: true })}
+          >
+            Copy Prompt
+          </Button>,
+          <Button
+            key="send"
+            type="primary"
+            disabled={!activeWorkspace || !conversationID || !activeTab}
+            onClick={() => void createRecentContext({ sendPrompt: true })}
+          >
+            Send Prompt
+          </Button>,
+        ]}
+      >
+        <div className="terminal-dock-context-builder">
+          <div className="terminal-dock-context-row">
+            <div>
+              <div className="text-xs text-[#cccccc]">Source</div>
+              <div className="text-[11px] text-[#8c8c8c]">
+                Recent messages from the current conversation
+              </div>
+            </div>
+            <Input
+              className="terminal-dock-context-limit"
+              size="small"
+              value={contextMessageLimit}
+              onChange={(event) => setContextMessageLimit(event.target.value)}
+              placeholder="50"
+            />
+          </div>
+          {contextPreviewBundle ? (
+            <>
+              <div className="terminal-dock-context-stats">
+                <span>{contextPreviewBundle.stats.messageCount} messages</span>
+                <span>{contextPreviewBundle.stats.attachmentCount} attachments</span>
+                <span>{contextPreviewBundle.stats.approxChars} chars</span>
+              </div>
+              <div className="terminal-dock-context-files">
+                <div>{contextPreviewBundle.files.markdownPath}</div>
+                <div>{contextPreviewBundle.files.manifestPath}</div>
+              </div>
+              <Input.TextArea
+                readOnly
+                className="terminal-dock-context-preview"
+                value={contextPreviewBundle.markdown}
+                autoSize={{ minRows: 14, maxRows: 22 }}
+              />
+              <Input.TextArea
+                readOnly
+                className="terminal-dock-context-preview"
+                value={contextPreviewBundle.promptText}
+                autoSize={{ minRows: 5, maxRows: 8 }}
+              />
+            </>
+          ) : (
+            <div className="terminal-dock-context-empty">
+              Create a preview to write a context bundle into the active workspace.
+            </div>
+          )}
         </div>
       </Modal>
 
