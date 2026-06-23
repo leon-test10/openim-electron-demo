@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import {
+  TerminalCaptureSource,
   TerminalCommandTemplate,
   TerminalDockStore,
   TerminalEvent,
@@ -19,8 +20,8 @@ const DEFAULT_COMMAND_TEMPLATES: TerminalCommandTemplate[] = [
   {
     id: "opencode",
     title: "Run opencode",
-    command: "opencode",
-    description: "Start opencode TUI in this workspace",
+    command: "npx.cmd -y opencode-ai@1.17.9",
+    description: "Start opencode TUI in this workspace via pinned npx command",
     enabled: true,
   },
 ];
@@ -34,6 +35,9 @@ type StoredTerminalDockState = Pick<
   | "activeTabByWorkspace"
   | "lastContextPromptByWorkspace"
   | "commandTemplates"
+  | "autoReceiveEnabled"
+  | "autoSendEnabled"
+  | "captureSource"
 >;
 
 const defaultState: StoredTerminalDockState = {
@@ -44,6 +48,9 @@ const defaultState: StoredTerminalDockState = {
   activeTabByWorkspace: {},
   lastContextPromptByWorkspace: {},
   commandTemplates: DEFAULT_COMMAND_TEMPLATES,
+  autoReceiveEnabled: false,
+  autoSendEnabled: false,
+  captureSource: "auto",
 };
 
 const canUseLocalStorage = () => typeof window !== "undefined" && window.localStorage;
@@ -67,11 +74,25 @@ const normalizeCommandTemplates = (templates: unknown): TerminalCommandTemplate[
     if (!template || typeof template !== "object") return;
     const item = template as Partial<TerminalCommandTemplate>;
     if (typeof item.id !== "string" || !item.id) return;
+    const defaultTemplate = DEFAULT_COMMAND_TEMPLATES.find(
+      (candidate) => candidate.id === item.id,
+    );
+    const command =
+      item.id === "opencode" && (!item.command || item.command === "opencode")
+        ? DEFAULT_COMMAND_TEMPLATES[0].command
+        : typeof item.command === "string"
+        ? item.command
+        : defaultTemplate?.command ?? "";
+
     byID.set(item.id, {
       id: item.id,
-      title: typeof item.title === "string" ? item.title : item.id,
-      command: typeof item.command === "string" ? item.command : "",
-      description: typeof item.description === "string" ? item.description : "",
+      title:
+        typeof item.title === "string" ? item.title : defaultTemplate?.title ?? item.id,
+      command,
+      description:
+        typeof item.description === "string"
+          ? item.description
+          : defaultTemplate?.description ?? "",
       enabled: typeof item.enabled === "boolean" ? item.enabled : true,
     });
   });
@@ -134,6 +155,18 @@ const readStoredState = (): StoredTerminalDockState => {
           ? parsed.lastContextPromptByWorkspace
           : {},
       commandTemplates: normalizeCommandTemplates(parsed.commandTemplates),
+      autoReceiveEnabled:
+        typeof parsed.autoReceiveEnabled === "boolean"
+          ? parsed.autoReceiveEnabled
+          : false,
+      autoSendEnabled:
+        typeof parsed.autoSendEnabled === "boolean" ? parsed.autoSendEnabled : false,
+      captureSource:
+        parsed.captureSource === "screen" ||
+        parsed.captureSource === "raw" ||
+        parsed.captureSource === "auto"
+          ? parsed.captureSource
+          : "auto",
     };
   } catch {
     return defaultState;
@@ -154,6 +187,9 @@ const toStoredState = (state: TerminalDockStore): StoredTerminalDockState => ({
   activeTabByWorkspace: state.activeTabByWorkspace,
   lastContextPromptByWorkspace: state.lastContextPromptByWorkspace,
   commandTemplates: state.commandTemplates,
+  autoReceiveEnabled: state.autoReceiveEnabled,
+  autoSendEnabled: state.autoSendEnabled,
+  captureSource: state.captureSource,
 });
 
 const save = (state: TerminalDockStore, patch: Partial<TerminalDockStore>) => {
@@ -214,6 +250,7 @@ const stopBridge = async (tabID: string) =>
 export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
   ...readStoredState(),
   outputByTab: {},
+  lastCapturedTextByTab: {},
   togglePanel: () => {
     set((state) => {
       const panelOpen = !state.panelOpen;
@@ -520,6 +557,23 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
         commandTemplates: DEFAULT_COMMAND_TEMPLATES,
       }),
     );
+  },
+  setAutoReceiveEnabled: (autoReceiveEnabled) => {
+    set((state) => save(state, { autoReceiveEnabled }));
+  },
+  setAutoSendEnabled: (autoSendEnabled) => {
+    set((state) => save(state, { autoSendEnabled }));
+  },
+  setCaptureSource: (captureSource: TerminalCaptureSource) => {
+    set((state) => save(state, { captureSource }));
+  },
+  setLastCapturedText: (tabID, text) => {
+    set((state) => ({
+      lastCapturedTextByTab: {
+        ...state.lastCapturedTextByTab,
+        [tabID]: text,
+      },
+    }));
   },
 }));
 

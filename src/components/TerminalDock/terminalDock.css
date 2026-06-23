@@ -73,6 +73,18 @@
   color: #6a6a6a !important;
 }
 
+.terminal-dock-toggle {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #3c3c3c;
+  background: #252526;
+  color: #ffffff;
+  font-size: 12px;
+  padding: 0 8px;
+}
+
 .terminal-dock-tabs {
   display: flex;
   height: 34px;

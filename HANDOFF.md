@@ -4,6 +4,29 @@
 
 Current branch: `feature/terminal-dock-redesign`
 
+## Latest Update - Terminal Output Capture Demo
+
+Changes:
+
+- Default `Run opencode` command is now
+  `npx.cmd -y opencode-ai@1.17.9`, while still remaining editable in Command
+  Templates for offline bundle paths.
+- `TerminalSurface` exposes screen-buffer and recent-output extraction APIs for
+  automation, so the main IM handoff path no longer depends on fragile mouse
+  selection.
+- Added `Capture Output`, `Auto Receive`, and `Auto Send` controls. Auto Send
+  is off by default; when enabled it sends through ChatFooter events rather than
+  calling IM SDK from Terminal Dock.
+- Extended chat input events with replace/send flows for terminal capture.
+- Improved dark ANSI handling for blue, bright blue, black, bright black,
+  256-color dark blue, and truecolor dark blue output.
+
+Known limit:
+
+- Capture is a demo using xterm visible screen text first and cleaned recent PTY
+  output as fallback. It does not parse opencode's internal session API or
+  guarantee exact final-answer extraction across all CLI runtimes.
+
 ## Follow-up Fix - White ANSI Blue and opencode Local Smoke
 
 Reason:

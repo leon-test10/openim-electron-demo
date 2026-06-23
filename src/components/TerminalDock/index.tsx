@@ -27,10 +27,11 @@ import {
   Input,
   message,
   Modal,
+  Switch,
   Tooltip,
 } from "antd";
 import dayjs from "dayjs";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { IMSDK } from "@/layout/MainContentWrap";
@@ -87,6 +88,7 @@ const getTabStats = (tab?: TerminalTab) => {
 };
 
 const RECENT_SELECTION_TTL = 60_000;
+const AUTO_CAPTURE_DEBOUNCE = 1200;
 
 const TerminalDock = () => {
   const { conversationID: routeConversationID } = useParams();
@@ -106,6 +108,12 @@ const TerminalDock = () => {
     (state) => state.lastContextPromptByWorkspace,
   );
   const commandTemplates = useTerminalDockStore((state) => state.commandTemplates);
+  const autoReceiveEnabled = useTerminalDockStore((state) => state.autoReceiveEnabled);
+  const autoSendEnabled = useTerminalDockStore((state) => state.autoSendEnabled);
+  const captureSource = useTerminalDockStore((state) => state.captureSource);
+  const lastCapturedTextByTab = useTerminalDockStore(
+    (state) => state.lastCapturedTextByTab,
+  );
   const createWorkspace = useTerminalDockStore((state) => state.createWorkspace);
   const setActiveWorkspace = useTerminalDockStore((state) => state.setActiveWorkspace);
   const linkConversationToWorkspace = useTerminalDockStore(
@@ -136,6 +144,13 @@ const TerminalDock = () => {
   const resetCommandTemplates = useTerminalDockStore(
     (state) => state.resetCommandTemplates,
   );
+  const setAutoReceiveEnabled = useTerminalDockStore(
+    (state) => state.setAutoReceiveEnabled,
+  );
+  const setAutoSendEnabled = useTerminalDockStore((state) => state.setAutoSendEnabled);
+  const setLastCapturedText = useTerminalDockStore(
+    (state) => state.setLastCapturedText,
+  );
 
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [commandModalOpen, setCommandModalOpen] = useState(false);
@@ -158,6 +173,67 @@ const TerminalDock = () => {
   const lastContextPrompt = activeWorkspaceID
     ? lastContextPromptByWorkspace[activeWorkspaceID]
     : undefined;
+  const activeTabOutput = activeTab ? outputByTab[activeTab.id] ?? [] : [];
+  const activeTabOutputSignature = useMemo(
+    () => activeTabOutput.map((item) => item.id).join("|"),
+    [activeTabOutput],
+  );
+
+  const captureTerminalOutput = useCallback(
+    (mode: "manual" | "auto") => {
+      if (!activeTab) return;
+
+      const api = terminalApisRef.current.get(activeTab.id);
+      if (!api) {
+        if (mode === "manual") message.info("No active terminal surface");
+        return;
+      }
+
+      const visibleText = api.getVisibleText();
+      const recentOutputText = api.getRecentOutputText();
+      const capturedText =
+        captureSource === "screen"
+          ? visibleText
+          : captureSource === "raw"
+          ? recentOutputText
+          : visibleText.length >= 12
+          ? visibleText
+          : recentOutputText;
+      const normalizedText = capturedText.trim();
+
+      if (!normalizedText) {
+        if (mode === "manual") {
+          message.info("No terminal output captured");
+        }
+        return;
+      }
+
+      if (lastCapturedTextByTab[activeTab.id] === normalizedText) {
+        if (mode === "manual") {
+          message.info("Terminal output already captured");
+        }
+        return;
+      }
+
+      setLastCapturedText(activeTab.id, normalizedText);
+      if (autoReceiveEnabled && autoSendEnabled) {
+        emit("SEND_CHAT_INPUT", normalizedText);
+        message.success("Terminal output sent to IM");
+        return;
+      }
+
+      emit("REPLACE_CHAT_INPUT", normalizedText);
+      message.success("Terminal output captured to IM input");
+    },
+    [
+      activeTab,
+      autoReceiveEnabled,
+      autoSendEnabled,
+      captureSource,
+      lastCapturedTextByTab,
+      setLastCapturedText,
+    ],
+  );
 
   useEffect(() => {
     if (!window.electronAPI) return undefined;
@@ -168,6 +244,18 @@ const TerminalDock = () => {
     if (!activeWorkspaceID || activeTabID || tabs.length === 0) return;
     setActiveTab(activeWorkspaceID, tabs[0].id);
   }, [activeTabID, activeWorkspaceID, setActiveTab, tabs]);
+
+  useEffect(() => {
+    if (!autoReceiveEnabled || !activeTab || !activeTabOutputSignature) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      captureTerminalOutput("auto");
+    }, AUTO_CAPTURE_DEBOUNCE);
+
+    return () => window.clearTimeout(timer);
+  }, [activeTab, activeTabOutputSignature, autoReceiveEnabled, captureTerminalOutput]);
 
   if (!panelOpen) return null;
 
@@ -505,6 +593,36 @@ const TerminalDock = () => {
             Selection -&gt; IM
           </Button>
         </Tooltip>
+        <Tooltip title="Capture current terminal output to IM input">
+          <Button
+            size="small"
+            type="default"
+            className="terminal-dock-command-button"
+            disabled={!activeTab}
+            icon={<CopyOutlined rev={undefined} />}
+            onClick={() => captureTerminalOutput("manual")}
+          >
+            Capture Output
+          </Button>
+        </Tooltip>
+        <div className="terminal-dock-toggle">
+          <span>Auto Receive</span>
+          <Switch
+            size="small"
+            checked={autoReceiveEnabled}
+            disabled={!activeTab}
+            onChange={setAutoReceiveEnabled}
+          />
+        </div>
+        <div className="terminal-dock-toggle">
+          <span>Auto Send</span>
+          <Switch
+            size="small"
+            checked={autoSendEnabled}
+            disabled={!activeTab || !autoReceiveEnabled}
+            onChange={setAutoSendEnabled}
+          />
+        </div>
         <Tooltip title="Clear Terminal">
           <Button
             size="small"
@@ -532,7 +650,7 @@ const TerminalDock = () => {
             {activeTab ? (
               <TerminalSurface
                 tab={activeTab}
-                output={outputByTab[activeTab.id] ?? []}
+                output={activeTabOutput}
                 onReady={(tabID, api) => {
                   if (!api) {
                     terminalApisRef.current.delete(tabID);

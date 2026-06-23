@@ -10,31 +10,69 @@ import { TerminalResizeParams } from "@/types/globalExpose";
 
 export type TerminalSurfaceApi = {
   getSelectionText: () => string;
+  getVisibleText: () => string;
+  getRecentOutputText: () => string;
   focus: () => void;
 };
 
 const ANSI_ESCAPE = String.fromCharCode(27);
 const ANSI_SGR_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[([0-9;]*)m`, "g");
+const ANSI_CONTROL_PATTERN = new RegExp(
+  `${ANSI_ESCAPE}(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\x07]*(?:\\x07|${ANSI_ESCAPE}\\\\)|[@-Z\\\\-_])`,
+  "g",
+);
 const ANSI_TRUECOLOR_PATTERN = new RegExp(
   `${ANSI_ESCAPE}\\[38;2;[0-9]+;[0-9]+;[0-9]+m`,
   "g",
 );
+const ANSI_256_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[38;5;([0-9]+)m`, "g");
+
+const cleanTerminalText = (value: string) =>
+  value
+    .replace(ANSI_CONTROL_PATTERN, "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+$/g, ""))
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      if (/^\d+(\.\d+)?[KMG]?\s+\(\d+%\)\s+ctrl\+p\s+commands$/i.test(trimmed)) {
+        return false;
+      }
+      return true;
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
 const normalizeAnsiColors = (value: string) =>
   value
     .replace(ANSI_SGR_PATTERN, (match, codes: string) => {
       const parts = codes.split(";").filter(Boolean);
-      if (parts.includes("34") || parts.includes("94")) {
+      if (
+        parts.includes("30") ||
+        parts.includes("34") ||
+        parts.includes("90") ||
+        parts.includes("94")
+      ) {
         return `${ANSI_ESCAPE}[${parts
-          .map((part) => (part === "34" || part === "94" ? "37" : part))
+          .map((part) =>
+            part === "30" || part === "34" || part === "90" || part === "94"
+              ? "37"
+              : part,
+          )
           .join(";")}m`;
       }
       return match;
     })
+    .replace(ANSI_256_PATTERN, (match, code: string) => {
+      const colorCode = Number(code);
+      return colorCode >= 16 && colorCode <= 27 ? `${ANSI_ESCAPE}[37m` : match;
+    })
     .replace(ANSI_TRUECOLOR_PATTERN, (match) => {
       const values = match.match(/[0-9]+/g)?.map(Number) ?? [];
       const [r, g, b] = values.slice(2);
-      return b > r + 24 && b > g + 24 && r < 100 && g < 140
+      return b > r + 20 && b > g + 20 && r < 130 && g < 150
         ? `${ANSI_ESCAPE}[37m`
         : match;
     });
@@ -55,6 +93,7 @@ const TerminalSurface = ({
   const fitAddonRef = useRef<FitAddon | null>(null);
   const renderedIdsRef = useRef<Set<string>>(new Set());
   const runningRef = useRef(tab.status === "running");
+  const outputRef = useRef(output);
   const outputSignature = useMemo(
     () => output.map((item) => item.id).join("|"),
     [output],
@@ -71,6 +110,9 @@ const TerminalSurface = ({
       fontSize: 14,
       lineHeight: 1.25,
       minimumContrastRatio: 7,
+      drawBoldTextInBrightColors: false,
+      altClickMovesCursor: false,
+      rightClickSelectsWord: true,
       convertEol: false,
       allowProposedApi: false,
       disableStdin: tab.status !== "running",
@@ -79,7 +121,9 @@ const TerminalSurface = ({
         foreground: "#cccccc",
         cursor: "#f2f2f2",
         cursorAccent: "#0c0c0c",
-        selectionBackground: "#264f78",
+        selectionBackground: "#3a7bd5",
+        selectionForeground: "#ffffff",
+        selectionInactiveBackground: "#355d8c",
         black: "#000000",
         red: "#c50f1f",
         green: "#13a10e",
@@ -88,7 +132,7 @@ const TerminalSurface = ({
         magenta: "#881798",
         cyan: "#3a96dd",
         white: "#cccccc",
-        brightBlack: "#767676",
+        brightBlack: "#c8c8c8",
         brightRed: "#e74856",
         brightGreen: "#16c60c",
         brightYellow: "#f9f1a5",
@@ -108,6 +152,25 @@ const TerminalSurface = ({
     renderedIdsRef.current = new Set();
     onReady?.(tab.id, {
       getSelectionText: () => terminal.getSelection() ?? "",
+      getVisibleText: () => {
+        const buffer = terminal.buffer.active;
+        const start = buffer.viewportY;
+        const end = Math.min(buffer.length, start + terminal.rows);
+        const lines: string[] = [];
+        for (let row = start; row < end; row += 1) {
+          const line = buffer.getLine(row);
+          if (!line) continue;
+          lines.push(line.translateToString(true));
+        }
+        return cleanTerminalText(lines.join("\n"));
+      },
+      getRecentOutputText: () =>
+        cleanTerminalText(
+          outputRef.current
+            .slice(-80)
+            .map((item) => item.content)
+            .join(""),
+        ).slice(-6000),
       focus: () => terminal.focus(),
     });
 
@@ -169,6 +232,7 @@ const TerminalSurface = ({
   }, [tab.status]);
 
   useEffect(() => {
+    outputRef.current = output;
     const terminal = terminalRef.current;
     if (!terminal) return;
 

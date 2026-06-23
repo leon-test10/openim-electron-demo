@@ -34,26 +34,44 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     setHtml(value);
   };
 
-  useEffect(() => {
-    const escapeHtml = (text: string) =>
-      text
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+  const escapeHtml = (text: string) =>
+    text
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
 
+  const textToDraftHtml = (text: string) =>
+    text.trim() ? `<pre><code>${escapeHtml(text.trim())}</code></pre>` : "";
+
+  useEffect(() => {
     const onAppend = (text: string) => {
       if (!text) return;
-      const escaped = escapeHtml(text);
-      setHtml((prev) => `${prev}<pre><code>${escaped}</code></pre>`);
+      setHtml((prev) => `${prev}${textToDraftHtml(text)}`);
+    };
+
+    const onReplace = (text: string) => {
+      setHtml(textToDraftHtml(text));
+    };
+
+    const onSend = async (text: string) => {
+      const cleanText = text.trim();
+      if (!cleanText) return;
+      const message = (await IMSDK.createTextMessage(cleanText)).data;
+      setHtml("");
+      sendMessage({ message });
     };
 
     emitter.on("APPEND_CHAT_INPUT", onAppend);
+    emitter.on("REPLACE_CHAT_INPUT", onReplace);
+    emitter.on("SEND_CHAT_INPUT", onSend);
     return () => {
       emitter.off("APPEND_CHAT_INPUT", onAppend);
+      emitter.off("REPLACE_CHAT_INPUT", onReplace);
+      emitter.off("SEND_CHAT_INPUT", onSend);
     };
-  }, []);
+  }, [sendMessage]);
 
   const enterToSend = async () => {
     const cleanText = getCleanText(latestHtml.current ?? "");

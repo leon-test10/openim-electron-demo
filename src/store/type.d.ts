@@ -195,6 +195,8 @@ export interface TerminalOutputChunk {
   createdAt: number;
 }
 
+export type TerminalCaptureSource = "screen" | "raw" | "auto";
+
 export interface TerminalDockStore {
   panelOpen: boolean;
   workspaces: TerminalWorkspace[];
@@ -204,6 +206,10 @@ export interface TerminalDockStore {
   outputByTab: Record<string, TerminalOutputChunk[]>;
   lastContextPromptByWorkspace: Record<string, string | undefined>;
   commandTemplates: TerminalCommandTemplate[];
+  autoReceiveEnabled: boolean;
+  autoSendEnabled: boolean;
+  captureSource: TerminalCaptureSource;
+  lastCapturedTextByTab: Record<string, string | undefined>;
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
   createWorkspace: (title?: string) => Promise<string | undefined>;
@@ -230,6 +236,10 @@ export interface TerminalDockStore {
   addCommandTemplate: () => void;
   removeCommandTemplate: (templateID: string) => void;
   resetCommandTemplates: () => void;
+  setAutoReceiveEnabled: (enabled: boolean) => void;
+  setAutoSendEnabled: (enabled: boolean) => void;
+  setCaptureSource: (source: TerminalCaptureSource) => void;
+  setLastCapturedText: (tabID: string, text: string) => void;
 }
 
 export type { TerminalEvent, TerminalInstance };
