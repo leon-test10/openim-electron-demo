@@ -16,16 +16,117 @@ export type TerminalSurfaceApi = {
 };
 
 const ANSI_ESCAPE = String.fromCharCode(27);
-const ANSI_SGR_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[([0-9;]*)m`, "g");
 const ANSI_CONTROL_PATTERN = new RegExp(
   `${ANSI_ESCAPE}(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\x07]*(?:\\x07|${ANSI_ESCAPE}\\\\)|[@-Z\\\\-_])`,
   "g",
 );
-const ANSI_TRUECOLOR_PATTERN = new RegExp(
-  `${ANSI_ESCAPE}\\[38;2;[0-9]+;[0-9]+;[0-9]+m`,
-  "g",
-);
-const ANSI_256_PATTERN = new RegExp(`${ANSI_ESCAPE}\\[38;5;([0-9]+)m`, "g");
+const TERMINAL_ACCESSIBILITY_MINIMUM_CONTRAST_RATIO = 4.5;
+
+const readableDarkTerminalTheme = {
+  background: "#0c0c0c",
+  foreground: "#d4d4d4",
+  cursor: "#ffffff",
+  cursorAccent: "#000000",
+  selectionBackground: "#264f78",
+  selectionForeground: "#ffffff",
+  selectionInactiveBackground: "#1f3f5b",
+  black: "#000000",
+  red: "#f14c4c",
+  green: "#23d18b",
+  yellow: "#f5f543",
+  blue: "#5ea6ff",
+  magenta: "#bc8cff",
+  cyan: "#29b8db",
+  white: "#e5e5e5",
+  brightBlack: "#666666",
+  brightRed: "#f48771",
+  brightGreen: "#35d07f",
+  brightYellow: "#ffff87",
+  brightBlue: "#82c7ff",
+  brightMagenta: "#d670d6",
+  brightCyan: "#5ccfe6",
+  brightWhite: "#ffffff",
+};
+
+const readableLightTerminalTheme = {
+  background: "#f7f7f7",
+  foreground: "#24292f",
+  cursor: "#1f2328",
+  cursorAccent: "#ffffff",
+  selectionBackground: "#cfe4ff",
+  selectionForeground: "#0b0f14",
+  selectionInactiveBackground: "#d8d8d8",
+  black: "#24292f",
+  red: "#cf222e",
+  green: "#1a7f37",
+  yellow: "#9a6700",
+  blue: "#0969da",
+  magenta: "#8250df",
+  cyan: "#1b7c83",
+  white: "#f6f8fa",
+  brightBlack: "#57606a",
+  brightRed: "#a40e26",
+  brightGreen: "#116329",
+  brightYellow: "#7d4e00",
+  brightBlue: "#218bff",
+  brightMagenta: "#a475f9",
+  brightCyan: "#3192aa",
+  brightWhite: "#ffffff",
+};
+
+const getAppThemeMode = () => {
+  if (typeof document !== "undefined") {
+    const root = document.documentElement;
+    if (
+      root.classList.contains("dark") ||
+      root.dataset.theme === "dark" ||
+      root.dataset.colorMode === "dark"
+    ) {
+      return "dark" as const;
+    }
+    if (
+      root.classList.contains("light") ||
+      root.dataset.theme === "light" ||
+      root.dataset.colorMode === "light"
+    ) {
+      return "light" as const;
+    }
+  }
+
+  if (typeof window !== "undefined" && window.matchMedia) {
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+  return "dark" as const;
+};
+
+const getReadableTerminalTheme = (mode: "dark" | "light") =>
+  mode === "light" ? readableLightTerminalTheme : readableDarkTerminalTheme;
+
+const logTerminalThemeSnapshot = (
+  mode: "dark" | "light",
+  theme: typeof readableDarkTerminalTheme,
+  minimumContrastRatio: number,
+) => {
+  if (!import.meta.env.DEV) return;
+
+  console.debug("[TerminalDock] xterm theme", {
+    mode,
+    blue: theme.blue,
+    brightBlue: theme.brightBlue,
+    foreground: theme.foreground,
+    background: theme.background,
+    minimumContrastRatio,
+  });
+};
+
+const applyTerminalTheme = (terminal: Terminal) => {
+  const mode = getAppThemeMode();
+  const theme = getReadableTerminalTheme(mode);
+  terminal.options.theme = theme;
+  terminal.options.minimumContrastRatio = TERMINAL_ACCESSIBILITY_MINIMUM_CONTRAST_RATIO;
+  logTerminalThemeSnapshot(mode, theme, TERMINAL_ACCESSIBILITY_MINIMUM_CONTRAST_RATIO);
+};
 
 const cleanTerminalText = (value: string) =>
   value
@@ -44,38 +145,6 @@ const cleanTerminalText = (value: string) =>
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-
-const normalizeAnsiColors = (value: string) =>
-  value
-    .replace(ANSI_SGR_PATTERN, (match, codes: string) => {
-      const parts = codes.split(";").filter(Boolean);
-      if (
-        parts.includes("30") ||
-        parts.includes("34") ||
-        parts.includes("90") ||
-        parts.includes("94")
-      ) {
-        return `${ANSI_ESCAPE}[${parts
-          .map((part) =>
-            part === "30" || part === "34" || part === "90" || part === "94"
-              ? "37"
-              : part,
-          )
-          .join(";")}m`;
-      }
-      return match;
-    })
-    .replace(ANSI_256_PATTERN, (match, code: string) => {
-      const colorCode = Number(code);
-      return colorCode >= 16 && colorCode <= 27 ? `${ANSI_ESCAPE}[37m` : match;
-    })
-    .replace(ANSI_TRUECOLOR_PATTERN, (match) => {
-      const values = match.match(/[0-9]+/g)?.map(Number) ?? [];
-      const [r, g, b] = values.slice(2);
-      return b > r + 20 && b > g + 20 && r < 130 && g < 150
-        ? `${ANSI_ESCAPE}[37m`
-        : match;
-    });
 
 const TerminalSurface = ({
   tab,
@@ -102,6 +171,7 @@ const TerminalSurface = ({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return undefined;
+    const initialThemeMode = getAppThemeMode();
 
     const terminal = new Terminal({
       cursorBlink: true,
@@ -109,43 +179,20 @@ const TerminalSurface = ({
         'Consolas, "Cascadia Mono", "Cascadia Code", "JetBrains Mono", monospace',
       fontSize: 14,
       lineHeight: 1.25,
-      minimumContrastRatio: 7,
+      minimumContrastRatio: TERMINAL_ACCESSIBILITY_MINIMUM_CONTRAST_RATIO,
       drawBoldTextInBrightColors: false,
       altClickMovesCursor: false,
       rightClickSelectsWord: true,
       convertEol: false,
       allowProposedApi: false,
       disableStdin: tab.status !== "running",
-      theme: {
-        background: "#0c0c0c",
-        foreground: "#cccccc",
-        cursor: "#f2f2f2",
-        cursorAccent: "#0c0c0c",
-        selectionBackground: "#3a7bd5",
-        selectionForeground: "#ffffff",
-        selectionInactiveBackground: "#355d8c",
-        black: "#000000",
-        red: "#c50f1f",
-        green: "#13a10e",
-        yellow: "#c19c00",
-        blue: "#f2f2f2",
-        magenta: "#881798",
-        cyan: "#3a96dd",
-        white: "#cccccc",
-        brightBlack: "#c8c8c8",
-        brightRed: "#e74856",
-        brightGreen: "#16c60c",
-        brightYellow: "#f9f1a5",
-        brightBlue: "#ffffff",
-        brightMagenta: "#b4009e",
-        brightCyan: "#61d6d6",
-        brightWhite: "#f2f2f2",
-      },
+      theme: getReadableTerminalTheme(initialThemeMode),
     });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
     terminal.open(host);
     fitAddon.fit();
+    applyTerminalTheme(terminal);
 
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
@@ -191,6 +238,23 @@ const TerminalSurface = ({
 
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(host);
+    const themeObserver =
+      typeof MutationObserver !== "undefined" && typeof document !== "undefined"
+        ? new MutationObserver(() => applyTerminalTheme(terminal))
+        : undefined;
+
+    themeObserver?.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "data-theme", "data-color-mode"],
+    });
+
+    const colorSchemeQuery =
+      typeof window !== "undefined" && window.matchMedia
+        ? window.matchMedia("(prefers-color-scheme: dark)")
+        : undefined;
+    const handleColorSchemeChange = () => applyTerminalTheme(terminal);
+
+    colorSchemeQuery?.addEventListener?.("change", handleColorSchemeChange);
 
     const dataDisposable = terminal.onData((data) => {
       if (!runningRef.current) return;
@@ -211,6 +275,8 @@ const TerminalSurface = ({
     return () => {
       host.removeEventListener("click", focusListener);
       resizeObserver.disconnect();
+      themeObserver?.disconnect();
+      colorSchemeQuery?.removeEventListener?.("change", handleColorSchemeChange);
       dataDisposable.dispose();
       selectionDisposable.dispose();
       terminal.dispose();
@@ -239,7 +305,7 @@ const TerminalSurface = ({
     const renderedIds = renderedIdsRef.current;
     output.forEach((item) => {
       if (renderedIds.has(item.id)) return;
-      terminal.write(normalizeAnsiColors(item.content));
+      terminal.write(item.content);
       renderedIds.add(item.id);
     });
     terminal.scrollToBottom();

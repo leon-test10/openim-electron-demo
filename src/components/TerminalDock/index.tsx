@@ -48,6 +48,12 @@ type ContextExportResult = {
   files: string[];
 };
 
+type TerminalSelectionFallbackState = {
+  open: boolean;
+  text: string;
+  source: "screen" | "recent";
+};
+
 const stripHtml = (value?: string) =>
   (value ?? "")
     .replace(/<\/p><p>/g, "\n")
@@ -89,6 +95,48 @@ const getTabStats = (tab?: TerminalTab) => {
 
 const RECENT_SELECTION_TTL = 60_000;
 const AUTO_CAPTURE_DEBOUNCE = 1200;
+const AUTO_SEND_MIN_LENGTH = 8;
+const AUTO_SEND_MIN_INTERVAL = 5000;
+const AUTO_SEND_WARNING =
+  "Terminal output may include logs, local paths, command output, or sensitive data. Auto-sending terminal output is experimental.";
+
+const hashText = (value: string) => {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 33) ^ value.charCodeAt(index);
+  }
+  return (hash >>> 0).toString(16);
+};
+
+const isPromptOrBannerLine = (line: string) => {
+  const trimmed = line.trim();
+  if (!trimmed) return true;
+
+  return [
+    /^(?:ps\s+)?[a-z]:\\.*[>#]\s*$/i,
+    /^[a-z]:\\(?:[^<>:"|?*\r\n]+\\?)*$/i,
+    /^windows powershell$/i,
+    /^powershell \d+(\.\d+)*$/i,
+    /^microsoft windows \[version .*]$/i,
+    /^copyright \(c\) microsoft corporation\./i,
+    /^copyright \(c\) microsoft corporation\. all rights reserved\./i,
+    /^try the new cross-platform powershell https:\/\/aka\.ms\/pscore6$/i,
+  ].some((pattern) => pattern.test(trimmed));
+};
+
+const shouldSkipAutoSend = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (trimmed.length < AUTO_SEND_MIN_LENGTH) return true;
+
+  const lines = trimmed
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) return true;
+  return lines.every(isPromptOrBannerLine);
+};
 
 const TerminalDock = () => {
   const { conversationID: routeConversationID } = useParams();
@@ -155,10 +203,20 @@ const TerminalDock = () => {
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [commandModalOpen, setCommandModalOpen] = useState(false);
   const [workspaceTitle, setWorkspaceTitle] = useState("");
+  const [selectionFallback, setSelectionFallback] =
+    useState<TerminalSelectionFallbackState>({
+      open: false,
+      text: "",
+      source: "screen",
+    });
   const terminalApisRef = useRef<Map<string, TerminalSurfaceApi>>(new Map());
   const recentTerminalSelectionsRef = useRef<
     Map<string, { text: string; updatedAt: number }>
   >(new Map());
+  const selectionFallbackHostRef = useRef<HTMLDivElement>(null);
+  const lastDraftHashByTabRef = useRef<Map<string, string>>(new Map());
+  const lastSentHashByTabRef = useRef<Map<string, string>>(new Map());
+  const lastSentAtByTabRef = useRef<Map<string, number>>(new Map());
   const conversationID = currentConversation?.conversationID ?? routeConversationID;
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === activeWorkspaceID),
@@ -179,15 +237,10 @@ const TerminalDock = () => {
     [activeTabOutput],
   );
 
-  const captureTerminalOutput = useCallback(
-    (mode: "manual" | "auto") => {
-      if (!activeTab) return;
-
-      const api = terminalApisRef.current.get(activeTab.id);
-      if (!api) {
-        if (mode === "manual") message.info("No active terminal surface");
-        return;
-      }
+  const getCapturedTerminalText = useCallback(
+    (tab: TerminalTab) => {
+      const api = terminalApisRef.current.get(tab.id);
+      if (!api) return undefined;
 
       const visibleText = api.getVisibleText();
       const recentOutputText = api.getRecentOutputText();
@@ -199,7 +252,21 @@ const TerminalDock = () => {
           : visibleText.length >= 12
           ? visibleText
           : recentOutputText;
-      const normalizedText = capturedText.trim();
+
+      return capturedText.trim();
+    },
+    [captureSource],
+  );
+
+  const captureTerminalOutput = useCallback(
+    (mode: "manual" | "auto") => {
+      if (!activeTab) return;
+
+      const normalizedText = getCapturedTerminalText(activeTab);
+      if (typeof normalizedText !== "string") {
+        if (mode === "manual") message.info("No active terminal surface");
+        return;
+      }
 
       if (!normalizedText) {
         if (mode === "manual") {
@@ -208,31 +275,25 @@ const TerminalDock = () => {
         return;
       }
 
-      if (lastCapturedTextByTab[activeTab.id] === normalizedText) {
+      const nextDraftHash = hashText(normalizedText);
+      if (
+        lastCapturedTextByTab[activeTab.id] === normalizedText ||
+        lastDraftHashByTabRef.current.get(activeTab.id) === nextDraftHash
+      ) {
         if (mode === "manual") {
           message.info("Terminal output already captured");
         }
         return;
       }
 
+      lastDraftHashByTabRef.current.set(activeTab.id, nextDraftHash);
       setLastCapturedText(activeTab.id, normalizedText);
-      if (autoReceiveEnabled && autoSendEnabled) {
-        emit("SEND_CHAT_INPUT", normalizedText);
-        message.success("Terminal output sent to IM");
-        return;
-      }
-
       emit("REPLACE_CHAT_INPUT", normalizedText);
-      message.success("Terminal output captured to IM input");
+      if (mode === "manual") {
+        message.success("Terminal output captured to chat draft");
+      }
     },
-    [
-      activeTab,
-      autoReceiveEnabled,
-      autoSendEnabled,
-      captureSource,
-      lastCapturedTextByTab,
-      setLastCapturedText,
-    ],
+    [activeTab, getCapturedTerminalText, lastCapturedTextByTab, setLastCapturedText],
   );
 
   useEffect(() => {
@@ -256,6 +317,52 @@ const TerminalDock = () => {
 
     return () => window.clearTimeout(timer);
   }, [activeTab, activeTabOutputSignature, autoReceiveEnabled, captureTerminalOutput]);
+
+  useEffect(() => {
+    if (
+      !autoReceiveEnabled ||
+      !autoSendEnabled ||
+      !activeTab ||
+      !activeTabOutputSignature
+    ) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      const normalizedText = getCapturedTerminalText(activeTab);
+      if (!normalizedText || shouldSkipAutoSend(normalizedText)) return;
+
+      const textHash = hashText(normalizedText);
+      const now = Date.now();
+      const lastDraftHash = lastDraftHashByTabRef.current.get(activeTab.id);
+      const lastSentHash = lastSentHashByTabRef.current.get(activeTab.id);
+      const lastSentAt = lastSentAtByTabRef.current.get(activeTab.id) ?? 0;
+
+      if (lastDraftHash !== textHash) {
+        lastDraftHashByTabRef.current.set(activeTab.id, textHash);
+        setLastCapturedText(activeTab.id, normalizedText);
+        emit("REPLACE_CHAT_INPUT", normalizedText);
+      }
+
+      if (lastSentHash === textHash || now - lastSentAt < AUTO_SEND_MIN_INTERVAL) {
+        return;
+      }
+
+      emit("SEND_CHAT_INPUT", normalizedText);
+      lastSentHashByTabRef.current.set(activeTab.id, textHash);
+      lastSentAtByTabRef.current.set(activeTab.id, now);
+      message.success("Draft sent to chat");
+    }, AUTO_SEND_MIN_INTERVAL);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    activeTab,
+    activeTabOutputSignature,
+    autoReceiveEnabled,
+    autoSendEnabled,
+    getCapturedTerminalText,
+    setLastCapturedText,
+  ]);
 
   if (!panelOpen) return null;
 
@@ -401,23 +508,81 @@ const TerminalDock = () => {
 
   const selectionToIM = () => {
     if (!activeTab) return;
-    const browserSelection = window.getSelection()?.toString();
     const terminalSelection = terminalApisRef.current
       .get(activeTab.id)
       ?.getSelectionText();
+    const browserSelection = window.getSelection()?.toString();
     const recentSelection = recentTerminalSelectionsRef.current.get(activeTab.id);
     const recentSelectionText =
       recentSelection && Date.now() - recentSelection.updatedAt < RECENT_SELECTION_TTL
         ? recentSelection.text
         : "";
-    const selection = browserSelection || terminalSelection || recentSelectionText;
+    const selection = terminalSelection || recentSelectionText || browserSelection;
     if (!selection?.trim()) {
-      message.info("No terminal selection");
+      const api = terminalApisRef.current.get(activeTab.id);
+      if (!api) {
+        message.info("No active terminal surface");
+        return;
+      }
+
+      const visibleText = api.getVisibleText();
+      const recentOutputText = api.getRecentOutputText();
+      const fallbackText =
+        visibleText.trim().length >= 12 ? visibleText.trim() : recentOutputText.trim();
+
+      if (!fallbackText) {
+        message.info("No terminal selection");
+        return;
+      }
+
+      setSelectionFallback({
+        open: true,
+        text: fallbackText,
+        source: visibleText.trim().length >= 12 ? "screen" : "recent",
+      });
       return;
     }
 
     emit("APPEND_CHAT_INPUT", selection.trim());
     message.success("Selection added to IM input");
+  };
+
+  const appendSelectionFallbackToIM = () => {
+    const textarea = selectionFallbackHostRef.current?.querySelector("textarea");
+    const selectedText =
+      textarea && textarea.selectionStart !== textarea.selectionEnd
+        ? selectionFallback.text.slice(textarea.selectionStart, textarea.selectionEnd)
+        : selectionFallback.text;
+    const normalizedText = selectedText.trim();
+
+    if (!normalizedText) {
+      message.info("No terminal text selected");
+      return;
+    }
+
+    emit("APPEND_CHAT_INPUT", normalizedText);
+    setSelectionFallback({
+      open: false,
+      text: "",
+      source: "screen",
+    });
+    message.success("Selection added to IM input");
+  };
+
+  const handleAutoSendChange = (enabled: boolean) => {
+    if (!enabled) {
+      setAutoSendEnabled(false);
+      return;
+    }
+
+    Modal.confirm({
+      title: "Enable Draft -> Chat (experimental)?",
+      content: AUTO_SEND_WARNING,
+      okText: "Enable",
+      cancelText: "Cancel",
+      onOk: () => setAutoSendEnabled(true),
+      onCancel: () => setAutoSendEnabled(false),
+    });
   };
 
   const runMenuItems = [
@@ -581,7 +746,7 @@ const TerminalDock = () => {
             Paste Prompt
           </Button>
         </Tooltip>
-        <Tooltip title="Selection to IM Input">
+        <Tooltip title="Append selected terminal text to the current IM draft. If a TUI blocks terminal selection, this opens a selectable screen snapshot.">
           <Button
             size="small"
             type="default"
@@ -593,7 +758,7 @@ const TerminalDock = () => {
             Selection -&gt; IM
           </Button>
         </Tooltip>
-        <Tooltip title="Capture current terminal output to IM input">
+        <Tooltip title="Capture current screen/output text into the current chat draft">
           <Button
             size="small"
             type="default"
@@ -606,7 +771,7 @@ const TerminalDock = () => {
           </Button>
         </Tooltip>
         <div className="terminal-dock-toggle">
-          <span>Auto Receive</span>
+          <span>Output -&gt; Draft</span>
           <Switch
             size="small"
             checked={autoReceiveEnabled}
@@ -615,12 +780,16 @@ const TerminalDock = () => {
           />
         </div>
         <div className="terminal-dock-toggle">
-          <span>Auto Send</span>
+          <Tooltip title={AUTO_SEND_WARNING}>
+            <span className="terminal-dock-toggle-label is-experimental">
+              Draft -&gt; Chat (experimental)
+            </span>
+          </Tooltip>
           <Switch
             size="small"
             checked={autoSendEnabled}
             disabled={!activeTab || !autoReceiveEnabled}
-            onChange={setAutoSendEnabled}
+            onChange={handleAutoSendChange}
           />
         </div>
         <Tooltip title="Clear Terminal">
@@ -801,6 +970,44 @@ const TerminalDock = () => {
               />
             </div>
           ))}
+        </div>
+      </Modal>
+
+      <Modal
+        title="Selection -> IM (TUI Fallback)"
+        open={selectionFallback.open}
+        width={760}
+        okText="Append to IM"
+        cancelText="Cancel"
+        onCancel={() =>
+          setSelectionFallback({
+            open: false,
+            text: "",
+            source: "screen",
+          })
+        }
+        onOk={appendSelectionFallbackToIM}
+      >
+        <div className="terminal-dock-template-list" ref={selectionFallbackHostRef}>
+          <div className="text-xs text-[#8c8c8c]">
+            {selectionFallback.source === "screen"
+              ? "The active TUI did not expose a live terminal selection. Review the current visible screen snapshot below, highlight a portion if needed, then append it to IM."
+              : "The active TUI did not expose a live terminal selection. Review the recent terminal output snapshot below, highlight a portion if needed, then append it to IM."}
+          </div>
+          <Input.TextArea
+            autoSize={{ minRows: 16, maxRows: 24 }}
+            value={selectionFallback.text}
+            onChange={(event) =>
+              setSelectionFallback((prev) => ({
+                ...prev,
+                text: event.target.value,
+              }))
+            }
+            style={{
+              fontFamily:
+                'Consolas, "Cascadia Mono", "Cascadia Code", "JetBrains Mono", monospace',
+            }}
+          />
         </div>
       </Modal>
     </aside>

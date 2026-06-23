@@ -151,13 +151,12 @@
   background: #0c0c0c !important;
 }
 
-.terminal-dock .xterm-fg-4,
-.terminal-dock .xterm-fg-12 {
-  color: #f2f2f2 !important;
-}
-
 .terminal-dock .xterm-helpers {
   width: 0;
+}
+
+.terminal-dock-toggle-label.is-experimental {
+  color: #ffd666;
 }
 
 .terminal-dock-empty {

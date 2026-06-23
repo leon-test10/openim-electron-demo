@@ -1,5 +1,105 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Terminal Output Handoff Safety + xterm Theme Fix
+
+Current branch: `feature/terminal-dock-redesign`
+
+Scope for this phase:
+
+- This phase implements terminal-output-to-chat-draft handoff only.
+- Terminal Dock remains a generic terminal host plus terminal-output handoff demo.
+- Runtime behavior stays owned by each CLI product such as `opencode`, `codex`,
+  `claude`, and `gemini`.
+
+Implemented in this phase:
+
+- terminal tabs;
+- run profiles / command templates;
+- copy context prompt;
+- paste prompt into terminal;
+- selection to IM;
+- capture terminal output;
+- optional output-to-draft;
+- optional draft-to-chat send.
+
+Not implemented in this phase:
+
+- IM message trigger;
+- `@bot` trigger;
+- group mention routing;
+- automatic IM-to-terminal injection;
+- bot ownership model;
+- agent runtime adapter;
+- parsing final answer from agent runtime;
+- reliable final-answer extraction from `opencode` / `codex` / `claude` TUI
+  output.
+
+Current handoff semantics:
+
+- `Capture Output` means screen/output capture, not agent reply capture.
+- `Output -> Draft` fills the chat draft from captured terminal output after the
+  terminal output settles.
+- `Draft -> Chat (experimental)` remains off by default and only auto-sends
+  after stricter debounce / dedupe / minimum-length / minimum-interval checks.
+- `Selection -> IM` remains the safest recommended path because the user still
+  explicitly selects and reviews text before sending.
+- `Selection -> IM` now has a TUI fallback path: if `xterm` does not expose a
+  live selection, OpenIM opens a selectable plain-text snapshot of the current
+  visible screen, or recent output when the visible screen is too small.
+- This fallback is intended for full-screen TUIs such as `opencode`, where
+  mouse handling or alternate-screen rendering may prevent normal xterm
+  selection APIs from returning text.
+
+Terminal theme/readability update:
+
+- Replaced ANSI blue readability fixes based on output rewriting with an xterm
+  theme-level readable ANSI palette.
+- Explicitly set xterm theme colors for `foreground`, `background`, `blue`,
+  `brightBlue`, and the rest of the ANSI palette.
+- Set `minimumContrastRatio` to `4.5`.
+- Re-apply the xterm theme when the document theme or system color scheme
+  changes.
+- Added a dev-only debug log that prints the active xterm theme snapshot for
+  `blue`, `brightBlue`, `foreground`, `background`, and
+  `minimumContrastRatio`.
+
+Auto-send safety guardrails:
+
+- Empty or whitespace-only output is not sent.
+- Output shorter than 8 characters is not sent.
+- Prompt-only / shell-banner / current-working-directory-only capture is not
+  sent.
+- Repeated captured content is deduplicated by hash before draft/send.
+- Auto-send requires at least 5 seconds of quiet output before sending.
+- Sending still goes through `ChatFooter` events instead of direct OpenIM SDK
+  calls from `TerminalDock`.
+
+Backup artifacts created before this pass:
+
+- `0001-feat-add-terminal-output-capture-demo.patch`
+- `terminal-dock-redesign-e16a89b.bundle`
+- `terminal-dock-selection-fallback-<timestamp>.patch`
+
+Validation to repeat after reload / Electron restart:
+
+```bash
+git diff --check
+npm.cmd run lint -- --quiet
+npx.cmd tsc --noEmit
+npm.cmd run build
+```
+
+Manual checks to repeat in Electron:
+
+1. Open the right-side Terminal Dock.
+2. Start a PowerShell tab and confirm the path prompt is readable.
+3. Verify `Capture Output`, `Output -> Draft`, and `Draft -> Chat (experimental)`
+   semantics.
+4. Keep `Draft -> Chat (experimental)` off by default.
+5. Turn it on and confirm dedupe / 5-second quiet period prevent repeated
+   sends.
+6. Confirm Terminal Dock still does not directly call OpenIM SDK for sending.
+
 ## Latest Update - VS Code-like Terminal Dock
 
 Current branch: `feature/terminal-dock-redesign`
