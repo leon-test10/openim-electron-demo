@@ -1,5 +1,45 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - IM History Drawer MVP
+
+Current branch: `feature/terminal-dock-redesign`
+
+Plan source:
+
+- `C:\Users\leon\Desktop\# Plan IM-native Message Actions, H.txt`
+
+Scope completed in this pass:
+
+- Added `MessageHistoryDrawer` as the Phase 4 IM-native history drawer MVP.
+- Added `History` to the chat-header `More` menu.
+- The drawer loads current-conversation history with
+  `IMSDK.getAdvancedHistoryMessageList`.
+- Supported quick history windows: recent `20`, `50`, and `100`.
+- Supported `Load More` paging using the oldest loaded `clientMsgID`.
+- History rows can be selected with the existing `useMessageSelectionStore`.
+- `Select Visible`, `Copy`, `Create Context`, and `Clear` work from the same
+  selected-message model used by the main chat window.
+- `Search Messages` and `Export Chat` are visible disabled placeholders in the
+  header menu to keep the intended IM menu shape clear.
+
+Important semantics:
+
+- This is an IM-side history drawer, not a Terminal Dock history feature.
+- It does not implement keyword search, date range filtering, or multi-conversation
+  context selection yet.
+- `Create Context` still routes through the existing
+  `TERMINAL_CONTEXT_ACTION` event and selected-message context builder.
+- The event name remains terminal-flavored for compatibility; a later cleanup
+  should introduce a neutral IM context event.
+
+Recommended next implementation slice:
+
+1. Add keyword search and basic range filtering inside the history drawer.
+2. Extract a neutral IM context action event/service so history, selection, and
+   terminal integration are less coupled.
+3. Add chat export only after deciding whether it downloads locally or writes to
+   the active workspace.
+
 ## Latest Update - Quote to Draft MVP
 
 Current branch: `feature/terminal-dock-redesign`

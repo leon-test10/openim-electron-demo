@@ -16,6 +16,10 @@ import { emit } from "@/utils/events";
 import GroupSetting from "../GroupSetting";
 import SingleSetting from "../SingleSetting";
 
+interface ChatHeaderProps {
+  onOpenHistory?: () => void;
+}
+
 const menuList = [
   {
     title: t("placeholder.createGroup"),
@@ -40,7 +44,7 @@ i18n.on("languageChanged", () => {
   menuList[2].title = t("placeholder.setting");
 });
 
-const ChatHeader = () => {
+const ChatHeader = ({ onOpenHistory }: ChatHeaderProps) => {
   const singleSettingRef = useRef<OverlayVisibleHandle>(null);
   const groupSettingRef = useRef<OverlayVisibleHandle>(null);
 
@@ -97,13 +101,31 @@ const ChatHeader = () => {
 
   const headerActionItems = [
     {
+      key: "history",
+      label: "History",
+      disabled: !conversationID,
+    },
+    {
       key: "select-messages",
       label: "Select Messages",
       disabled: !conversationID,
     },
+    {
+      key: "search-messages",
+      label: "Search Messages",
+      disabled: true,
+    },
+    {
+      key: "export-chat",
+      label: "Export Chat",
+      disabled: true,
+    },
   ];
 
   const onHeaderActionClick = ({ key }: { key: string }) => {
+    if (key === "history" && conversationID) {
+      onOpenHistory?.();
+    }
     if (key === "select-messages" && conversationID) {
       setSelectionMode(conversationID, true);
     }

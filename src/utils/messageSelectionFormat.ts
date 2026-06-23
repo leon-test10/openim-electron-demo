@@ -8,10 +8,10 @@ const stripHtml = (value?: string) =>
     .replace(/<[^>]+>/g, "")
     .trim();
 
-const getSender = (message: MessageItem) =>
+export const getMessageSender = (message: MessageItem) =>
   message.senderNickname || message.sendID || "unknown";
 
-const getTime = (message: MessageItem) =>
+export const getMessageTime = (message: MessageItem) =>
   message.sendTime ? dayjs(message.sendTime).format("YYYY-MM-DD HH:mm:ss") : "unknown";
 
 export const sortSelectedMessages = (messages: MessageItem[]) =>
@@ -41,15 +41,15 @@ export const formatMessagesAsPlainText = (messages: MessageItem[]) =>
   sortSelectedMessages(messages)
     .map(
       (message) =>
-        `[${getTime(message)}] ${getSender(message)}:\n${getPlainMessageContent(
+        `[${getMessageTime(message)}] ${getMessageSender(
           message,
-        )}`,
+        )}:\n${getPlainMessageContent(message)}`,
     )
     .join("\n\n");
 
 export const formatMessageAsQuoteText = (message: MessageItem) =>
   [
-    `> Quote from ${getSender(message)} at ${getTime(message)}:`,
+    `> Quote from ${getMessageSender(message)} at ${getMessageTime(message)}:`,
     `> ${getPlainMessageContent(message).replaceAll("\n", "\n> ")}`,
     "",
   ].join("\n");
@@ -61,8 +61,8 @@ export const formatMessagesAsMarkdown = (messages: MessageItem[]) =>
     ...sortSelectedMessages(messages).flatMap((message, index) => [
       `## Message ${index + 1}`,
       "",
-      `- Sender: ${getSender(message)}`,
-      `- Time: ${getTime(message)}`,
+      `- Sender: ${getMessageSender(message)}`,
+      `- Time: ${getMessageTime(message)}`,
       `- Type: ${message.contentType}`,
       `- ClientMsgID: ${message.clientMsgID}`,
       "",
