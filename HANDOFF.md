@@ -1,5 +1,50 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Next Phase - IM Context Builder
+
+Current branch: `feature/terminal-dock-redesign`
+
+Next development focus:
+
+- Build the IM-to-terminal direction around an explicit Context Builder.
+- Keep Terminal Dock as a generic terminal host; do not add runtime-specific
+  model/API key/session management.
+- Do not implement full `@bot` automation yet.
+
+Recommended MVP:
+
+- Create context from recent messages in the current conversation.
+- Create context from manually selected messages in the current conversation.
+- Write a context markdown file and manifest JSON into the active workspace.
+- Generate a short prompt that references the exported files instead of pasting
+  large chat history directly into the terminal.
+- Add preview/copy/send actions for the generated prompt.
+
+Suggested UI reorganization:
+
+- Runtime controls: profile selector, run profile, new terminal, restart, stop,
+  open workspace, pop out.
+- IM -> Terminal: context menu, copy prompt, send prompt to active terminal.
+- Terminal -> IM: selection to draft, capture output, output to draft,
+  draft to chat experimental, clear.
+
+Bot readiness scope:
+
+- Write `Terminal Bot Routing Spec v0` before implementation.
+- Future `@bot` should create a pending prompt and require explicit user action
+  before terminal injection.
+- Remote IM messages must not auto-run local terminal commands by default.
+- `Draft -> Chat (experimental)` remains off by default.
+
+Acceptance target for the next phase:
+
+- User can create a context bundle from latest N messages.
+- User can multi-select messages and create a context bundle from selected
+  messages.
+- User can preview generated markdown.
+- User can copy the prompt or send it to the active terminal.
+- Existing Terminal -> IM output capture still works.
+
 ## Latest Update - Terminal Output Handoff Safety + xterm Theme Fix
 
 Current branch: `feature/terminal-dock-redesign`
