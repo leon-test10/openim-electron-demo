@@ -1,5 +1,35 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Quote to Draft MVP
+
+Current branch: `feature/terminal-dock-redesign`
+
+Plan source:
+
+- `C:\Users\leon\Desktop\# Plan IM-native Message Actions, H.txt`
+
+Scope completed in this pass:
+
+- Enabled the per-message `Quote` action.
+- `Quote` now appends a readable quote block to the current chat input draft via
+  the existing `APPEND_CHAT_INPUT` event.
+- Added `formatMessageAsQuoteText` to `src/utils/messageSelectionFormat.ts`.
+
+Important semantics:
+
+- This is a draft-level quote MVP.
+- It does not create an OpenIM native quote/reference message yet.
+- It does not change send-message payload structure or IM SDK calls.
+- `Forward`, `Delete`, and `Recall` remain disabled placeholders.
+
+Recommended next implementation slice:
+
+1. Decide whether quote should remain plain text or use OpenIM native quote
+   message support.
+2. Add a visible quote preview chip above the editor if native quote state is
+   adopted.
+3. Implement Forward only after target conversation selection UX is defined.
+
 ## Latest Update - Header Selection Entry and Menu Shape
 
 Current branch: `feature/terminal-dock-redesign`

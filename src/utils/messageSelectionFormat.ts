@@ -47,6 +47,13 @@ export const formatMessagesAsPlainText = (messages: MessageItem[]) =>
     )
     .join("\n\n");
 
+export const formatMessageAsQuoteText = (message: MessageItem) =>
+  [
+    `> Quote from ${getSender(message)} at ${getTime(message)}:`,
+    `> ${getPlainMessageContent(message).replaceAll("\n", "\n> ")}`,
+    "",
+  ].join("\n");
+
 export const formatMessagesAsMarkdown = (messages: MessageItem[]) =>
   [
     "# Selected Messages",

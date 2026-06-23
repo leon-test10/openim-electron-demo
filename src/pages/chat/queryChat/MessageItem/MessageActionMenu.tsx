@@ -5,7 +5,10 @@ import { FC, PropsWithChildren } from "react";
 
 import { useMessageSelectionStore, useTerminalDockStore } from "@/store";
 import emitter from "@/utils/events";
-import { getPlainMessageContent } from "@/utils/messageSelectionFormat";
+import {
+  formatMessageAsQuoteText,
+  getPlainMessageContent,
+} from "@/utils/messageSelectionFormat";
 
 import styles from "./message-item.module.scss";
 
@@ -49,7 +52,6 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
     {
       key: "quote",
       label: "Quote",
-      disabled: true,
     },
     {
       key: "forward",
@@ -109,6 +111,12 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
     if (key === "copy") {
       await navigator.clipboard.writeText(getPlainMessageContent(message));
       antdMessage.success("Message copied");
+      return;
+    }
+
+    if (key === "quote") {
+      emitter.emit("APPEND_CHAT_INPUT", formatMessageAsQuoteText(message));
+      antdMessage.success("Quote added to draft");
       return;
     }
 
