@@ -36,7 +36,7 @@ import {
   useTerminalDockStore,
 } from "@/store";
 import { TerminalTab } from "@/store/type";
-import { emit } from "@/utils/events";
+import emitter, { emit, TerminalContextActionParams } from "@/utils/events";
 import { ContextBundle, createContextBundle } from "@/utils/imContextBuilder";
 
 import TerminalSurface, { TerminalSurfaceApi } from "./TerminalSurface";
@@ -344,8 +344,6 @@ const TerminalDock = () => {
     setLastCapturedText,
   ]);
 
-  if (!panelOpen) return null;
-
   const onCreateWorkspace = async () => {
     const workspaceID = await createWorkspace(workspaceTitle.trim() || undefined);
     setWorkspaceModalOpen(false);
@@ -540,6 +538,30 @@ const TerminalDock = () => {
     return result;
   };
 
+  useEffect(() => {
+    const handleContextAction = (params: TerminalContextActionParams) => {
+      if (params.source !== "selectedMessages") return;
+
+      setContextModalOpen(true);
+      if (params.action === "preview") {
+        void createSelectedContext();
+        return;
+      }
+      if (params.action === "copy") {
+        void createSelectedContext({ copyPrompt: true });
+        return;
+      }
+      if (params.action === "send") {
+        void createSelectedContext({ sendPrompt: true });
+      }
+    };
+
+    emitter.on("TERMINAL_CONTEXT_ACTION", handleContextAction);
+    return () => {
+      emitter.off("TERMINAL_CONTEXT_ACTION", handleContextAction);
+    };
+  });
+
   const copyContextPrompt = async () => {
     if (!lastContextPrompt) {
       await createRecentContext({ copyPrompt: true });
@@ -732,6 +754,8 @@ const TerminalDock = () => {
       setContextModalOpen(true);
     }
   };
+
+  if (!panelOpen) return null;
 
   return (
     <aside className="terminal-dock">

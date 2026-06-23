@@ -1,5 +1,31 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Direct Selected Context Toolbar Actions
+
+Current branch: `feature/terminal-dock-redesign`
+
+Scope completed in this pass:
+
+- Replaced the chat selection toolbar's ambiguous `Use Context` action with
+  direct actions:
+  - `Create Context`;
+  - `Copy Prompt`;
+  - `Send to Terminal`.
+- Added `TERMINAL_CONTEXT_ACTION` event payload in `src/utils/events.ts`.
+- Terminal Dock now listens for selected-message context actions even while the
+  panel is collapsed, then opens the dock/dialog and runs the requested action.
+- Direct toolbar actions still route through Terminal Dock, so ChatContent does
+  not write workspace files or inject terminal input directly.
+
+Important semantics:
+
+- `Create Context` creates and previews a selected-message context bundle.
+- `Copy Prompt` creates the selected-message bundle and copies the short prompt.
+- `Send to Terminal` creates the selected-message bundle and writes only the
+  short prompt to the active terminal.
+- If no active workspace or terminal exists, Terminal Dock shows the existing
+  warnings instead of attempting hidden setup.
+
 ## Latest Update - Selected Message Context MVP
 
 Current branch: `feature/terminal-dock-redesign`

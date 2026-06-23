@@ -55,6 +55,14 @@ const ChatContent = () => {
     getMoreOldMessages();
   };
 
+  const runSelectedContextAction = (action: "preview" | "copy" | "send") => {
+    setTerminalPanelOpen(true);
+    emitter.emit("TERMINAL_CONTEXT_ACTION", {
+      source: "selectedMessages",
+      action,
+    });
+  };
+
   return (
     <Layout.Content
       className="relative flex h-full overflow-hidden !bg-white"
@@ -75,9 +83,23 @@ const ChatContent = () => {
                 <Button
                   size="small"
                   disabled={selectedCount === 0}
-                  onClick={() => setTerminalPanelOpen(true)}
+                  onClick={() => runSelectedContextAction("preview")}
                 >
-                  Use Context
+                  Create Context
+                </Button>
+                <Button
+                  size="small"
+                  disabled={selectedCount === 0}
+                  onClick={() => runSelectedContextAction("copy")}
+                >
+                  Copy Prompt
+                </Button>
+                <Button
+                  size="small"
+                  disabled={selectedCount === 0}
+                  onClick={() => runSelectedContextAction("send")}
+                >
+                  Send to Terminal
                 </Button>
                 <Button size="small" onClick={() => clearSelection(conversationID)}>
                   Clear

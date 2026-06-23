@@ -17,8 +17,14 @@ type EmitterEvents = {
   APPEND_CHAT_INPUT: string;
   REPLACE_CHAT_INPUT: string;
   SEND_CHAT_INPUT: string;
+  TERMINAL_CONTEXT_ACTION: TerminalContextActionParams;
 
   SELECT_USER: SelectUserParams;
+};
+
+export type TerminalContextActionParams = {
+  source: "selectedMessages";
+  action: "preview" | "copy" | "send";
 };
 
 export type SelectUserParams = {
