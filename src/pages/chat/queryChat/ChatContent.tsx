@@ -1,11 +1,10 @@
-import { SessionType } from "@openim/wasm-client-sdk";
-import { Layout, Spin } from "antd";
+import { Button, Layout, Spin } from "antd";
 import clsx from "clsx";
 import { memo, useEffect, useRef } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
 import { SystemMessageTypes } from "@/constants/im";
-import { useUserStore } from "@/store";
+import { useMessageSelectionStore, useTerminalDockStore, useUserStore } from "@/store";
 import emitter from "@/utils/events";
 
 import MessageItem from "./MessageItem";
@@ -15,6 +14,15 @@ import { useHistoryMessageList } from "./useHistoryMessageList";
 const ChatContent = () => {
   const virtuoso = useRef<VirtuosoHandle>(null);
   const selfUserID = useUserStore((state) => state.selfInfo.userID);
+  const activeSelectionConversationID = useMessageSelectionStore(
+    (state) => state.activeConversationID,
+  );
+  const selectedMessagesByConversation = useMessageSelectionStore(
+    (state) => state.selectedMessagesByConversation,
+  );
+  const setSelectionMode = useMessageSelectionStore((state) => state.setSelectionMode);
+  const clearSelection = useMessageSelectionStore((state) => state.clearSelection);
+  const setTerminalPanelOpen = useTerminalDockStore((state) => state.setPanelOpen);
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -28,6 +36,11 @@ const ChatContent = () => {
 
   const { SPLIT_COUNT, conversationID, loadState, moreOldLoading, getMoreOldMessages } =
     useHistoryMessageList();
+  const selectionActive =
+    Boolean(conversationID) && activeSelectionConversationID === conversationID;
+  const selectedCount = conversationID
+    ? Object.keys(selectedMessagesByConversation[conversationID] ?? {}).length
+    : 0;
 
   useEffect(() => {
     emitter.on("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
@@ -52,47 +65,76 @@ const ChatContent = () => {
           <Spin spinning />
         </div>
       ) : (
-        <Virtuoso
-          id="chat-list"
-          className="w-full overflow-x-hidden"
-          followOutput="smooth"
-          firstItemIndex={loadState.firstItemIndex}
-          initialTopMostItemIndex={SPLIT_COUNT - 1}
-          startReached={loadMoreMessage}
-          ref={virtuoso}
-          data={loadState.messageList}
-          components={{
-            Header: () =>
-              loadState.hasMoreOld ? (
-                <div
-                  className={clsx(
-                    "flex justify-center py-2 opacity-0",
-                    moreOldLoading && "opacity-100",
-                  )}
+        <>
+          <div className="absolute right-4 top-3 z-10 flex items-center gap-2 rounded-md border border-[#d9e2f3] bg-white/95 px-2 py-1 shadow-sm">
+            {selectionActive ? (
+              <>
+                <span className="text-xs text-[#667085]">
+                  Selected {selectedCount} messages
+                </span>
+                <Button
+                  size="small"
+                  disabled={selectedCount === 0}
+                  onClick={() => setTerminalPanelOpen(true)}
                 >
-                  <Spin />
-                </div>
-              ) : null,
-          }}
-          computeItemKey={(_, item) => item.clientMsgID}
-          itemContent={(_, message) => {
-            if (SystemMessageTypes.includes(message.contentType)) {
+                  Use Context
+                </Button>
+                <Button size="small" onClick={() => clearSelection(conversationID)}>
+                  Clear
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="small"
+                disabled={!conversationID}
+                onClick={() => setSelectionMode(conversationID, true)}
+              >
+                Select Messages
+              </Button>
+            )}
+          </div>
+          <Virtuoso
+            id="chat-list"
+            className="w-full overflow-x-hidden"
+            followOutput="smooth"
+            firstItemIndex={loadState.firstItemIndex}
+            initialTopMostItemIndex={SPLIT_COUNT - 1}
+            startReached={loadMoreMessage}
+            ref={virtuoso}
+            data={loadState.messageList}
+            components={{
+              Header: () =>
+                loadState.hasMoreOld ? (
+                  <div
+                    className={clsx(
+                      "flex justify-center py-2 opacity-0",
+                      moreOldLoading && "opacity-100",
+                    )}
+                  >
+                    <Spin />
+                  </div>
+                ) : null,
+            }}
+            computeItemKey={(_, item) => item.clientMsgID}
+            itemContent={(_, message) => {
+              if (SystemMessageTypes.includes(message.contentType)) {
+                return (
+                  <NotificationMessage key={message.clientMsgID} message={message} />
+                );
+              }
+              const isSender = selfUserID === message.sendID;
               return (
-                <NotificationMessage key={message.clientMsgID} message={message} />
+                <MessageItem
+                  key={message.clientMsgID}
+                  conversationID={conversationID}
+                  message={message}
+                  messageUpdateFlag={message.senderNickname + message.senderFaceUrl}
+                  isSender={isSender}
+                />
               );
-            }
-            const isSender = selfUserID === message.sendID;
-            return (
-              <MessageItem
-                key={message.clientMsgID}
-                conversationID={conversationID}
-                message={message}
-                messageUpdateFlag={message.senderNickname + message.senderFaceUrl}
-                isSender={isSender}
-              />
-            );
-          }}
-        />
+            }}
+          />
+        </>
       )}
     </Layout.Content>
   );

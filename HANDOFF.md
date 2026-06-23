@@ -1,5 +1,52 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Selected Message Context MVP
+
+Current branch: `feature/terminal-dock-redesign`
+
+Scope completed in this pass:
+
+- Added a lightweight, non-persistent message selection store:
+  `src/store/messageSelection.ts`.
+- Added current-conversation message selection mode in `ChatContent`.
+- Added per-message checkbox and selected-row state in `MessageItem`.
+- Terminal Dock now reads selected messages for the current conversation.
+- `Context` menu includes `Create from selected messages`.
+- `Create Context` dialog includes selected-message preview generation.
+- Selected-message context reuses `createContextBundle` with
+  `source.kind = "selectedMessages"`.
+
+Important semantics:
+
+- Selection is local UI state only and clears per conversation.
+- OpenIM still writes markdown and manifest files to the active terminal
+  workspace, then sends only a short prompt that references those files.
+- `Use Context` in the chat selection toolbar only opens the Terminal Dock; the
+  explicit context creation still happens in the Terminal Dock.
+
+Known limits after this pass:
+
+- Date-range context is not implemented.
+- Multi-conversation context picker is not implemented.
+- Binary attachment export is not implemented.
+- Full `@bot` trigger routing remains spec-only.
+
+Git status for this pass:
+
+- Local commit: `92468bf feat: add selected message context flow`
+- Push attempts to `origin/feature/terminal-dock-redesign` failed with GitHub
+  HTTPS connection resets/timeouts.
+- Local branch is ahead of origin until a later push succeeds.
+- Backup patch/bundle is stored under the workspace-level `backups` directory.
+
+Recommended next implementation slice:
+
+1. Make selected-message toolbar actions more direct:
+   `Create Context`, `Copy Prompt`, `Send to Terminal`.
+2. Add attachment file save/copy for local image/file messages when paths are
+   available.
+3. Add context bundle log/history per workspace.
+
 ## Latest Update - Context Builder Recent Messages MVP
 
 Current branch: `feature/terminal-dock-redesign`

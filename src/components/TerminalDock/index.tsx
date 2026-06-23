@@ -30,7 +30,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { IMSDK } from "@/layout/MainContentWrap";
-import { useConversationStore, useTerminalDockStore } from "@/store";
+import {
+  useConversationStore,
+  useMessageSelectionStore,
+  useTerminalDockStore,
+} from "@/store";
 import { TerminalTab } from "@/store/type";
 import { emit } from "@/utils/events";
 import { ContextBundle, createContextBundle } from "@/utils/imContextBuilder";
@@ -105,6 +109,9 @@ const TerminalDock = () => {
   const { conversationID: routeConversationID } = useParams();
   const currentConversation = useConversationStore(
     (state) => state.currentConversation,
+  );
+  const selectedMessagesByConversation = useMessageSelectionStore(
+    (state) => state.selectedMessagesByConversation,
   );
   const panelOpen = useTerminalDockStore((state) => state.panelOpen);
   const setPanelOpen = useTerminalDockStore((state) => state.setPanelOpen);
@@ -184,6 +191,13 @@ const TerminalDock = () => {
   const lastSentHashByTabRef = useRef<Map<string, string>>(new Map());
   const lastSentAtByTabRef = useRef<Map<string, number>>(new Map());
   const conversationID = currentConversation?.conversationID ?? routeConversationID;
+  const selectedMessages = useMemo(
+    () =>
+      conversationID
+        ? Object.values(selectedMessagesByConversation[conversationID] ?? {})
+        : [],
+    [conversationID, selectedMessagesByConversation],
+  );
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === activeWorkspaceID),
     [activeWorkspaceID, workspaces],
@@ -413,6 +427,23 @@ const TerminalDock = () => {
     });
   };
 
+  const buildSelectedContextBundle = (): ContextBundle | undefined => {
+    if (!activeWorkspace || !conversationID || selectedMessages.length === 0) {
+      return undefined;
+    }
+
+    linkConversationToWorkspace(activeWorkspace.id, conversationID);
+    return createContextBundle({
+      workspacePath: activeWorkspace.rootPath,
+      source: {
+        kind: "selectedMessages",
+        conversationID,
+        messageIDs: selectedMessages.map((item) => item.clientMsgID),
+      },
+      messages: selectedMessages,
+    });
+  };
+
   const persistContextBundle = async (
     bundle: ContextBundle,
   ): Promise<ContextExportResult | undefined> => {
@@ -468,6 +499,42 @@ const TerminalDock = () => {
       await writeToTab(activeTab.id, `${bundle.promptText}\r\n`);
       terminalApisRef.current.get(activeTab.id)?.focus();
       message.success("Context prompt sent to terminal");
+    }
+
+    return result;
+  };
+
+  const createSelectedContext = async (
+    options: { copyPrompt?: boolean; sendPrompt?: boolean } = {},
+  ) => {
+    const bundle = buildSelectedContextBundle();
+    if (!bundle) {
+      message.warning("No selected messages");
+      return undefined;
+    }
+
+    const result = await persistContextBundle(bundle);
+    if (!result) {
+      message.warning("No active workspace");
+      return undefined;
+    }
+
+    setContextPreviewBundle(bundle);
+    if (options.copyPrompt) {
+      await navigator.clipboard.writeText(bundle.promptText);
+      message.success("Selected context prompt copied");
+    } else {
+      message.success("Selected context bundle created");
+    }
+
+    if (options.sendPrompt) {
+      if (!activeTab) {
+        message.warning("No active terminal");
+        return result;
+      }
+      await writeToTab(activeTab.id, `${bundle.promptText}\r\n`);
+      terminalApisRef.current.get(activeTab.id)?.focus();
+      message.success("Selected context prompt sent to terminal");
     }
 
     return result;
@@ -604,6 +671,13 @@ const TerminalDock = () => {
       label: "Create from recent messages...",
     },
     {
+      key: "create-selected",
+      label: `Create from selected messages${
+        selectedMessages.length > 0 ? ` (${selectedMessages.length})` : ""
+      }`,
+      disabled: selectedMessages.length === 0,
+    },
+    {
       key: "copy-prompt",
       label: "Copy Prompt",
       disabled: !activeWorkspace || !conversationID,
@@ -638,6 +712,11 @@ const TerminalDock = () => {
 
   const onContextMenuClick = ({ key }: { key: string }) => {
     if (key === "create-recent") {
+      setContextModalOpen(true);
+      return;
+    }
+    if (key === "create-selected") {
+      void createSelectedContext({ copyPrompt: true });
       setContextModalOpen(true);
       return;
     }
@@ -1022,7 +1101,16 @@ const TerminalDock = () => {
             disabled={!activeWorkspace || !conversationID}
             onClick={() => void createRecentContext()}
           >
-            Create Preview
+            Recent Preview
+          </Button>,
+          <Button
+            key="selected"
+            disabled={
+              !activeWorkspace || !conversationID || selectedMessages.length === 0
+            }
+            onClick={() => void createSelectedContext()}
+          >
+            Selected Preview
           </Button>,
           <Button
             key="copy"
@@ -1046,7 +1134,7 @@ const TerminalDock = () => {
             <div>
               <div className="text-xs text-[#cccccc]">Source</div>
               <div className="text-[11px] text-[#8c8c8c]">
-                Recent messages from the current conversation
+                Recent messages or selected messages from the current conversation
               </div>
             </div>
             <Input
@@ -1056,6 +1144,9 @@ const TerminalDock = () => {
               onChange={(event) => setContextMessageLimit(event.target.value)}
               placeholder="50"
             />
+          </div>
+          <div className="terminal-dock-context-stats">
+            <span>{selectedMessages.length} selected messages</span>
           </div>
           {contextPreviewBundle ? (
             <>

@@ -1,8 +1,10 @@
 import { MessageItem as MessageItemType, MessageType } from "@openim/wasm-client-sdk";
+import { Checkbox } from "antd";
 import clsx from "clsx";
-import { FC, memo, useCallback, useRef, useState } from "react";
+import { FC, memo, useRef } from "react";
 
 import OIMAvatar from "@/components/OIMAvatar";
+import { useMessageSelectionStore } from "@/store";
 import { formatMessageTime } from "@/utils/imCommon";
 
 import CatchMessageRender from "./CatchMsgRenderer";
@@ -32,21 +34,46 @@ const MessageItem: FC<IMessageItemProps> = ({
   conversationID,
 }) => {
   const messageWrapRef = useRef<HTMLDivElement>(null);
-  const [showMessageMenu, setShowMessageMenu] = useState(false);
+  const activeSelectionConversationID = useMessageSelectionStore(
+    (state) => state.activeConversationID,
+  );
+  const selectedMessagesByConversation = useMessageSelectionStore(
+    (state) => state.selectedMessagesByConversation,
+  );
+  const toggleMessageSelection = useMessageSelectionStore(
+    (state) => state.toggleMessageSelection,
+  );
   const MessageRenderComponent = components[message.contentType] || CatchMessageRender;
+  const selectionActive =
+    Boolean(conversationID) && activeSelectionConversationID === conversationID;
+  const selected = conversationID
+    ? Boolean(selectedMessagesByConversation[conversationID]?.[message.clientMsgID])
+    : false;
 
-  const closeMessageMenu = useCallback(() => {
-    setShowMessageMenu(false);
-  }, []);
-
-  const canShowMessageMenu = !disabled;
+  const toggleSelection = () => {
+    if (!conversationID || !selectionActive) return;
+    toggleMessageSelection(conversationID, message);
+  };
 
   return (
     <>
       <div
         id={`chat_${message.clientMsgID}`}
-        className={clsx("relative flex select-text px-5 py-3")}
+        className={clsx(
+          "relative flex select-text px-5 py-3",
+          selectionActive && "cursor-pointer",
+          selected && styles["message-selected-row"],
+        )}
+        onClick={toggleSelection}
       >
+        {selectionActive && (
+          <div
+            className={styles["message-selection-control"]}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Checkbox checked={selected} onChange={toggleSelection} />
+          </div>
+        )}
         <div
           className={clsx(
             styles["message-container"],
