@@ -102,8 +102,9 @@ Follow-up correction:
   non-built-in templates. The built-in `opencode` template can be edited but not
   removed.
 - `Selection -> IM` first reads the browser/window text selection, then falls
-  back to xterm selection, so selected opencode output can be sent back to IM
-  even when xterm focus/selection APIs miss it.
+  back to xterm selection and the most recent non-empty xterm selection cache,
+  so selected opencode output can be sent back to IM even if clicking the
+  toolbar clears the live xterm selection first.
 
 This phase rebuilds the right-side panel as a Terminal Dock rather than a
 runtime manager:

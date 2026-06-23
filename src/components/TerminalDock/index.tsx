@@ -86,6 +86,8 @@ const getTabStats = (tab?: TerminalTab) => {
   return `${tab.shell} | ${tab.status}`;
 };
 
+const RECENT_SELECTION_TTL = 60_000;
+
 const TerminalDock = () => {
   const { conversationID: routeConversationID } = useParams();
   const currentConversation = useConversationStore(
@@ -139,6 +141,9 @@ const TerminalDock = () => {
   const [commandModalOpen, setCommandModalOpen] = useState(false);
   const [workspaceTitle, setWorkspaceTitle] = useState("");
   const terminalApisRef = useRef<Map<string, TerminalSurfaceApi>>(new Map());
+  const recentTerminalSelectionsRef = useRef<
+    Map<string, { text: string; updatedAt: number }>
+  >(new Map());
   const conversationID = currentConversation?.conversationID ?? routeConversationID;
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === activeWorkspaceID),
@@ -309,8 +314,15 @@ const TerminalDock = () => {
   const selectionToIM = () => {
     if (!activeTab) return;
     const browserSelection = window.getSelection()?.toString();
-    const selection =
-      browserSelection || terminalApisRef.current.get(activeTab.id)?.getSelectionText();
+    const terminalSelection = terminalApisRef.current
+      .get(activeTab.id)
+      ?.getSelectionText();
+    const recentSelection = recentTerminalSelectionsRef.current.get(activeTab.id);
+    const recentSelectionText =
+      recentSelection && Date.now() - recentSelection.updatedAt < RECENT_SELECTION_TTL
+        ? recentSelection.text
+        : "";
+    const selection = browserSelection || terminalSelection || recentSelectionText;
     if (!selection?.trim()) {
       message.info("No terminal selection");
       return;
@@ -524,9 +536,17 @@ const TerminalDock = () => {
                 onReady={(tabID, api) => {
                   if (!api) {
                     terminalApisRef.current.delete(tabID);
+                    recentTerminalSelectionsRef.current.delete(tabID);
                     return;
                   }
                   terminalApisRef.current.set(tabID, api);
+                }}
+                onSelectionChange={(tabID, selection) => {
+                  if (!selection.trim()) return;
+                  recentTerminalSelectionsRef.current.set(tabID, {
+                    text: selection,
+                    updatedAt: Date.now(),
+                  });
                 }}
               />
             ) : (

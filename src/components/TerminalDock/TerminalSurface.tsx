@@ -43,10 +43,12 @@ const TerminalSurface = ({
   tab,
   output,
   onReady,
+  onSelectionChange,
 }: {
   tab: TerminalTab;
   output: TerminalOutputChunk[];
   onReady?: (tabID: string, api: TerminalSurfaceApi | null) => void;
+  onSelectionChange?: (tabID: string, selection: string) => void;
 }) => {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -134,6 +136,9 @@ const TerminalSurface = ({
         .writeToTab(tab.id, data)
         .catch(() => undefined);
     });
+    const selectionDisposable = terminal.onSelectionChange(() => {
+      onSelectionChange?.(tab.id, terminal.getSelection() ?? "");
+    });
 
     const focusListener = () => terminal.focus();
     host.addEventListener("click", focusListener);
@@ -144,6 +149,7 @@ const TerminalSurface = ({
       host.removeEventListener("click", focusListener);
       resizeObserver.disconnect();
       dataDisposable.dispose();
+      selectionDisposable.dispose();
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
