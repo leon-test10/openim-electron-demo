@@ -1,5 +1,6 @@
+import { MoreOutlined } from "@ant-design/icons";
 import { SessionType } from "@openim/wasm-client-sdk";
-import { Layout, Tooltip } from "antd";
+import { Button, Dropdown, Layout, Tooltip } from "antd";
 import clsx from "clsx";
 import i18n, { t } from "i18next";
 import { memo, useEffect, useRef } from "react";
@@ -9,7 +10,7 @@ import launch_group from "@/assets/images/chatHeader/launch_group.png";
 import settings from "@/assets/images/chatHeader/settings.png";
 import OIMAvatar from "@/components/OIMAvatar";
 import { OverlayVisibleHandle } from "@/hooks/useOverlayVisible";
-import { useConversationStore, useUserStore } from "@/store";
+import { useConversationStore, useMessageSelectionStore, useUserStore } from "@/store";
 import { emit } from "@/utils/events";
 
 import GroupSetting from "../GroupSetting";
@@ -46,6 +47,7 @@ const ChatHeader = () => {
   const currentConversation = useConversationStore(
     (state) => state.currentConversation,
   );
+  const setSelectionMode = useMessageSelectionStore((state) => state.setSelectionMode);
   const currentGroupInfo = useConversationStore((state) => state.currentGroupInfo);
   const currentUserIsInGroup = useConversationStore((state) =>
     Boolean(state.currentMemberInGroup?.userID),
@@ -91,6 +93,21 @@ const ChatHeader = () => {
 
   const isSingleSession = currentConversation?.conversationType === SessionType.Single;
   const isGroupSession = currentConversation?.conversationType === SessionType.Group;
+  const conversationID = currentConversation?.conversationID;
+
+  const headerActionItems = [
+    {
+      key: "select-messages",
+      label: "Select Messages",
+      disabled: !conversationID,
+    },
+  ];
+
+  const onHeaderActionClick = ({ key }: { key: string }) => {
+    if (key === "select-messages" && conversationID) {
+      setSelectionMode(conversationID, true);
+    }
+  };
 
   return (
     <Layout.Header className="relative border-b border-b-[var(--gap-text)] !bg-white !px-3">
@@ -138,6 +155,20 @@ const ChatHeader = () => {
               </Tooltip>
             );
           })}
+          <Dropdown
+            menu={{
+              items: headerActionItems,
+              onClick: onHeaderActionClick,
+            }}
+            trigger={["click"]}
+          >
+            <Button
+              className="ml-5"
+              size="small"
+              type="text"
+              icon={<MoreOutlined rev={undefined} />}
+            />
+          </Dropdown>
         </div>
       </div>
       <SingleSetting ref={singleSettingRef} />

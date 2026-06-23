@@ -47,6 +47,16 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
       disabled: !canCopyText,
     },
     {
+      key: "quote",
+      label: "Quote",
+      disabled: true,
+    },
+    {
+      key: "forward",
+      label: "Forward",
+      disabled: true,
+    },
+    {
       key: "select",
       label: "Select",
       disabled: !conversationID,
@@ -55,6 +65,19 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
       key: "add-selection",
       label: "Add to Selection",
       disabled: !conversationID,
+    },
+    {
+      type: "divider" as const,
+    },
+    {
+      key: "delete",
+      label: "Delete",
+      disabled: true,
+    },
+    {
+      key: "recall",
+      label: "Recall",
+      disabled: true,
     },
     {
       type: "divider" as const,

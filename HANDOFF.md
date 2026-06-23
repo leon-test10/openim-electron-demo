@@ -1,5 +1,41 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Header Selection Entry and Menu Shape
+
+Current branch: `feature/terminal-dock-redesign`
+
+Plan source:
+
+- `C:\Users\leon\Desktop\# Plan IM-native Message Actions, H.txt`
+
+Scope completed in this pass:
+
+- Added a chat-header `More` dropdown with `Select Messages`.
+- `Select Messages` enters the existing IM-native selection mode for the current
+  conversation.
+- Added disabled placeholder entries to the per-message action menu:
+  - `Quote`;
+  - `Forward`;
+  - `Delete`;
+  - `Recall`.
+
+Important semantics:
+
+- Quote / Forward / Delete / Recall are intentionally disabled placeholders in
+  this pass; no OpenIM SDK mutation behavior was wired yet.
+- The selectable-message flow and Agent submenu from the prior pass remain
+  unchanged.
+- This keeps the menu shape aligned with mature IM expectations while avoiding
+  pretending unsupported operations are implemented.
+
+Recommended next implementation slice:
+
+1. Wire `Quote` into the chat input draft model.
+2. Add a real `Forward` flow only after choosing/confirming target conversation
+   behavior.
+3. Keep destructive actions (`Delete`, `Recall`) disabled until their SDK
+   semantics and confirmation UX are explicit.
+
 ## Latest Update - IM-native Message Actions MVP
 
 Current branch: `feature/terminal-dock-redesign`
