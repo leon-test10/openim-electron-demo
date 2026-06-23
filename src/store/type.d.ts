@@ -180,6 +180,14 @@ export interface TerminalTab {
   lastError?: string;
 }
 
+export interface TerminalCommandTemplate {
+  id: string;
+  title: string;
+  command: string;
+  description: string;
+  enabled: boolean;
+}
+
 export interface TerminalOutputChunk {
   id: string;
   tabID: string;
@@ -195,12 +203,16 @@ export interface TerminalDockStore {
   activeTabByWorkspace: Record<string, string | undefined>;
   outputByTab: Record<string, TerminalOutputChunk[]>;
   lastContextPromptByWorkspace: Record<string, string | undefined>;
+  commandTemplates: TerminalCommandTemplate[];
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
   createWorkspace: (title?: string) => Promise<string | undefined>;
   setActiveWorkspace: (workspaceID: string) => void;
   linkConversationToWorkspace: (workspaceID: string, conversationID: string) => void;
-  createTab: (workspaceID: string) => Promise<string | undefined>;
+  createTab: (
+    workspaceID: string,
+    options?: { title?: string },
+  ) => Promise<string | undefined>;
   setActiveTab: (workspaceID: string, tabID: string) => void;
   startTab: (tabID: string) => Promise<void>;
   restartTab: (tabID: string) => Promise<void>;
@@ -211,6 +223,11 @@ export interface TerminalDockStore {
   removeTab: (workspaceID: string, tabID: string) => Promise<void>;
   handleTerminalEvent: (event: TerminalEvent) => void;
   setLastContextPrompt: (workspaceID: string, prompt: string) => void;
+  updateCommandTemplate: (
+    templateID: string,
+    patch: Partial<Omit<TerminalCommandTemplate, "id">>,
+  ) => void;
+  resetCommandTemplates: () => void;
 }
 
 export type { TerminalEvent, TerminalInstance };

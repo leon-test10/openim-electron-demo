@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import {
+  TerminalCommandTemplate,
   TerminalDockStore,
   TerminalEvent,
   TerminalInstance,
@@ -14,6 +15,16 @@ export type { TerminalTab, TerminalWorkspace } from "./type";
 const STORAGE_KEY = "openim_terminal_dock_state";
 const LEGACY_RUNTIME_KEY = "openim_runtime_dock_state";
 
+const DEFAULT_COMMAND_TEMPLATES: TerminalCommandTemplate[] = [
+  {
+    id: "opencode",
+    title: "Run opencode",
+    command: "opencode",
+    description: "Start opencode TUI in this workspace",
+    enabled: true,
+  },
+];
+
 type StoredTerminalDockState = Pick<
   TerminalDockStore,
   | "panelOpen"
@@ -22,6 +33,7 @@ type StoredTerminalDockState = Pick<
   | "tabsByWorkspace"
   | "activeTabByWorkspace"
   | "lastContextPromptByWorkspace"
+  | "commandTemplates"
 >;
 
 const defaultState: StoredTerminalDockState = {
@@ -31,6 +43,7 @@ const defaultState: StoredTerminalDockState = {
   tabsByWorkspace: {},
   activeTabByWorkspace: {},
   lastContextPromptByWorkspace: {},
+  commandTemplates: DEFAULT_COMMAND_TEMPLATES,
 };
 
 const canUseLocalStorage = () => typeof window !== "undefined" && window.localStorage;
@@ -45,6 +58,26 @@ const normalizeTab = (tab: TerminalTab): TerminalTab => ({
   lastError: undefined,
   updatedAt: Date.now(),
 });
+
+const normalizeCommandTemplates = (templates: unknown): TerminalCommandTemplate[] => {
+  const parsedTemplates = Array.isArray(templates) ? templates : [];
+  const byID = new Map(DEFAULT_COMMAND_TEMPLATES.map((item) => [item.id, item]));
+
+  parsedTemplates.forEach((template) => {
+    if (!template || typeof template !== "object") return;
+    const item = template as Partial<TerminalCommandTemplate>;
+    if (typeof item.id !== "string" || !item.id) return;
+    byID.set(item.id, {
+      id: item.id,
+      title: typeof item.title === "string" ? item.title : item.id,
+      command: typeof item.command === "string" ? item.command : "",
+      description: typeof item.description === "string" ? item.description : "",
+      enabled: typeof item.enabled === "boolean" ? item.enabled : true,
+    });
+  });
+
+  return Array.from(byID.values());
+};
 
 const readLegacyPanelOpen = () => {
   if (!canUseLocalStorage()) return false;
@@ -100,6 +133,7 @@ const readStoredState = (): StoredTerminalDockState => {
         typeof parsed.lastContextPromptByWorkspace === "object"
           ? parsed.lastContextPromptByWorkspace
           : {},
+      commandTemplates: normalizeCommandTemplates(parsed.commandTemplates),
     };
   } catch {
     return defaultState;
@@ -119,6 +153,7 @@ const toStoredState = (state: TerminalDockStore): StoredTerminalDockState => ({
   tabsByWorkspace: state.tabsByWorkspace,
   activeTabByWorkspace: state.activeTabByWorkspace,
   lastContextPromptByWorkspace: state.lastContextPromptByWorkspace,
+  commandTemplates: state.commandTemplates,
 });
 
 const save = (state: TerminalDockStore, patch: Partial<TerminalDockStore>) => {
@@ -244,7 +279,7 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
       return save(state, { workspaces });
     });
   },
-  createTab: (workspaceID) => {
+  createTab: (workspaceID, options) => {
     const workspace = findWorkspace(get(), workspaceID);
     if (!workspace) return Promise.resolve(undefined);
 
@@ -253,7 +288,9 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
     const tab: TerminalTab = {
       id,
       workspaceID,
-      title: `Terminal ${(get().tabsByWorkspace[workspaceID] ?? []).length + 1}`,
+      title:
+        options?.title?.trim() ||
+        `Terminal ${(get().tabsByWorkspace[workspaceID] ?? []).length + 1}`,
       shell: "powershell.exe",
       cwd: workspace.rootPath,
       status: "detached",
@@ -430,6 +467,30 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
           ...state.lastContextPromptByWorkspace,
           [workspaceID]: prompt,
         },
+      }),
+    );
+  },
+  updateCommandTemplate: (templateID, patch) => {
+    set((state) =>
+      save(state, {
+        commandTemplates: state.commandTemplates.map((template) =>
+          template.id === templateID
+            ? {
+                ...template,
+                ...patch,
+                title: patch.title ?? template.title,
+                command: patch.command ?? template.command,
+                description: patch.description ?? template.description,
+              }
+            : template,
+        ),
+      }),
+    );
+  },
+  resetCommandTemplates: () => {
+    set((state) =>
+      save(state, {
+        commandTemplates: DEFAULT_COMMAND_TEMPLATES,
       }),
     );
   },

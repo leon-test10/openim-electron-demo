@@ -4,11 +4,13 @@ import {
   CloseOutlined,
   CodeOutlined,
   CopyOutlined,
+  DownOutlined,
   ExportOutlined,
   PauseCircleOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
   SendOutlined,
+  SettingOutlined,
   StopOutlined,
 } from "@ant-design/icons";
 import {
@@ -16,7 +18,16 @@ import {
   MessageType,
   ViewType,
 } from "@openim/wasm-client-sdk";
-import { Button, Empty, Input, message, Modal, Tooltip } from "antd";
+import {
+  Button,
+  Checkbox,
+  Dropdown,
+  Empty,
+  Input,
+  message,
+  Modal,
+  Tooltip,
+} from "antd";
 import dayjs from "dayjs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -91,6 +102,7 @@ const TerminalDock = () => {
   const lastContextPromptByWorkspace = useTerminalDockStore(
     (state) => state.lastContextPromptByWorkspace,
   );
+  const commandTemplates = useTerminalDockStore((state) => state.commandTemplates);
   const createWorkspace = useTerminalDockStore((state) => state.createWorkspace);
   const setActiveWorkspace = useTerminalDockStore((state) => state.setActiveWorkspace);
   const linkConversationToWorkspace = useTerminalDockStore(
@@ -111,8 +123,15 @@ const TerminalDock = () => {
   const setLastContextPrompt = useTerminalDockStore(
     (state) => state.setLastContextPrompt,
   );
+  const updateCommandTemplate = useTerminalDockStore(
+    (state) => state.updateCommandTemplate,
+  );
+  const resetCommandTemplates = useTerminalDockStore(
+    (state) => state.resetCommandTemplates,
+  );
 
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
+  const [commandModalOpen, setCommandModalOpen] = useState(false);
   const [workspaceTitle, setWorkspaceTitle] = useState("");
   const terminalApisRef = useRef<Map<string, TerminalSurfaceApi>>(new Map());
   const conversationID = currentConversation?.conversationID ?? routeConversationID;
@@ -155,6 +174,28 @@ const TerminalDock = () => {
     if (!activeWorkspace) return;
     const tabID = await createTab(activeWorkspace.id);
     if (tabID) await startTab(tabID);
+  };
+
+  const onRunCommandTemplate = async (templateID: string) => {
+    if (!activeWorkspace) return;
+    const template = commandTemplates.find((item) => item.id === templateID);
+    if (!template?.command.trim()) {
+      message.warning("Command template is empty");
+      return;
+    }
+
+    const tabID = await createTab(activeWorkspace.id, {
+      title: template.id === "opencode" ? "opencode" : template.title,
+    });
+    if (!tabID) return;
+
+    try {
+      await startTab(tabID);
+      await writeToTab(tabID, `${template.command.trim()}\r\n`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      message.error(errorMessage);
+    }
   };
 
   const copyWorkspacePath = async () => {
@@ -272,6 +313,46 @@ const TerminalDock = () => {
     message.success("Selection added to IM input");
   };
 
+  const runMenuItems = [
+    ...commandTemplates
+      .filter((template) => template.enabled)
+      .map((template) => ({
+        key: `template:${template.id}`,
+        label: template.title,
+      })),
+    { type: "divider" as const },
+    {
+      key: "powershell",
+      label: "Run PowerShell",
+    },
+    {
+      key: "new-terminal",
+      label: "New Terminal",
+    },
+    { type: "divider" as const },
+    {
+      key: "templates",
+      label: "Command Templates",
+      icon: <SettingOutlined rev={undefined} />,
+    },
+  ];
+
+  const onRunMenuClick = ({ key }: { key: string }) => {
+    if (key.startsWith("template:")) {
+      void onRunCommandTemplate(key.replace("template:", ""));
+      return;
+    }
+
+    if (key === "powershell" || key === "new-terminal") {
+      void onCreateTab();
+      return;
+    }
+
+    if (key === "templates") {
+      setCommandModalOpen(true);
+    }
+  };
+
   return (
     <aside className="terminal-dock">
       <div className="terminal-dock-header">
@@ -309,6 +390,24 @@ const TerminalDock = () => {
       />
 
       <div className="terminal-dock-toolbar">
+        <Dropdown
+          menu={{
+            items: runMenuItems,
+            onClick: onRunMenuClick,
+          }}
+          trigger={["click"]}
+          disabled={!terminalAvailable || !activeWorkspace}
+        >
+          <Button
+            size="small"
+            type="default"
+            className="terminal-dock-command-button"
+            disabled={!terminalAvailable || !activeWorkspace}
+            icon={<PlayCircleOutlined rev={undefined} />}
+          >
+            Run <DownOutlined rev={undefined} />
+          </Button>
+        </Dropdown>
         <Tooltip title="Start">
           <Button
             size="small"
@@ -477,6 +576,64 @@ const TerminalDock = () => {
           onChange={(event) => setWorkspaceTitle(event.target.value)}
           onPressEnter={() => void onCreateWorkspace()}
         />
+      </Modal>
+
+      <Modal
+        title="Command Templates"
+        open={commandModalOpen}
+        onCancel={() => setCommandModalOpen(false)}
+        footer={[
+          <Button key="reset" onClick={resetCommandTemplates}>
+            Reset
+          </Button>,
+          <Button key="close" type="primary" onClick={() => setCommandModalOpen(false)}>
+            Close
+          </Button>,
+        ]}
+      >
+        <div className="terminal-dock-template-list">
+          {commandTemplates.map((template) => (
+            <div key={template.id} className="terminal-dock-template-item">
+              <Checkbox
+                checked={template.enabled}
+                onChange={(event) =>
+                  updateCommandTemplate(template.id, {
+                    enabled: event.target.checked,
+                  })
+                }
+              >
+                Enabled
+              </Checkbox>
+              <Input
+                size="small"
+                value={template.title}
+                onChange={(event) =>
+                  updateCommandTemplate(template.id, {
+                    title: event.target.value,
+                  })
+                }
+              />
+              <Input
+                size="small"
+                value={template.command}
+                onChange={(event) =>
+                  updateCommandTemplate(template.id, {
+                    command: event.target.value,
+                  })
+                }
+              />
+              <Input
+                size="small"
+                value={template.description}
+                onChange={(event) =>
+                  updateCommandTemplate(template.id, {
+                    description: event.target.value,
+                  })
+                }
+              />
+            </div>
+          ))}
+        </div>
       </Modal>
     </aside>
   );

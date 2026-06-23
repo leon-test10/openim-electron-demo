@@ -1,8 +1,32 @@
 # Terminal Dock opencode Local Smoke
 
 This project does not manage opencode API keys, models, prompts, memory, tools,
-permissions, or sessions. OpenIM only provides a terminal workspace and exported
-IM context files.
+permissions, skills, or sessions. OpenIM only provides a terminal workspace,
+command templates, and exported IM context files.
+
+The default interactive path is opencode TUI:
+
+```powershell
+opencode
+```
+
+Use the Terminal Dock `Run` dropdown, then choose `Run opencode`. This creates a
+new terminal tab in the active workspace and injects `opencode`.
+
+If opencode is not on `PATH`, open `Command Templates` from the same dropdown
+and change the command to a local executable or offline bundle path, for
+example:
+
+```powershell
+C:\tools\opencode\opencode.exe
+```
+
+For online smoke testing before an offline bundle exists, the command can also
+be:
+
+```powershell
+npx.cmd -y opencode-ai@1.17.9
+```
 
 For `opencode-ai@1.17.9`, put this `opencode.json` in the terminal workspace
 root when using the local OpenAI-compatible endpoint:
@@ -33,11 +57,15 @@ root when using the local OpenAI-compatible endpoint:
 }
 ```
 
-Smoke command:
+One-shot smoke command:
 
 ```powershell
 npx.cmd -y opencode-ai@1.17.9 run --model local-openai/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf "Reply with READY only."
 ```
+
+`opencode run` is useful for smoke tests and scripted one-shot tasks. It is not
+the default Terminal Dock path because ongoing chat, native TUI behavior, and
+opencode-owned session controls are better preserved by launching `opencode`.
 
 To use exported OpenIM context files, first click `Copy Context Prompt` in the
 Terminal Dock. That writes markdown files under the workspace `context/`

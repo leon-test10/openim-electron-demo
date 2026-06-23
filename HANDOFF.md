@@ -62,6 +62,35 @@ Electron dev note:
 - If the terminal still shows old colors, reload the Electron window or restart
   the dev Electron client.
 
+## Follow-up Feature - Command Launcher Templates
+
+Reason:
+
+- `opencode run "..."` is a one-shot/script entry and should not be the primary
+  path for ongoing opencode interaction.
+- The Terminal Dock needs a short VS Code-like `Run opencode` entry while still
+  keeping opencode's own config, sessions, skills, memory, and tools outside
+  OpenIM.
+
+Changes:
+
+- Added a `Run` dropdown to the Terminal Dock toolbar.
+- Default template: `Run opencode` -> injects `opencode` into a new terminal tab.
+- Added `Run PowerShell`, `New Terminal`, and `Command Templates` entries.
+- Added local command template state persisted in the Terminal Dock localStorage
+  state. It stores only command launcher metadata, not runtime API keys/models.
+- `Command Templates` lets the user edit the opencode command, for example
+  `C:\tools\opencode\opencode.exe` or `npx.cmd -y opencode-ai@1.17.9`.
+- `Copy Context Prompt` remains file-based and non-executing; it does not paste
+  raw IM context into terminal stdin.
+
+Expected opencode path:
+
+- Interactive default: run `opencode` TUI from the workspace terminal.
+- Smoke/script path: use `opencode run ...` manually or via a custom template
+  only when one-shot behavior is desired.
+- Offline path: point the command template to the offline opencode executable.
+
 This phase rebuilds the right-side panel as a Terminal Dock rather than a
 runtime manager:
 
