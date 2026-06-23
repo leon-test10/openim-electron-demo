@@ -1,5 +1,64 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - IM-native Message Actions MVP
+
+Current branch: `feature/terminal-dock-redesign`
+
+Plan source:
+
+- `C:\Users\leon\Desktop\# Plan IM-native Message Actions, H.txt`
+
+Scope completed in this pass:
+
+- Started Phase 1-3 from the IM-native message actions plan.
+- Added `MessageActionMenu` for each chat message:
+  - right-click menu;
+  - hover `...` action entry;
+  - `Copy`;
+  - `Select`;
+  - `Add to Selection`;
+  - `Agent -> Create Agent Context`;
+  - `Agent -> Copy Agent Prompt`;
+  - `Agent -> Send Prompt to Terminal`.
+- Extended the message selection store with:
+  - `addMessageSelection`;
+  - `selectOnlyMessage`.
+- Reworked the selected-message toolbar to be IM-native first:
+  - `Copy`;
+  - `Export MD`;
+  - `More`;
+  - `Clear`.
+- Moved Agent actions from primary toolbar buttons into `More -> Agent`.
+- Removed the always-visible floating `Select Messages` main entry. Selection
+  now starts from message-level actions.
+- Added `messageSelectionFormat.ts` to format selected messages as plain text or
+  markdown for IM-native copy/export.
+
+Important semantics:
+
+- Agent actions still reuse the existing selected-message context flow via
+  `TERMINAL_CONTEXT_ACTION`.
+- This pass does not introduce `@bot`, auto-inject, auto-reply, history drawer,
+  or search.
+- `Export MD` is a local browser/Electron download of selected messages; it does
+  not write to the terminal workspace.
+- Text copy is supported for text messages; unsupported message types get a
+  placeholder in selected-message export.
+
+Known limits after this pass:
+
+- The event name is still `TERMINAL_CONTEXT_ACTION`; a later Terminal cleanup
+  phase should introduce a more neutral `IM_CONTEXT_ACTION`.
+- Header-level chat menu entry for selection mode is not implemented yet.
+- Quote/forward/delete/recall entries are still future work.
+
+Recommended next implementation slice:
+
+1. Add a chat-header menu entry for `Select Messages`.
+2. Add placeholder disabled menu entries for Quote / Forward / Delete / Recall
+   so the menu shape matches mature IM expectations.
+3. Add IM History Drawer MVP after message-level actions feel stable.
+
 ## Latest Update - Context History Path Actions
 
 Current branch: `feature/terminal-dock-redesign`

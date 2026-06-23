@@ -6,6 +6,8 @@ export interface MessageSelectionStore {
   selectedMessagesByConversation: Record<string, Record<string, MessageItem>>;
   setSelectionMode: (conversationID: string | undefined, active: boolean) => void;
   toggleMessageSelection: (conversationID: string, message: MessageItem) => void;
+  addMessageSelection: (conversationID: string, message: MessageItem) => void;
+  selectOnlyMessage: (conversationID: string, message: MessageItem) => void;
   clearSelection: (conversationID?: string) => void;
 }
 
@@ -42,6 +44,29 @@ export const useMessageSelectionStore = create<MessageSelectionStore>()((set) =>
         },
       };
     });
+  },
+  addMessageSelection: (conversationID, message) => {
+    set((state) => ({
+      activeConversationID: conversationID,
+      selectedMessagesByConversation: {
+        ...state.selectedMessagesByConversation,
+        [conversationID]: {
+          ...(state.selectedMessagesByConversation[conversationID] ?? {}),
+          [message.clientMsgID]: message,
+        },
+      },
+    }));
+  },
+  selectOnlyMessage: (conversationID, message) => {
+    set((state) => ({
+      activeConversationID: conversationID,
+      selectedMessagesByConversation: {
+        ...state.selectedMessagesByConversation,
+        [conversationID]: {
+          [message.clientMsgID]: message,
+        },
+      },
+    }));
   },
   clearSelection: (conversationID) => {
     set((state) => {

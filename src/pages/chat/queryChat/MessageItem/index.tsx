@@ -10,6 +10,7 @@ import { formatMessageTime } from "@/utils/imCommon";
 import CatchMessageRender from "./CatchMsgRenderer";
 import MediaMessageRender from "./MediaMessageRender";
 import styles from "./message-item.module.scss";
+import MessageActionMenu from "./MessageActionMenu";
 import MessageItemErrorBoundary from "./MessageItemErrorBoundary";
 import MessageSuffix from "./MessageSuffix";
 import TextMessageRender from "./TextMessageRender";
@@ -103,13 +104,15 @@ const MessageItem: FC<IMessageItemProps> = ({
             </div>
 
             <div className={styles["menu-wrap"]}>
-              <MessageItemErrorBoundary message={message}>
-                <MessageRenderComponent
-                  message={message}
-                  isSender={isSender}
-                  disabled={disabled}
-                />
-              </MessageItemErrorBoundary>
+              <MessageActionMenu message={message} conversationID={conversationID}>
+                <MessageItemErrorBoundary message={message}>
+                  <MessageRenderComponent
+                    message={message}
+                    isSender={isSender}
+                    disabled={disabled}
+                  />
+                </MessageItemErrorBoundary>
+              </MessageActionMenu>
 
               <MessageSuffix
                 message={message}

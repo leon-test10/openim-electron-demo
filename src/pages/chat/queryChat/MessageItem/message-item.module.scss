@@ -61,6 +61,26 @@
   @apply mr-2 flex h-9 shrink-0 items-center;
 }
 
+.message-action-host {
+  @apply relative flex w-fit items-center;
+
+  &:hover {
+    .message-action-trigger {
+      opacity: 1;
+    }
+  }
+}
+
+.message-action-trigger {
+  @apply ml-1 h-6 w-6 shrink-0 rounded text-[var(--sub-text)];
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.message-action-trigger:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
 @keyframes animate {
   from {
     background-color: var(--primary-active);
