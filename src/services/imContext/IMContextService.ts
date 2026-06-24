@@ -2,7 +2,14 @@ import { MessageItem, MessageType } from "@openim/wasm-client-sdk";
 import dayjs from "dayjs";
 
 import { ContextAttachment, extractMessageAttachments } from "./attachments";
-import { ContextBundle, ContextManifest, ContextSource } from "./types";
+import {
+  ContextAttachmentStatusSummary,
+  ContextBundle,
+  ContextBundleStatus,
+  ContextManifest,
+  ContextSource,
+  ContextSourceSummary,
+} from "./types";
 
 const stripHtml = (value?: string) =>
   (value ?? "")
@@ -23,6 +30,14 @@ const getSender = (message: MessageItem) =>
 const formatTime = (sendTime?: number) =>
   sendTime ? dayjs(sendTime).format("YYYY-MM-DD HH:mm:ss") : "unknown";
 
+const formatTimeRange = (startTime?: number, endTime?: number) => {
+  if (!startTime && !endTime) return "unknown";
+  if (startTime && endTime) {
+    return `${formatTime(startTime)} -> ${formatTime(endTime)}`;
+  }
+  return formatTime(startTime ?? endTime);
+};
+
 const getSourceLabel = (source: ContextSource) => {
   const conversation = sanitizeFileSegment(source.conversationID);
 
@@ -35,6 +50,116 @@ const getSourceLabel = (source: ContextSource) => {
 
 export const sortMessagesByTime = (messages: MessageItem[]) =>
   [...messages].sort((a, b) => (a.sendTime ?? 0) - (b.sendTime ?? 0));
+
+const buildSourceSummary = (
+  source: ContextSource,
+  messages: MessageItem[],
+): ContextSourceSummary => {
+  const messageCount = messages.length;
+  const rangeStartTime = messages[0]?.sendTime;
+  const rangeEndTime = messages[messages.length - 1]?.sendTime;
+  const timeRange = formatTimeRange(rangeStartTime, rangeEndTime);
+
+  if (source.kind === "recentMessages") {
+    return {
+      kind: source.kind,
+      conversationID: source.conversationID,
+      messageCount,
+      title: `Recent ${messageCount} messages`,
+      detail: `Recent messages from conversation ${source.conversationID}. Requested limit ${source.limit}. Time range: ${timeRange}.`,
+      rangeStartTime,
+      rangeEndTime,
+    };
+  }
+
+  const titleByKind = {
+    selectedMessages: `Selected ${messageCount} messages`,
+    historyMessages: `History ${messageCount} messages`,
+    searchResults: `Search results ${messageCount} messages`,
+  } as const;
+
+  const detailByKind = {
+    selectedMessages: `Selected messages from conversation ${source.conversationID}.`,
+    historyMessages: `History messages from conversation ${source.conversationID}.`,
+    searchResults: `Search-result messages from conversation ${source.conversationID}.`,
+  } as const;
+
+  const keywordPart = source.keyword ? ` Keyword: ${source.keyword}.` : "";
+  const messageIDsPart =
+    source.messageIDs.length > 0
+      ? ` Message IDs: ${source.messageIDs.join(", ")}.`
+      : "";
+
+  return {
+    kind: source.kind,
+    conversationID: source.conversationID,
+    messageCount,
+    title: titleByKind[source.kind],
+    detail: `${
+      detailByKind[source.kind]
+    } Time range: ${timeRange}.${keywordPart}${messageIDsPart}`.trim(),
+    rangeStartTime,
+    rangeEndTime,
+    keyword: source.keyword,
+  };
+};
+
+const summarizeAttachmentStatuses = (
+  attachments: ContextAttachment[],
+): ContextAttachmentStatusSummary => {
+  const exported = attachments.filter(
+    (attachment) => attachment.status === "exported",
+  ).length;
+  const referenced = attachments.filter(
+    (attachment) => attachment.status === "referenced",
+  ).length;
+  const failed = attachments.filter(
+    (attachment) => attachment.status === "failed",
+  ).length;
+  const unsupported = attachments.filter(
+    (attachment) => attachment.status === "unsupported",
+  ).length;
+  const skipped = attachments.filter(
+    (attachment) => attachment.status === "skipped",
+  ).length;
+  const total = attachments.length;
+  const unresolved = referenced + failed + unsupported + skipped;
+
+  return {
+    total,
+    exported,
+    referenced,
+    failed,
+    unsupported,
+    skipped,
+    exportable: total - unsupported - skipped,
+    unresolved,
+    state:
+      total === 0
+        ? "none"
+        : failed > 0
+        ? "degraded"
+        : unresolved > 0
+        ? "partial"
+        : "ready",
+  };
+};
+
+const buildBundleStatus = (
+  attachmentStatusSummary: ContextAttachmentStatusSummary,
+): ContextBundleStatus => ({
+  state:
+    attachmentStatusSummary.state === "degraded"
+      ? "degraded"
+      : attachmentStatusSummary.state === "partial"
+      ? "partial"
+      : "ready",
+  manifestVersion: 2,
+  attachmentExportState: attachmentStatusSummary.state,
+  hasAttachments: attachmentStatusSummary.total > 0,
+  hasExportedAttachments: attachmentStatusSummary.exported > 0,
+  hasUnresolvedAttachments: attachmentStatusSummary.unresolved > 0,
+});
 
 const formatAttachmentAsMarkdown = (attachment: ContextAttachment) =>
   [
@@ -100,20 +225,42 @@ export const formatMessageAsContextMarkdown = (
 };
 
 export const createContextPrompt = (
-  bundle: Pick<ContextBundle, "files" | "stats" | "attachments">,
+  bundle: Pick<
+    ContextBundle,
+    | "attachments"
+    | "attachmentStatusSummary"
+    | "files"
+    | "sourceSummary"
+    | "stats"
+    | "status"
+  >,
 ) => {
   const lines = [
     "You are running inside a terminal agent session.",
+    "",
+    "OpenIM source summary:",
+    `- ${bundle.sourceSummary.title}`,
+    `- ${bundle.sourceSummary.detail}`,
+    "",
+    `Bundle state: ${bundle.status.state}.`,
     "",
     "Read this OpenIM context file first:",
     "",
     bundle.files.markdownPath,
     "",
-    "If attachments or unsupported messages are referenced, inspect this manifest:",
+    "Inspect this manifest for attachment source metadata and export status:",
     "",
     bundle.files.manifestPath,
     "",
   ];
+
+  if (bundle.stats.attachmentCount > 0) {
+    lines.push(
+      "Attachment status summary:",
+      `- total=${bundle.attachmentStatusSummary.total}, exported=${bundle.attachmentStatusSummary.exported}, referenced=${bundle.attachmentStatusSummary.referenced}, failed=${bundle.attachmentStatusSummary.failed}, skipped=${bundle.attachmentStatusSummary.skipped}, unsupported=${bundle.attachmentStatusSummary.unsupported}`,
+      "",
+    );
+  }
 
   if (bundle.stats.exportedAttachmentCount > 0) {
     const firstExported = bundle.attachments.find(
@@ -131,9 +278,12 @@ export const createContextPrompt = (
       "Use workspace-relative paths when reading files.",
       "",
     );
-  } else if (bundle.stats.attachmentCount > 0) {
+  }
+
+  if (bundle.attachmentStatusSummary.unresolved > 0) {
     lines.push(
-      "Some attachments could not be exported. Check the manifest for status and source metadata.",
+      "Some attachments are metadata-only or failed to export. Do not assume every attachment file exists locally.",
+      "Check manifest status, error, and source fields before reading attachment paths.",
       "",
     );
   }
@@ -166,7 +316,14 @@ const buildBundleArtifacts = ({
   files: ContextBundle["files"];
 }): Pick<
   ContextBundle,
-  "attachments" | "manifest" | "markdown" | "promptText" | "stats"
+  | "attachments"
+  | "attachmentStatusSummary"
+  | "manifest"
+  | "markdown"
+  | "promptText"
+  | "sourceSummary"
+  | "stats"
+  | "status"
 > => {
   const attachmentByMessage = new Map<string, ContextAttachment[]>();
 
@@ -183,6 +340,9 @@ const buildBundleArtifacts = ({
       attachmentByMessage.get(message.clientMsgID) ?? [],
     ),
   );
+  const sourceSummary = buildSourceSummary(source, messages);
+  const attachmentStatusSummary = summarizeAttachmentStatuses(attachments);
+  const status = buildBundleStatus(attachmentStatusSummary);
   const sourceMeta =
     source.kind === "recentMessages"
       ? [`Limit: ${source.limit}`]
@@ -199,28 +359,34 @@ const buildBundleArtifacts = ({
     `Workspace: ${workspacePath}`,
     `Source: ${source.kind}`,
     `Conversation: ${source.conversationID}`,
+    `Source Summary: ${sourceSummary.title}`,
+    `Source Detail: ${sourceSummary.detail}`,
+    `Bundle State: ${status.state}`,
     ...sourceMeta.map((item) => String(item)),
+    "",
+    "## Attachment Summary",
+    "",
+    `- State: ${attachmentStatusSummary.state}`,
+    `- Total: ${attachmentStatusSummary.total}`,
+    `- Exported: ${attachmentStatusSummary.exported}`,
+    `- Referenced: ${attachmentStatusSummary.referenced}`,
+    `- Failed: ${attachmentStatusSummary.failed}`,
+    `- Skipped: ${attachmentStatusSummary.skipped}`,
+    `- Unsupported: ${attachmentStatusSummary.unsupported}`,
     "",
     "## Messages",
     "",
     ...messageMarkdown.flatMap((item) => [item, ""]),
   ].join("\n");
 
-  const exportedAttachmentCount = attachments.filter(
-    (attachment) => attachment.status === "exported",
-  ).length;
-  const failedAttachmentCount = attachments.filter(
-    (attachment) => attachment.status === "failed",
-  ).length;
-  const unsupportedAttachmentCount = attachments.filter(
-    (attachment) => attachment.status === "unsupported",
-  ).length;
   const stats = {
     messageCount: messages.length,
     attachmentCount: attachments.length,
-    exportedAttachmentCount,
-    failedAttachmentCount,
-    unsupportedAttachmentCount,
+    exportedAttachmentCount: attachmentStatusSummary.exported,
+    referencedAttachmentCount: attachmentStatusSummary.referenced,
+    failedAttachmentCount: attachmentStatusSummary.failed,
+    unsupportedAttachmentCount: attachmentStatusSummary.unsupported,
+    skippedAttachmentCount: attachmentStatusSummary.skipped,
     approxChars: markdown.length,
   };
   const manifestAttachments = attachments.map(serializeAttachmentForManifest);
@@ -229,6 +395,8 @@ const buildBundleArtifacts = ({
     createdAt,
     workspacePath,
     source,
+    sourceSummary,
+    status,
     messages: messages.map((message) => ({
       clientMsgID: message.clientMsgID,
       contentType: message.contentType,
@@ -239,20 +407,27 @@ const buildBundleArtifacts = ({
       ),
     })),
     attachments: manifestAttachments,
+    attachmentStatusSummary,
     stats,
   };
   const promptText = createContextPrompt({
+    sourceSummary,
     files,
     stats,
     attachments,
+    attachmentStatusSummary,
+    status,
   });
 
   return {
     attachments,
+    attachmentStatusSummary,
     manifest,
     markdown,
     promptText,
+    sourceSummary,
     stats,
+    status,
   };
 };
 
@@ -296,6 +471,7 @@ export const createContextBundle = ({
     createdAt,
     workspacePath,
     source,
+    sourceSummary: buildSourceSummary(source, orderedMessages),
     files,
     messages: orderedMessages,
   };

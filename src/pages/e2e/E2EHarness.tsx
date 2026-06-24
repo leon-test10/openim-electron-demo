@@ -9,6 +9,7 @@ import {
   useUserStore,
 } from "@/store";
 import { e2eConversation, e2eConversationID, e2eMessages } from "@/utils/e2eMockData";
+import emitter, { PendingChatAttachmentParams } from "@/utils/events";
 
 import ChatHeader from "../chat/queryChat/ChatHeader";
 import MessageHistoryDrawer from "../chat/queryChat/MessageHistoryDrawer";
@@ -26,9 +27,72 @@ const installE2EElectronMock = () => {
       relativePath?: string;
       content?: string;
     }>;
+    __e2eAttachmentExportCalls?: Array<{
+      channel: string;
+      relativePath?: string;
+    }>;
+    __e2eSentMessages?: Array<{
+      fileName?: string;
+      filePath?: string;
+      contentType?: number;
+    }>;
+    __e2eEmitTerminalOutput?: (text: string) => void;
   };
   e2eWindow.__e2eTerminalWrites = [];
   e2eWindow.__e2eWorkspaceWrites = [];
+  e2eWindow.__e2eAttachmentExportCalls = [];
+  e2eWindow.__e2eSentMessages = [];
+  e2eWindow.__e2eEmitTerminalOutput = (text: string) => {
+    const state = useTerminalDockStore.getState();
+    const workspaceID = state.activeWorkspaceID;
+    const tabID = workspaceID
+      ? state.activeTabByWorkspace[workspaceID] ??
+        state.tabsByWorkspace[workspaceID]?.[0]?.id
+      : undefined;
+    if (!tabID) return;
+
+    state.handleTerminalEvent({
+      tabID,
+      type: "stdout",
+      data: text,
+      timestamp: Date.now(),
+    });
+  };
+
+  const createMockFile = (filePath: string) => {
+    const fileName = filePath.split(/[\\/]/).filter(Boolean).pop() ?? "mock-file.txt";
+    const lowerName = fileName.toLowerCase();
+    const type = lowerName.endsWith(".png")
+      ? "image/png"
+      : lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")
+      ? "image/jpeg"
+      : lowerName.endsWith(".gif")
+      ? "image/gif"
+      : lowerName.endsWith(".webp")
+      ? "image/webp"
+      : lowerName.endsWith(".md")
+      ? "text/markdown"
+      : lowerName.endsWith(".json")
+      ? "application/json"
+      : lowerName.endsWith(".txt")
+      ? "text/plain"
+      : "application/octet-stream";
+    return new File([`e2e fixture for ${fileName}`], fileName, { type });
+  };
+
+  const emitToSubscribers = (channel: string, ...args: unknown[]) => {
+    const callbacks = subscribers.get(channel);
+    callbacks?.forEach((callback) => callback(...args));
+  };
+
+  const emitTerminalEvent = (
+    event: Parameters<
+      ReturnType<typeof useTerminalDockStore.getState>["handleTerminalEvent"]
+    >[0],
+  ) => {
+    emitToSubscribers("terminal:event", event);
+    useTerminalDockStore.getState().handleTerminalEvent(event);
+  };
 
   window.electronAPI = {
     getDataPath: () => "C:\\OpenIM-E2E",
@@ -78,6 +142,19 @@ const installE2EElectronMock = () => {
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
+        window.setTimeout(() => {
+          emitTerminalEvent({
+            tabID: params.tabID,
+            type: "started",
+            timestamp: Date.now(),
+          });
+          emitTerminalEvent({
+            tabID: params.tabID,
+            type: "stdout",
+            data: "Windows PowerShell\nPS C:\\OpenIM-E2E\\workspaces> Write-Host READY\nREADY\n",
+            timestamp: Date.now(),
+          });
+        }, 0);
         return Promise.resolve(result as T);
       }
 
@@ -102,6 +179,10 @@ const installE2EElectronMock = () => {
 
       if (channel === "workspace:copyWorkspaceFile") {
         const params = args[0] as { relativePath: string };
+        e2eWindow.__e2eAttachmentExportCalls?.push({
+          channel,
+          relativePath: params.relativePath,
+        });
         result = {
           ok: true,
           path: `${workspaceRoot}\\mock\\${params.relativePath.replaceAll("/", "\\")}`,
@@ -113,6 +194,10 @@ const installE2EElectronMock = () => {
 
       if (channel === "workspace:downloadWorkspaceFile") {
         const params = args[0] as { url: string; relativePath: string };
+        e2eWindow.__e2eAttachmentExportCalls?.push({
+          channel,
+          relativePath: params.relativePath,
+        });
         if (params.url.includes("fail-download")) {
           return Promise.reject(new Error("E2E attachment download failed"));
         }
@@ -126,6 +211,14 @@ const installE2EElectronMock = () => {
       }
 
       if (channel === "terminal:stop") {
+        const tabID = args[0] as string;
+        window.setTimeout(() => {
+          emitTerminalEvent({
+            tabID,
+            type: "stopped",
+            timestamp: Date.now(),
+          });
+        }, 0);
         return Promise.resolve(undefined as T);
       }
 
@@ -138,18 +231,27 @@ const installE2EElectronMock = () => {
     },
     ipcSendSync: <T,>() => undefined as T,
     saveFileToDisk: () => Promise.resolve(""),
-    getFileByPath: () => Promise.resolve(null),
+    getFileByPath: (filePath: string) => Promise.resolve(createMockFile(filePath)),
   };
 };
 
 const E2EHarness = () => {
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [draftText, setDraftText] = useState("");
+  const [sentDrafts, setSentDrafts] = useState<string[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<
+    PendingChatAttachmentParams[]
+  >([]);
   const [terminalEnabled, setTerminalEnabled] = useState(
     () => typeof window !== "undefined" && window.location.hash.includes("terminal=1"),
   );
   const selectionActive = useMessageSelectionStore(
     (state) => state.activeConversationID === e2eConversationID,
   );
+
+  if (terminalEnabled) {
+    installE2EElectronMock();
+  }
 
   useEffect(() => {
     const syncTerminalFlag = () => {
@@ -165,14 +267,10 @@ const E2EHarness = () => {
   }, []);
 
   useEffect(() => {
-    useUserStore.setState((state) => ({
-      ...state,
-      selfInfo: {
-        ...state.selfInfo,
-        userID: "e2e_self",
-        nickname: "E2E Self",
-      },
-    }));
+    useUserStore.getState().updateSelfInfo({
+      userID: "e2e_self",
+      nickname: "E2E Self",
+    });
     useConversationStore.setState({
       currentConversation: e2eConversation,
       conversationList: [e2eConversation],
@@ -187,6 +285,34 @@ const E2EHarness = () => {
       useTerminalDockStore.getState().setPanelOpen(false);
     };
   }, [terminalEnabled]);
+
+  useEffect(() => {
+    const handleAppendDraft = (value: string) => {
+      setDraftText((current) => `${current}${current ? "\n" : ""}${value}`);
+    };
+    const handleReplaceDraft = (value: string) => {
+      setDraftText(value);
+    };
+    const handleSendDraft = (value: string) => {
+      setDraftText(value);
+      setSentDrafts((current) => [...current, value]);
+    };
+    const handlePendingAttachment = (attachment: PendingChatAttachmentParams) => {
+      setPendingAttachments((current) => [...current, attachment]);
+    };
+
+    emitter.on("APPEND_CHAT_INPUT", handleAppendDraft);
+    emitter.on("REPLACE_CHAT_INPUT", handleReplaceDraft);
+    emitter.on("SEND_CHAT_INPUT", handleSendDraft);
+    emitter.on("ADD_PENDING_CHAT_ATTACHMENT", handlePendingAttachment);
+
+    return () => {
+      emitter.off("APPEND_CHAT_INPUT", handleAppendDraft);
+      emitter.off("REPLACE_CHAT_INPUT", handleReplaceDraft);
+      emitter.off("SEND_CHAT_INPUT", handleSendDraft);
+      emitter.off("ADD_PENDING_CHAT_ATTACHMENT", handlePendingAttachment);
+    };
+  }, []);
 
   return (
     <div className="flex h-screen bg-white">
@@ -213,6 +339,36 @@ const E2EHarness = () => {
           open={historyOpen}
           onClose={() => setHistoryOpen(false)}
         />
+        <div className="border-t border-[#e5e7eb] bg-[#f8fafc] px-4 py-3">
+          <div className="text-xs font-medium text-[#475467]">E2E Draft</div>
+          <pre
+            className="mt-2 min-h-[72px] whitespace-pre-wrap rounded border border-[#d0d5dd] bg-white p-2 text-xs text-[#101828]"
+            data-testid="e2e-draft-preview"
+          >
+            {draftText}
+          </pre>
+          <div className="mt-2 text-xs font-medium text-[#475467]">E2E Sent Drafts</div>
+          <pre
+            className="mt-2 min-h-[48px] whitespace-pre-wrap rounded border border-[#d0d5dd] bg-white p-2 text-xs text-[#101828]"
+            data-testid="e2e-sent-drafts"
+          >
+            {sentDrafts.join("\n---\n")}
+          </pre>
+          <div className="mt-2 text-xs font-medium text-[#475467]">
+            E2E Pending Attachments
+          </div>
+          <pre
+            className="mt-2 min-h-[48px] whitespace-pre-wrap rounded border border-[#d0d5dd] bg-white p-2 text-xs text-[#101828]"
+            data-testid="e2e-pending-attachments"
+          >
+            {pendingAttachments
+              .map(
+                (attachment) =>
+                  `${attachment.fileName} | ${attachment.relativePath} | ${attachment.sendKind}`,
+              )
+              .join("\n")}
+          </pre>
+        </div>
       </div>
       {terminalEnabled && (
         <div className="h-full w-[560px] shrink-0" data-testid="e2e-terminal-pane">

@@ -383,7 +383,7 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
             onClick={() => runContextActionFromSelection("preview")}
             data-testid="history-create-context"
           >
-            Create Context
+            Preview Selected Context
           </Button>
           <Button
             size="small"
@@ -391,7 +391,7 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
             onClick={() => runContextActionFromSelection("copy")}
             data-testid="history-copy-prompt"
           >
-            Copy Prompt
+            Copy Selected Prompt
           </Button>
           <Button
             size="small"
@@ -399,7 +399,7 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
             onClick={() => runContextActionFromSelection("send")}
             data-testid="history-send-terminal"
           >
-            Send Prompt
+            Send Selected to Terminal
           </Button>
           <Button
             size="small"

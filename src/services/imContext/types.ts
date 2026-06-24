@@ -10,6 +10,51 @@ export type ContextSourceKind =
 
 export type ContextAction = "preview" | "copy" | "send";
 
+export type ContextBundleState = "ready" | "partial" | "degraded";
+
+export interface ContextSourceSummary {
+  kind: ContextSourceKind;
+  conversationID: string;
+  messageCount: number;
+  title: string;
+  detail: string;
+  rangeStartTime?: number;
+  rangeEndTime?: number;
+  keyword?: string;
+}
+
+export interface ContextAttachmentStatusSummary {
+  total: number;
+  exported: number;
+  referenced: number;
+  failed: number;
+  unsupported: number;
+  skipped: number;
+  exportable: number;
+  unresolved: number;
+  state: "none" | "ready" | "partial" | "degraded";
+}
+
+export interface ContextBundleStats {
+  messageCount: number;
+  attachmentCount: number;
+  exportedAttachmentCount: number;
+  referencedAttachmentCount: number;
+  failedAttachmentCount: number;
+  unsupportedAttachmentCount: number;
+  skippedAttachmentCount: number;
+  approxChars: number;
+}
+
+export interface ContextBundleStatus {
+  state: ContextBundleState;
+  manifestVersion: number;
+  attachmentExportState: ContextAttachmentStatusSummary["state"];
+  hasAttachments: boolean;
+  hasExportedAttachments: boolean;
+  hasUnresolvedAttachments: boolean;
+}
+
 export type ContextSource =
   | {
       kind: "recentMessages";
@@ -28,6 +73,7 @@ export interface ContextBundle {
   createdAt: number;
   workspacePath: string;
   source: ContextSource;
+  sourceSummary: ContextSourceSummary;
   files: {
     markdownPath: string;
     manifestPath: string;
@@ -36,15 +82,10 @@ export interface ContextBundle {
   markdown: string;
   messages: MessageItem[];
   attachments: ContextAttachment[];
+  attachmentStatusSummary: ContextAttachmentStatusSummary;
+  status: ContextBundleStatus;
   manifest: ContextManifest;
-  stats: {
-    messageCount: number;
-    attachmentCount: number;
-    exportedAttachmentCount: number;
-    failedAttachmentCount: number;
-    unsupportedAttachmentCount: number;
-    approxChars: number;
-  };
+  stats: ContextBundleStats;
 }
 
 export interface ContextManifest {
@@ -52,6 +93,8 @@ export interface ContextManifest {
   createdAt: number;
   workspacePath: string;
   source: ContextSource;
+  sourceSummary: ContextSourceSummary;
+  status: ContextBundleStatus;
   messages: Array<{
     clientMsgID: string;
     contentType: number;
@@ -60,5 +103,6 @@ export interface ContextManifest {
     attachments: string[];
   }>;
   attachments: ContextAttachment[];
-  stats: ContextBundle["stats"];
+  attachmentStatusSummary: ContextAttachmentStatusSummary;
+  stats: ContextBundleStats;
 }

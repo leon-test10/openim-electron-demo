@@ -5,6 +5,34 @@ import https from "node:https";
 import path from "node:path";
 import { app } from "electron";
 
+const BLOCKED_ATTACHMENT_EXTENSIONS = new Set([
+  ".appx",
+  ".appxbundle",
+  ".bat",
+  ".cmd",
+  ".com",
+  ".cpl",
+  ".dll",
+  ".exe",
+  ".hta",
+  ".js",
+  ".jse",
+  ".lnk",
+  ".mjs",
+  ".msi",
+  ".msix",
+  ".msixbundle",
+  ".ps1",
+  ".psm1",
+  ".reg",
+  ".scr",
+  ".sh",
+  ".vb",
+  ".vbe",
+  ".vbs",
+  ".wsf",
+]);
+
 const sanitizeForPath = (value: string) =>
   value
     .replaceAll(/[\\/:*?"<>|]/g, "_")
@@ -37,6 +65,16 @@ export const getTerminalWorkspaceDir = async (workspaceID: string) => {
 };
 
 const ensurePathInsideRoot = (root: string, relativePath: string) => {
+  if (!relativePath.trim()) {
+    throw new Error("Invalid workspace path");
+  }
+  if (path.isAbsolute(relativePath)) {
+    throw new Error("Workspace path must be relative");
+  }
+  if (/[\0-\x1f]/.test(relativePath) || relativePath.includes(":")) {
+    throw new Error("Workspace path contains unsafe characters");
+  }
+
   const resolvedTarget = path.resolve(root, relativePath);
   const resolvedRoot = path.resolve(root);
 
@@ -48,6 +86,15 @@ const ensurePathInsideRoot = (root: string, relativePath: string) => {
   }
 
   return resolvedTarget;
+};
+
+const ensureAttachmentExportTargetSafe = (resolvedTarget: string) => {
+  const extension = path.extname(resolvedTarget).toLowerCase();
+  if (BLOCKED_ATTACHMENT_EXTENSIONS.has(extension)) {
+    throw new Error(
+      `Attachment export blocked by policy for executable/script files (${extension})`,
+    );
+  }
 };
 
 export const writeFileToConversationWorkspace = async (params: {
@@ -86,7 +133,20 @@ const getFileHash = (buffer: Buffer) =>
   crypto.createHash("sha256").update(buffer).digest("hex");
 
 const ensureSourceFileReadable = async (sourcePath: string, maxBytes: number) => {
+  if (!sourcePath.trim() || !path.isAbsolute(sourcePath)) {
+    throw new Error("Attachment source path must be an absolute local file path");
+  }
+  if (sourcePath.startsWith("\\\\")) {
+    throw new Error("UNC attachment source paths are not allowed");
+  }
+
   const resolvedSource = path.resolve(sourcePath);
+  const lstat = await fs.promises.lstat(resolvedSource);
+
+  if (lstat.isSymbolicLink()) {
+    throw new Error("Symbolic-link attachment sources are not allowed");
+  }
+
   const stat = await fs.promises.stat(resolvedSource);
 
   if (!stat.isFile()) {
@@ -111,6 +171,7 @@ export const copyFileToTerminalWorkspace = async (params: {
 }) => {
   const workspaceDir = await getTerminalWorkspaceDir(params.workspaceID);
   const resolvedTarget = ensurePathInsideRoot(workspaceDir, params.relativePath);
+  ensureAttachmentExportTargetSafe(resolvedTarget);
   const { resolvedSource, size } = await ensureSourceFileReadable(
     params.sourcePath,
     params.maxBytes ?? 0,
@@ -162,6 +223,19 @@ const requestBuffer = (
 
       const chunks: Buffer[] = [];
       let total = 0;
+      const contentLengthHeader = response.headers["content-length"];
+      const contentLength = Number(contentLengthHeader);
+
+      if (
+        Number.isFinite(contentLength) &&
+        contentLength > 0 &&
+        maxBytes > 0 &&
+        contentLength > maxBytes
+      ) {
+        response.resume();
+        reject(new Error("Attachment exceeds download size limit"));
+        return;
+      }
 
       response.on("data", (chunk: Buffer) => {
         total += chunk.length;
@@ -193,6 +267,7 @@ export const downloadFileToTerminalWorkspace = async (params: {
 
   const workspaceDir = await getTerminalWorkspaceDir(params.workspaceID);
   const resolvedTarget = ensurePathInsideRoot(workspaceDir, params.relativePath);
+  ensureAttachmentExportTargetSafe(resolvedTarget);
   const buffer = await requestBuffer(parsedUrl, params.maxBytes ?? 0);
 
   await ensureDir(path.dirname(resolvedTarget));

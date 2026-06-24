@@ -1,5 +1,98 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P7/P8 Stabilized Manual IM-Agent Handoff
+
+Current branch: `feature/attachment-context-export`
+
+Source inputs:
+
+- `C:\Users\leon\Downloads\P7_P8_PLAN.md`
+- `handoff_trae.md`
+- `docs/terminal-bot-routing-spec-v0.md`
+
+Scope completed:
+
+- P7 IM -> Agent flow was tightened so selected/history/search/recent context
+  actions create neutral `ContextBundle`s and keep Terminal Dock as the
+  consumer/writer rather than the owner of IM context semantics.
+- Selected-message actions now expose direct semantics:
+  - `Send Selected to Terminal`
+  - `Copy Selected Prompt`
+  - `Preview Selected Context`
+- Context preview is no longer the default path for send/copy actions. The
+  Context modal is treated as `Context Library` for preview, history, reuse, and
+  debugging.
+- Context history records support record-scoped copy/send/path actions.
+- Prompt/manifest/markdown now include source summary, source kind, message
+  count, and attachment status summaries, including exported/referenced/failed/
+  skipped/unsupported counts.
+- Attachment export hardening was added:
+  - safer workspace-relative target validation;
+  - executable/script extension blocking for attachment export targets;
+  - local source path checks for absolute path, UNC, symlink, file-only, and
+    max-size constraints;
+  - HTTP(S) download content-length guard;
+  - per-attachment failure isolation so a failed attachment does not block the
+    context bundle.
+- P8 Terminal -> IM flow was renamed and bounded:
+  - `Selection -> Draft`;
+  - `Capture Output -> Draft`;
+  - `Auto Capture Output -> Draft`;
+  - `Draft -> Chat (experimental)` remains opt-in with warning and off by
+    default.
+- Terminal toolbar is grouped by direction:
+  - runtime controls;
+  - IM -> Agent;
+  - Agent -> IM.
+- Workspace file -> IM attachment MVP now uses explicit confirmation and adds a
+  pending draft attachment event instead of directly sending IM messages.
+- The E2E harness now exposes pending draft attachments and a deterministic
+  terminal-output injection helper for Capture Output tests.
+
+Files changed in this pass:
+
+- `electron/main/workspaceManage.ts`
+- `src/components/TerminalDock/index.tsx`
+- `src/components/TerminalDock/terminalDock.css`
+- `src/pages/chat/queryChat/ChatFooter/index.tsx`
+- `src/pages/chat/queryChat/ChatFooter/SendActionBar/useFileMessage.ts`
+- `src/pages/chat/queryChat/MessageHistoryDrawer.tsx`
+- `src/pages/chat/queryChat/MessageItem/MessageActionMenu.tsx`
+- `src/pages/chat/queryChat/MessageSelectionToolbar.tsx`
+- `src/pages/e2e/E2EHarness.tsx`
+- `src/services/imContext/IMContextService.ts`
+- `src/services/imContext/attachments/export.ts`
+- `src/services/imContext/types.ts`
+- `src/store/terminalDock.ts`
+- `src/store/type.d.ts`
+- `src/utils/events.ts`
+- `src/utils/e2eMockData.ts`
+- `e2e/electron/fixtures/electronApp.ts`
+- `e2e/electron/fixtures/mockOpenIM.ts`
+- `e2e/electron/specs/history-drawer.spec.ts`
+- `e2e/electron/specs/message-selection.spec.ts`
+- `e2e/electron/specs/terminal-dock.spec.ts`
+
+Validation run:
+
+- `git diff --check`: pass.
+- `npm.cmd run lint -- --quiet`: pass. Existing warning: React version is not
+  specified in eslint-plugin-react settings.
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd run build`: pass. Existing Vite/AntD/chunk-size warnings remain.
+- `npm.cmd run test:e2e`: pass. Result: 14 passed.
+
+Still intentionally not implemented:
+
+- No `@bot` trigger handling.
+- No Auto Inject.
+- No Auto Reply.
+- No new automated IM sending behavior beyond the existing explicitly enabled
+  `Draft -> Chat (experimental)` switch.
+- No terminal-output path auto-parser for attachments.
+- No real OpenIM server/manual attachment validation was performed in this pass;
+  this remains a follow-up with live accounts and real uploaded files.
+
 ## Latest Update - P7 Attachment Export and Manifest
 
 Current branch: `feature/attachment-context-export`

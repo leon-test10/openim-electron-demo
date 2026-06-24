@@ -40,7 +40,9 @@ test("message right-click can start selection mode", async ({ appWindow }) => {
   await expect(appWindow.getByTestId("message-selection-count")).toContainText("2");
 });
 
-test("selected toolbar nests agent actions under More", async ({ appWindow }) => {
+test("selected toolbar exposes direct preview, copy, and send actions", async ({
+  appWindow,
+}) => {
   await waitForHarness(appWindow);
 
   await appWindow.locator(messageActionTrigger(e2eMessageIDs[0])).click();
@@ -48,23 +50,10 @@ test("selected toolbar nests agent actions under More", async ({ appWindow }) =>
 
   await expect(appWindow.getByTestId("message-selection-copy")).toBeVisible();
   await expect(appWindow.getByTestId("message-selection-export-md")).toBeVisible();
-  await expect(appWindow.getByTestId("message-selection-more")).toBeVisible();
+  await expect(appWindow.getByTestId("message-selection-preview")).toBeVisible();
+  await expect(appWindow.getByTestId("message-selection-copy-prompt")).toBeVisible();
+  await expect(appWindow.getByTestId("message-selection-send")).toBeVisible();
   await expect(appWindow.getByTestId("message-selection-clear")).toBeVisible();
-  await expect(
-    appWindow.getByTestId("message-selection-agent-create-context"),
-  ).toHaveCount(0);
-
-  await appWindow.getByTestId("message-selection-more").click();
-  await appWindow.getByTestId("message-selection-agent-menu").hover();
-  await expect(
-    appWindow.getByTestId("message-selection-agent-create-context"),
-  ).toBeVisible();
-  await expect(
-    appWindow.getByTestId("message-selection-agent-copy-prompt"),
-  ).toBeVisible();
-  await expect(
-    appWindow.getByTestId("message-selection-agent-send-terminal"),
-  ).toBeVisible();
 });
 
 test("selected messages create neutral IM context", async ({ appWindow }) => {
@@ -73,9 +62,7 @@ test("selected messages create neutral IM context", async ({ appWindow }) => {
   await appWindow.locator(messageActionTrigger(e2eMessageIDs[0])).click();
   await appWindow.getByTestId("message-action-select").click();
 
-  await appWindow.getByTestId("message-selection-more").click();
-  await appWindow.getByTestId("message-selection-agent-menu").hover();
-  await appWindow.getByTestId("message-selection-agent-create-context").click();
+  await appWindow.getByTestId("message-selection-preview").click();
 
   await expect(appWindow.getByTestId("terminal-context-modal")).toBeVisible();
   await expect(appWindow.getByTestId("terminal-context-history")).toContainText(

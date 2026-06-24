@@ -36,7 +36,7 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
   const setTerminalPanelOpen = useTerminalDockStore((state) => state.setPanelOpen);
   const canCopyText = message.contentType === MessageType.TextMessage;
 
-  const createSingleMessageAgentContext = (action: "preview" | "copy" | "send") => {
+  const runSingleMessageContextAction = (action: "preview" | "copy" | "send") => {
     if (!conversationID) return;
 
     selectOnlyMessage(conversationID, message);
@@ -94,25 +94,25 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
     },
     {
       key: "agent",
-      label: menuLabel("message-action-agent-menu", "Agent"),
+      label: menuLabel("message-action-agent-menu", "Context"),
       disabled: !conversationID,
       children: [
         {
           key: "agent:create-context",
           label: menuLabel(
             "message-action-agent-create-context",
-            "Create Agent Context",
+            "Preview Selected Context",
           ),
         },
         {
           key: "agent:copy-prompt",
-          label: menuLabel("message-action-agent-copy-prompt", "Copy Agent Prompt"),
+          label: menuLabel("message-action-agent-copy-prompt", "Copy Selected Prompt"),
         },
         {
           key: "agent:send-terminal",
           label: menuLabel(
             "message-action-agent-send-terminal",
-            "Send Prompt to Terminal",
+            "Send Selected to Terminal",
           ),
         },
       ],
@@ -148,13 +148,13 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
     }
 
     if (key === "agent:create-context") {
-      createSingleMessageAgentContext("preview");
+      runSingleMessageContextAction("preview");
     }
     if (key === "agent:copy-prompt") {
-      createSingleMessageAgentContext("copy");
+      runSingleMessageContextAction("copy");
     }
     if (key === "agent:send-terminal") {
-      createSingleMessageAgentContext("send");
+      runSingleMessageContextAction("send");
     }
   };
 

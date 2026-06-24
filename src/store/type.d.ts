@@ -207,8 +207,10 @@ export interface TerminalContextBundleRecord {
   messageCount: number;
   attachmentCount: number;
   exportedAttachmentCount: number;
+  referencedAttachmentCount: number;
   failedAttachmentCount: number;
   unsupportedAttachmentCount: number;
+  skippedAttachmentCount: number;
   approxChars: number;
   markdownPath: string;
   manifestPath: string;

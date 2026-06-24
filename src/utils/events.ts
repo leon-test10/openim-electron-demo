@@ -18,6 +18,7 @@ type EmitterEvents = {
   APPEND_CHAT_INPUT: string;
   REPLACE_CHAT_INPUT: string;
   SEND_CHAT_INPUT: string;
+  ADD_PENDING_CHAT_ATTACHMENT: PendingChatAttachmentParams;
   IM_CONTEXT_ACTION: IMContextActionParams;
   /** @deprecated Use IM_CONTEXT_ACTION instead. */
   TERMINAL_CONTEXT_ACTION: TerminalContextActionParams;
@@ -39,6 +40,16 @@ export type IMContextActionParams = {
 export type TerminalContextActionParams = IMContextActionParams;
 
 export type { ContextAction, ContextSource };
+
+export type PendingChatAttachmentParams = {
+  source: "workspace";
+  fileName: string;
+  filePath: string;
+  relativePath: string;
+  fileType: string;
+  fileSize: number;
+  sendKind: "image" | "file";
+};
 
 export type SelectUserParams = {
   notConversation: boolean;

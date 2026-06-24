@@ -108,9 +108,34 @@ export const createE2EFileMessage = (clientMsgID: string, sendTimeOffset: number
     sendTime: Date.now() - sendTimeOffset,
   } as unknown as MessageItem);
 
+export const createE2EDangerousFileMessage = (
+  clientMsgID: string,
+  sendTimeOffset: number,
+) =>
+  ({
+    clientMsgID,
+    serverMsgID: clientMsgID,
+    conversationID: e2eConversationID,
+    sendID: "e2e_peer",
+    recvID: "e2e_self",
+    senderNickname: "E2E Peer",
+    senderFaceUrl: "",
+    sessionType: SessionType.Single,
+    contentType: MessageType.FileMessage,
+    fileElem: {
+      filePath: "C:\\OpenIM-E2E\\fixtures\\dangerous-script.ps1",
+      uuid: "dangerous-script.ps1",
+      sourceUrl: "https://example.com/dangerous-script.ps1",
+      fileName: "dangerous-script.ps1",
+      fileSize: 512,
+    },
+    sendTime: Date.now() - sendTimeOffset,
+  } as unknown as MessageItem);
+
 export const e2eAttachmentMessageIDs = {
   image: "e2e_msg_image",
   failedFile: "e2e_msg_failed_file",
+  dangerousFile: "e2e_msg_dangerous_file",
 };
 
 export const e2eMessages = [
@@ -118,5 +143,6 @@ export const e2eMessages = [
   createE2ETextMessage("e2e_msg_2", "reply from e2e peer", 4000),
   createE2ETextMessage("e2e_msg_3", "searchable history message", 3000),
   createE2EPictureMessage(e2eAttachmentMessageIDs.image, 2000),
+  createE2EDangerousFileMessage(e2eAttachmentMessageIDs.dangerousFile, 1500),
   createE2EFileMessage(e2eAttachmentMessageIDs.failedFile, 1000),
 ];

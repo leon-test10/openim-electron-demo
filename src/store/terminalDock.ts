@@ -148,6 +148,10 @@ const normalizeContextBundleHistory = (
               typeof item.exportedAttachmentCount === "number"
                 ? item.exportedAttachmentCount
                 : 0,
+            referencedAttachmentCount:
+              typeof item.referencedAttachmentCount === "number"
+                ? item.referencedAttachmentCount
+                : 0,
             failedAttachmentCount:
               typeof item.failedAttachmentCount === "number"
                 ? item.failedAttachmentCount
@@ -155,6 +159,10 @@ const normalizeContextBundleHistory = (
             unsupportedAttachmentCount:
               typeof item.unsupportedAttachmentCount === "number"
                 ? item.unsupportedAttachmentCount
+                : 0,
+            skippedAttachmentCount:
+              typeof item.skippedAttachmentCount === "number"
+                ? item.skippedAttachmentCount
                 : 0,
             approxChars: typeof item.approxChars === "number" ? item.approxChars : 0,
             markdownPath: item.markdownPath,

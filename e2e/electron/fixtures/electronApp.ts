@@ -24,7 +24,30 @@ export const test = base.extend<ElectronFixtures>({
     });
 
     await use(app);
-    await app.close();
+    const processHandle = (app as ElectronApplication & {
+      process?: () => { kill: () => void };
+    }).process?.();
+    let forceCloseTimer: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      await Promise.race([
+        app.close(),
+        new Promise<void>((resolve) => {
+          forceCloseTimer = setTimeout(() => {
+            try {
+              processHandle?.kill();
+            } catch {
+              // Ignore force-close errors in E2E cleanup.
+            }
+            resolve();
+          }, 5000);
+        }),
+      ]);
+    } finally {
+      if (forceCloseTimer) {
+        clearTimeout(forceCloseTimer);
+      }
+    }
   },
 
   appWindow: async ({ electronApp }, use) => {

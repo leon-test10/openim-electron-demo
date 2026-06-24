@@ -1,4 +1,4 @@
-import { Button, Dropdown, message as antdMessage } from "antd";
+import { Button, message as antdMessage } from "antd";
 import { FC, useMemo } from "react";
 
 import { useMessageSelectionStore, useTerminalDockStore } from "@/store";
@@ -11,10 +11,6 @@ import {
 interface MessageSelectionToolbarProps {
   conversationID?: string;
 }
-
-const menuLabel = (testID: string, label: string) => (
-  <span data-testid={testID}>{label}</span>
-);
 
 const MessageSelectionToolbar: FC<MessageSelectionToolbarProps> = ({
   conversationID,
@@ -67,63 +63,11 @@ const MessageSelectionToolbar: FC<MessageSelectionToolbarProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const selectedActionItems = [
-    {
-      key: "agent",
-      label: menuLabel("message-selection-agent-menu", "Agent"),
-      children: [
-        {
-          key: "agent:create-context",
-          label: menuLabel(
-            "message-selection-agent-create-context",
-            "Create Agent Context",
-          ),
-          disabled: selectedCount === 0,
-        },
-        {
-          key: "agent:copy-prompt",
-          label: menuLabel("message-selection-agent-copy-prompt", "Copy Agent Prompt"),
-          disabled: selectedCount === 0,
-        },
-        {
-          key: "agent:send-terminal",
-          label: menuLabel(
-            "message-selection-agent-send-terminal",
-            "Send Prompt to Terminal",
-          ),
-          disabled: selectedCount === 0,
-        },
-      ],
-    },
-    {
-      key: "forward",
-      label: menuLabel("message-selection-forward", "Forward"),
-      disabled: true,
-    },
-    {
-      key: "delete",
-      label: menuLabel("message-selection-delete", "Delete"),
-      disabled: true,
-    },
-  ];
-
-  const onSelectedActionClick = ({ key }: { key: string }) => {
-    if (key === "agent:create-context") {
-      runSelectedContextAction("preview");
-    }
-    if (key === "agent:copy-prompt") {
-      runSelectedContextAction("copy");
-    }
-    if (key === "agent:send-terminal") {
-      runSelectedContextAction("send");
-    }
-  };
-
   if (!conversationID) return null;
 
   return (
     <div
-      className="absolute right-4 top-3 z-10 flex items-center gap-2 rounded-md border border-[#d9e2f3] bg-white/95 px-2 py-1 shadow-sm"
+      className="sticky top-3 z-10 mx-4 mt-3 flex w-fit flex-wrap items-center gap-2 rounded-md border border-[#d9e2f3] bg-white/95 px-2 py-1 shadow-sm"
       data-testid="message-selection-toolbar"
     >
       <span className="text-xs text-[#667085]" data-testid="message-selection-count">
@@ -145,17 +89,30 @@ const MessageSelectionToolbar: FC<MessageSelectionToolbarProps> = ({
       >
         Export MD
       </Button>
-      <Dropdown
-        menu={{
-          items: selectedActionItems,
-          onClick: onSelectedActionClick,
-        }}
-        trigger={["click"]}
+      <Button
+        size="small"
+        disabled={selectedCount === 0}
+        onClick={() => runSelectedContextAction("preview")}
+        data-testid="message-selection-preview"
       >
-        <Button size="small" data-testid="message-selection-more">
-          More
-        </Button>
-      </Dropdown>
+        Preview Selected Context
+      </Button>
+      <Button
+        size="small"
+        disabled={selectedCount === 0}
+        onClick={() => runSelectedContextAction("copy")}
+        data-testid="message-selection-copy-prompt"
+      >
+        Copy Selected Prompt
+      </Button>
+      <Button
+        size="small"
+        disabled={selectedCount === 0}
+        onClick={() => runSelectedContextAction("send")}
+        data-testid="message-selection-send"
+      >
+        Send Selected to Terminal
+      </Button>
       <Button
         size="small"
         onClick={() => clearSelection(conversationID)}
