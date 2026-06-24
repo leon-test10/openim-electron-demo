@@ -1,5 +1,102 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P3 Fix + Electron E2E Baseline
+
+Current branch: `feature/terminal-dock-redesign`
+
+Plan source:
+
+- `C:\Users\leon\Desktop\新建 文本文档.txt`
+
+Scope completed in this pass:
+
+- Aligned the selected-message surface with the P1-P3 IM-native design.
+- Extracted `MessageSelectionToolbar` from `ChatContent`.
+- The selected toolbar now shows `Selected N messages`, `Copy`, `Export MD`,
+  `More`, and `Clear`.
+- Agent actions are no longer first-level toolbar actions; they are nested under
+  `More -> Agent`.
+- Kept disabled IM-native placeholders for `Forward` and `Delete` in the
+  selected toolbar `More` menu.
+- Kept per-message `MessageActionMenu` actions for `Copy`, `Quote`, `Select`,
+  `Add to Selection`, and `Agent`.
+- Kept chat-header `More` entries for `History`, `Select Messages`, disabled
+  `Search Messages`, and disabled `Export Chat`.
+- Removed the selected-toolbar implementation from `ChatContent`, so the chat
+  surface is no longer mixing selection action logic into the message list.
+- Added stable `data-testid` anchors for chat header, message actions,
+  selection checkboxes, selected toolbar, history drawer, Terminal Dock, and the
+  E2E harness.
+- Added a Playwright Electron test baseline under `e2e/electron`.
+- Added `playwright.electron.config.ts`.
+- Added an Electron `#/e2e-harness` route with local mock conversation/messages
+  so tests do not depend on real OpenIM accounts, network, server state, history,
+  or agent runtime processes.
+- Added `E2E_MODE=1` main-process behavior for Electron tests:
+  - use isolated `userData` under temp;
+  - skip single-instance lock;
+  - skip tray creation;
+  - skip native OpenIM SDK initialization.
+
+Changed files in this pass:
+
+- `electron/main/index.ts`
+- `electron/main/windowManage.ts`
+- `package.json`
+- `playwright.electron.config.ts`
+- `e2e/electron/fixtures/electronApp.ts`
+- `e2e/electron/fixtures/mockOpenIM.ts`
+- `e2e/electron/helpers/selectors.ts`
+- `e2e/electron/helpers/wait.ts`
+- `e2e/electron/specs/history-drawer.spec.ts`
+- `e2e/electron/specs/message-selection.spec.ts`
+- `e2e/electron/specs/terminal-dock.spec.ts`
+- `src/components/TerminalDock/index.tsx`
+- `src/layout/TopSearchBar/index.tsx`
+- `src/pages/chat/queryChat/ChatContent.tsx`
+- `src/pages/chat/queryChat/ChatHeader/index.tsx`
+- `src/pages/chat/queryChat/MessageHistoryDrawer.tsx`
+- `src/pages/chat/queryChat/MessageItem/MessageActionMenu.tsx`
+- `src/pages/chat/queryChat/MessageItem/index.tsx`
+- `src/pages/chat/queryChat/MessageSelectionToolbar.tsx`
+- `src/pages/e2e/E2EHarness.tsx`
+- `src/routes/index.tsx`
+- `src/utils/e2eMockData.ts`
+
+Validation run:
+
+- `git diff --check`: pass.
+- `npm.cmd run lint -- --quiet`: pass. Existing warning: React version is not
+  specified in eslint-plugin-react settings.
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd run build`: pass. Existing Vite/AntD/chunk-size warnings remain.
+- `npm.cmd run test:e2e`: Electron launch cannot run inside the current sandbox.
+  Playwright reaches `_electron.launch`, but Electron exits before a window is
+  attached. A minimal Electron command also exits in the sandbox. The next
+  verification step is to rerun `npm.cmd run test:e2e` in an unsandboxed desktop
+  shell or approve the GUI escalation request.
+
+Important semantics and limits:
+
+- This is P3-fix plus an E2E baseline, not P6.
+- No neutral `IMContextService` was introduced in this pass.
+- No attachment binary export was added.
+- No multi-conversation context selector was added.
+- No `@bot`, auto inject, or auto reply behavior was added.
+- Terminal Dock still remains a side terminal/workspace surface; this pass only
+  added test anchors and kept Draft -> Chat off by default.
+- The E2E harness is a hidden route included in the app bundle for now. It exists
+  to make tests independent from real accounts and OpenIM network state.
+
+Recommended next implementation slice:
+
+1. Rerun `npm.cmd run test:e2e` outside the sandbox and fix any page-level
+   assertion failures that appear after Electron can launch.
+2. If the hidden `#/e2e-harness` route is not acceptable in production bundles,
+   add a stable Windows-safe build flag or separate harness entry that avoids the
+   current esbuild config-loader crash.
+3. Continue with P4/P5 hardening only after this baseline is green in Electron.
+
 ## Latest Update - Message Search and Range Context MVP
 
 Current branch: `feature/terminal-dock-redesign`

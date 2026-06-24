@@ -1,17 +1,14 @@
-import { Button, Dropdown, Layout, message as antdMessage, Spin } from "antd";
+import { Layout, Spin } from "antd";
 import clsx from "clsx";
-import { memo, useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
 import { SystemMessageTypes } from "@/constants/im";
-import { useMessageSelectionStore, useTerminalDockStore, useUserStore } from "@/store";
+import { useMessageSelectionStore, useUserStore } from "@/store";
 import emitter from "@/utils/events";
-import {
-  formatMessagesAsMarkdown,
-  formatMessagesAsPlainText,
-} from "@/utils/messageSelectionFormat";
 
 import MessageItem from "./MessageItem";
+import MessageSelectionToolbar from "./MessageSelectionToolbar";
 import NotificationMessage from "./NotificationMessage";
 import { useHistoryMessageList } from "./useHistoryMessageList";
 
@@ -21,11 +18,6 @@ const ChatContent = () => {
   const activeSelectionConversationID = useMessageSelectionStore(
     (state) => state.activeConversationID,
   );
-  const selectedMessagesByConversation = useMessageSelectionStore(
-    (state) => state.selectedMessagesByConversation,
-  );
-  const clearSelection = useMessageSelectionStore((state) => state.clearSelection);
-  const setTerminalPanelOpen = useTerminalDockStore((state) => state.setPanelOpen);
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -41,16 +33,6 @@ const ChatContent = () => {
     useHistoryMessageList();
   const selectionActive =
     Boolean(conversationID) && activeSelectionConversationID === conversationID;
-  const selectedCount = conversationID
-    ? Object.keys(selectedMessagesByConversation[conversationID] ?? {}).length
-    : 0;
-  const selectedMessages = useMemo(
-    () =>
-      conversationID
-        ? Object.values(selectedMessagesByConversation[conversationID] ?? {})
-        : [],
-    [conversationID, selectedMessagesByConversation],
-  );
 
   useEffect(() => {
     emitter.on("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
@@ -65,71 +47,6 @@ const ChatContent = () => {
     getMoreOldMessages();
   };
 
-  const runSelectedContextAction = (action: "preview" | "copy" | "send") => {
-    setTerminalPanelOpen(true);
-    emitter.emit("TERMINAL_CONTEXT_ACTION", {
-      source: "selectedMessages",
-      action,
-    });
-  };
-
-  const copySelectedMessages = async () => {
-    if (selectedMessages.length === 0) return;
-    await navigator.clipboard.writeText(formatMessagesAsPlainText(selectedMessages));
-    antdMessage.success("Selected messages copied");
-  };
-
-  const exportSelectedMessages = () => {
-    if (selectedMessages.length === 0) return;
-
-    const markdown = formatMessagesAsMarkdown(selectedMessages);
-    const blob = new Blob([markdown], {
-      type: "text/markdown;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `selected-messages-${Date.now()}.md`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const selectedActionItems = [
-    {
-      key: "agent",
-      label: "Agent",
-      children: [
-        {
-          key: "agent:create-context",
-          label: "Create Agent Context",
-          disabled: selectedCount === 0,
-        },
-        {
-          key: "agent:copy-prompt",
-          label: "Copy Agent Prompt",
-          disabled: selectedCount === 0,
-        },
-        {
-          key: "agent:send-terminal",
-          label: "Send Prompt to Terminal",
-          disabled: selectedCount === 0,
-        },
-      ],
-    },
-  ];
-
-  const onSelectedActionClick = ({ key }: { key: string }) => {
-    if (key === "agent:create-context") {
-      runSelectedContextAction("preview");
-    }
-    if (key === "agent:copy-prompt") {
-      runSelectedContextAction("copy");
-    }
-    if (key === "agent:send-terminal") {
-      runSelectedContextAction("send");
-    }
-  };
-
   return (
     <Layout.Content
       className="relative flex h-full overflow-hidden !bg-white"
@@ -142,39 +59,7 @@ const ChatContent = () => {
       ) : (
         <>
           {selectionActive && (
-            <div className="absolute right-4 top-3 z-10 flex items-center gap-2 rounded-md border border-[#d9e2f3] bg-white/95 px-2 py-1 shadow-sm">
-              <>
-                <span className="text-xs text-[#667085]">
-                  Selected {selectedCount} messages
-                </span>
-                <Button
-                  size="small"
-                  disabled={selectedCount === 0}
-                  onClick={() => void copySelectedMessages()}
-                >
-                  Copy
-                </Button>
-                <Button
-                  size="small"
-                  disabled={selectedCount === 0}
-                  onClick={exportSelectedMessages}
-                >
-                  Export MD
-                </Button>
-                <Dropdown
-                  menu={{
-                    items: selectedActionItems,
-                    onClick: onSelectedActionClick,
-                  }}
-                  trigger={["click"]}
-                >
-                  <Button size="small">More</Button>
-                </Dropdown>
-                <Button size="small" onClick={() => clearSelection(conversationID)}>
-                  Clear
-                </Button>
-              </>
-            </div>
+            <MessageSelectionToolbar conversationID={conversationID} />
           )}
           <Virtuoso
             id="chat-list"

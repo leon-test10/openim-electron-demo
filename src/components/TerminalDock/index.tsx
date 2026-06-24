@@ -830,7 +830,7 @@ const TerminalDock = () => {
   if (!panelOpen) return null;
 
   return (
-    <aside className="terminal-dock">
+    <aside className="terminal-dock" data-testid="terminal-dock">
       <div className="terminal-dock-header">
         <div className="flex min-w-0 items-center gap-2">
           <CodeOutlined className="text-[#89d185]" rev={undefined} />
@@ -880,6 +880,7 @@ const TerminalDock = () => {
             className="terminal-dock-command-button"
             disabled={!terminalAvailable || !activeWorkspace}
             icon={<PlayCircleOutlined rev={undefined} />}
+            data-testid="terminal-run-profile"
           >
             Run <DownOutlined rev={undefined} />
           </Button>
@@ -940,6 +941,7 @@ const TerminalDock = () => {
             className="terminal-dock-command-button"
             disabled={!activeWorkspace || !conversationID}
             icon={<FileTextOutlined rev={undefined} />}
+            data-testid="terminal-context-menu"
           >
             Context <DownOutlined rev={undefined} />
           </Button>
@@ -976,6 +978,7 @@ const TerminalDock = () => {
             disabled={!activeTab}
             icon={<CopyOutlined rev={undefined} />}
             onClick={() => captureTerminalOutput("manual")}
+            data-testid="terminal-capture-output"
           >
             Capture Output
           </Button>
@@ -987,6 +990,7 @@ const TerminalDock = () => {
             checked={autoReceiveEnabled}
             disabled={!activeTab}
             onChange={setAutoReceiveEnabled}
+            data-testid="terminal-output-draft-toggle"
           />
         </div>
         <div className="terminal-dock-toggle">
@@ -1000,6 +1004,7 @@ const TerminalDock = () => {
             checked={autoSendEnabled}
             disabled={!activeTab || !autoReceiveEnabled}
             onChange={handleAutoSendChange}
+            data-testid="terminal-draft-chat-toggle"
           />
         </div>
         <Tooltip title="Clear Terminal">
@@ -1273,7 +1278,10 @@ const TerminalDock = () => {
               Create a preview to write a context bundle into the active workspace.
             </div>
           )}
-          <div className="terminal-dock-context-history">
+          <div
+            className="terminal-dock-context-history"
+            data-testid="terminal-context-history"
+          >
             <div className="terminal-dock-context-history-header">
               <div>
                 <div className="text-xs text-[#cccccc]">Context History</div>

@@ -8,7 +8,18 @@ import { QueryChat } from "@/pages/chat/queryChat";
 import contactRoutes from "./ContactRoutes";
 import GlobalErrorElement from "./GlobalErrorElement";
 
+const e2eRoutes = [
+  {
+    path: "/e2e-harness",
+    async lazy() {
+      const { default: E2EHarness } = await import("@/pages/e2e/E2EHarness");
+      return { Component: E2EHarness };
+    },
+  },
+];
+
 const router = createHashRouter([
+  ...e2eRoutes,
   {
     path: "/",
     element: <MainContentWrap />,

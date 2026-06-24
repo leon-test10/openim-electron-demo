@@ -60,6 +60,7 @@ const MessageItem: FC<IMessageItemProps> = ({
     <>
       <div
         id={`chat_${message.clientMsgID}`}
+        data-testid={`message-item-${message.clientMsgID}`}
         className={clsx(
           "relative flex select-text px-5 py-3",
           selectionActive && "cursor-pointer",
@@ -72,7 +73,11 @@ const MessageItem: FC<IMessageItemProps> = ({
             className={styles["message-selection-control"]}
             onClick={(event) => event.stopPropagation()}
           >
-            <Checkbox checked={selected} onChange={toggleSelection} />
+            <Checkbox
+              checked={selected}
+              onChange={toggleSelection}
+              data-testid={`message-selection-checkbox-${message.clientMsgID}`}
+            />
           </div>
         )}
         <div

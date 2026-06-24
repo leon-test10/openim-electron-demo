@@ -9,18 +9,28 @@ import { isLinux } from "../utils";
 import { getLogger } from "../utils/log";
 import { initI18n } from "../i18n";
 
+const isE2EMode = process.env.E2E_MODE === "1";
+
+if (isE2EMode) {
+  app.setPath("userData", join(app.getPath("temp"), "openim-electron-demo-e2e"));
+}
+
 export const logger = getLogger(join(app.getPath("userData"), `/OpenIMData/logs`));
 
 const init = () => {
   initI18n();
   createMainWindow();
   createAppMenu();
-  createTray();
+  if (!isE2EMode) {
+    createTray();
+  }
 };
 
 setAppGlobalData();
 setIpcMainListener();
-setSingleInstance();
+if (!isE2EMode) {
+  setSingleInstance();
+}
 setAppListener(init);
 
 app.whenReady().then(() => {

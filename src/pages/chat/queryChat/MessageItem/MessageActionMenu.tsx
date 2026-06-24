@@ -17,6 +17,10 @@ interface MessageActionMenuProps extends PropsWithChildren {
   conversationID?: string;
 }
 
+const menuLabel = (testID: string, label: string) => (
+  <span data-testid={testID}>{label}</span>
+);
+
 const MessageActionMenu: FC<MessageActionMenuProps> = ({
   message,
   conversationID,
@@ -46,26 +50,26 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
   const menuItems = [
     {
       key: "copy",
-      label: "Copy",
+      label: menuLabel("message-action-copy", "Copy"),
       disabled: !canCopyText,
     },
     {
       key: "quote",
-      label: "Quote",
+      label: menuLabel("message-action-quote", "Quote"),
     },
     {
       key: "forward",
-      label: "Forward",
+      label: menuLabel("message-action-forward", "Forward"),
       disabled: true,
     },
     {
       key: "select",
-      label: "Select",
+      label: menuLabel("message-action-select", "Select"),
       disabled: !conversationID,
     },
     {
       key: "add-selection",
-      label: "Add to Selection",
+      label: menuLabel("message-action-add-selection", "Add to Selection"),
       disabled: !conversationID,
     },
     {
@@ -73,12 +77,12 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
     },
     {
       key: "delete",
-      label: "Delete",
+      label: menuLabel("message-action-delete", "Delete"),
       disabled: true,
     },
     {
       key: "recall",
-      label: "Recall",
+      label: menuLabel("message-action-recall", "Recall"),
       disabled: true,
     },
     {
@@ -86,20 +90,26 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
     },
     {
       key: "agent",
-      label: "Agent",
+      label: menuLabel("message-action-agent-menu", "Agent"),
       disabled: !conversationID,
       children: [
         {
           key: "agent:create-context",
-          label: "Create Agent Context",
+          label: menuLabel(
+            "message-action-agent-create-context",
+            "Create Agent Context",
+          ),
         },
         {
           key: "agent:copy-prompt",
-          label: "Copy Agent Prompt",
+          label: menuLabel("message-action-agent-copy-prompt", "Copy Agent Prompt"),
         },
         {
           key: "agent:send-terminal",
-          label: "Send Prompt to Terminal",
+          label: menuLabel(
+            "message-action-agent-send-terminal",
+            "Send Prompt to Terminal",
+          ),
         },
       ],
     },
@@ -154,7 +164,10 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
       }}
       trigger={["contextMenu"]}
     >
-      <div className={styles["message-action-host"]}>
+      <div
+        className={styles["message-action-host"]}
+        data-testid={`message-action-host-${message.clientMsgID}`}
+      >
         {children}
         <Dropdown
           menu={{
@@ -171,6 +184,7 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
             className={styles["message-action-trigger"]}
             icon={<MoreOutlined rev={undefined} />}
             onClick={(event) => event.stopPropagation()}
+            data-testid={`message-action-menu-trigger-${message.clientMsgID}`}
           />
         </Dropdown>
       </div>

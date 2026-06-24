@@ -4,13 +4,12 @@ import { isLinux, isMac, isWin } from "../utils";
 import { destroyTray } from "./trayManage";
 import { getIsForceQuit } from "./appManage";
 import { registerShortcuts, unregisterShortcuts } from "./shortcutManage";
-import { initIMSDK } from "../utils/imsdk";
-import OpenIMSDKMain from "@openim/electron-client-sdk";
 
 const url = process.env.VITE_DEV_SERVER_URL;
+const isE2EMode = process.env.E2E_MODE === "1";
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
-let sdkInstance: OpenIMSDKMain | null = null;
+let sdkInstance: unknown = null;
 
 function createSplashWindow() {
   splashWindow = new BrowserWindow({
@@ -51,7 +50,10 @@ export function createMainWindow() {
     },
   });
 
-  sdkInstance = initIMSDK(mainWindow.webContents);
+  if (!isE2EMode) {
+    const { initIMSDK } = require("../utils/imsdk") as typeof import("../utils/imsdk");
+    sdkInstance = initIMSDK(mainWindow.webContents);
+  }
 
   if (process.env.VITE_DEV_SERVER_URL) {
     // Open devTool if the app is not packaged

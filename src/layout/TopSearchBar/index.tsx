@@ -665,6 +665,7 @@ const TopSearchBar = () => {
               icon={<ApiOutlined rev={undefined} />}
               aria-pressed={terminalDockOpen}
               onClick={toggleTerminalDock}
+              data-testid="terminal-dock-toggle"
             />
           </Tooltip>
         )}

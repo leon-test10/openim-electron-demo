@@ -20,6 +20,10 @@ interface ChatHeaderProps {
   onOpenHistory?: () => void;
 }
 
+const menuLabel = (testID: string, label: string) => (
+  <span data-testid={testID}>{label}</span>
+);
+
 const menuList = [
   {
     title: t("placeholder.createGroup"),
@@ -102,22 +106,22 @@ const ChatHeader = ({ onOpenHistory }: ChatHeaderProps) => {
   const headerActionItems = [
     {
       key: "history",
-      label: "History",
+      label: menuLabel("chat-header-history", "History"),
       disabled: !conversationID,
     },
     {
       key: "select-messages",
-      label: "Select Messages",
+      label: menuLabel("chat-header-select-messages", "Select Messages"),
       disabled: !conversationID,
     },
     {
       key: "search-messages",
-      label: "Search Messages",
+      label: menuLabel("chat-header-search-messages", "Search Messages"),
       disabled: true,
     },
     {
       key: "export-chat",
-      label: "Export Chat",
+      label: menuLabel("chat-header-export-chat", "Export Chat"),
       disabled: true,
     },
   ];
@@ -189,6 +193,7 @@ const ChatHeader = ({ onOpenHistory }: ChatHeaderProps) => {
               size="small"
               type="text"
               icon={<MoreOutlined rev={undefined} />}
+              data-testid="chat-header-more"
             />
           </Dropdown>
         </div>

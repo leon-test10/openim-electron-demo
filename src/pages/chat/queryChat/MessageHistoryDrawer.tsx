@@ -16,6 +16,7 @@ import { FC, useCallback, useEffect, useMemo, useState } from "react";
 
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useMessageSelectionStore, useTerminalDockStore } from "@/store";
+import { e2eMessages } from "@/utils/e2eMockData";
 import emitter from "@/utils/events";
 import {
   formatMessagesAsPlainText,
@@ -64,6 +65,13 @@ const matchesRange = (message: MessageItem, range: SearchRange) => {
 const matchesType = (message: MessageItem, type: MessageTypeFilter) =>
   type === "all" || message.contentType === type;
 
+const recentOptionLabel = (value: number) => (
+  <span data-testid={`history-recent-${value}`}>{value}</span>
+);
+
+const isE2EMode =
+  typeof window !== "undefined" && window.location.hash.includes("/e2e-harness");
+
 const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
   conversationID,
   open,
@@ -108,6 +116,20 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
 
       setLoading(true);
       try {
+        if (isE2EMode) {
+          setHasMore(!loadMore);
+          setHistoryMessages((prevMessages) => {
+            const nextMessages = loadMore
+              ? [...e2eMessages, ...prevMessages]
+              : e2eMessages.slice(-count);
+            setMessages(nextMessages);
+            setResultCount(nextMessages.length);
+            return nextMessages;
+          });
+          setMode("history");
+          return;
+        }
+
         const { data } = await IMSDK.getAdvancedHistoryMessageList({
           count,
           startClientMsgID: loadMore ? startClientMsgID : "",
@@ -170,6 +192,19 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
 
     setLoading(true);
     try {
+      if (isE2EMode) {
+        const searchMessages = applyLocalFilters(e2eMessages).filter((message) =>
+          getPlainMessageContent(message)
+            .toLowerCase()
+            .includes(trimmedKeyword.toLowerCase()),
+        );
+        setMode("search");
+        setMessages(searchMessages);
+        setResultCount(searchMessages.length);
+        setHasMore(false);
+        return;
+      }
+
       const { data } = await IMSDK.searchLocalMessages({
         conversationID,
         keywordList: [trimmedKeyword],
@@ -240,14 +275,14 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
         </Button>
       }
     >
-      <div className="flex h-full flex-col gap-3">
+      <div className="flex h-full flex-col gap-3" data-testid="history-drawer">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-[#667085]">Recent</span>
           <Segmented
             size="small"
             value={quickCount}
             options={quickLoadOptions.map((value) => ({
-              label: String(value),
+              label: recentOptionLabel(value),
               value,
             }))}
             onChange={(value) => onQuickLoadChange(Number(value))}
@@ -258,6 +293,7 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
             onClick={() =>
               void loadMessages(pageSize, true, historyMessages[0]?.clientMsgID)
             }
+            data-testid="history-load-more"
           >
             Load More
           </Button>
@@ -273,6 +309,7 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
               value={keyword}
               onChange={(event) => setKeyword(event.target.value)}
               onSearch={() => void runSearch()}
+              data-testid="history-search-input"
             />
             <Select<MessageTypeFilter>
               size="small"
@@ -299,10 +336,15 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
               loading={loading}
               disabled={!conversationID}
               onClick={() => void runSearch()}
+              data-testid="history-apply-filter"
             >
               Apply
             </Button>
-            <Button size="small" onClick={resetSearch}>
+            <Button
+              size="small"
+              onClick={resetSearch}
+              data-testid="history-reset-filter"
+            >
               Reset
             </Button>
           </div>
@@ -319,6 +361,7 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
             size="small"
             disabled={messages.length === 0}
             onClick={selectVisibleMessages}
+            data-testid="history-select-visible"
           >
             Select Visible
           </Button>
@@ -333,6 +376,7 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
             size="small"
             disabled={selectedCount === 0}
             onClick={createContextFromSelection}
+            data-testid="history-create-context"
           >
             Create Context
           </Button>
