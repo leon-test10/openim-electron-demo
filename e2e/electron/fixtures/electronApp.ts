@@ -5,6 +5,8 @@ import {
   test as base,
 } from "@playwright/test";
 
+import { gotoHarness } from "../helpers/wait";
+
 type ElectronFixtures = {
   electronApp: ElectronApplication;
   appWindow: Page;
@@ -27,11 +29,7 @@ export const test = base.extend<ElectronFixtures>({
 
   appWindow: async ({ electronApp }, use) => {
     const window = await electronApp.firstWindow();
-    await window.waitForLoadState("domcontentloaded");
-    await window.evaluate(() => {
-      window.location.hash = "#/e2e-harness";
-    });
-    await window.waitForURL(/e2e-harness/);
+    await gotoHarness(window);
     await use(window);
   },
 });

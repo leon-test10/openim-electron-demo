@@ -16,9 +16,25 @@ import MessageSelectionToolbar from "../chat/queryChat/MessageSelectionToolbar";
 
 const E2EHarness = () => {
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [terminalEnabled, setTerminalEnabled] = useState(
+    () => typeof window !== "undefined" && window.location.hash.includes("terminal=1"),
+  );
   const selectionActive = useMessageSelectionStore(
     (state) => state.activeConversationID === e2eConversationID,
   );
+
+  useEffect(() => {
+    const syncTerminalFlag = () => {
+      setTerminalEnabled(window.location.hash.includes("terminal=1"));
+    };
+
+    syncTerminalFlag();
+    window.addEventListener("hashchange", syncTerminalFlag);
+
+    return () => {
+      window.removeEventListener("hashchange", syncTerminalFlag);
+    };
+  }, []);
 
   useEffect(() => {
     useUserStore.setState((state) => ({
@@ -33,13 +49,13 @@ const E2EHarness = () => {
       currentConversation: e2eConversation,
       conversationList: [e2eConversation],
     });
-    useTerminalDockStore.getState().setPanelOpen(true);
+    useTerminalDockStore.getState().setPanelOpen(terminalEnabled);
 
     return () => {
       useMessageSelectionStore.getState().clearSelection(e2eConversationID);
       useTerminalDockStore.getState().setPanelOpen(false);
     };
-  }, []);
+  }, [terminalEnabled]);
 
   return (
     <div className="flex h-screen flex-col bg-white">
@@ -65,7 +81,7 @@ const E2EHarness = () => {
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
       />
-      <TerminalDock />
+      {terminalEnabled && <TerminalDock />}
     </div>
   );
 };

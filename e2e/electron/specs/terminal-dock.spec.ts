@@ -1,10 +1,10 @@
 import { expect, test } from "../fixtures/electronApp";
-import { waitForHarness } from "../helpers/wait";
+import { gotoHarness } from "../helpers/wait";
 
 test("terminal dock smoke is available without a real runtime", async ({
   appWindow,
 }) => {
-  await waitForHarness(appWindow);
+  await gotoHarness(appWindow, { terminal: true });
 
   await expect(appWindow.getByTestId("terminal-dock")).toBeVisible();
   await expect(appWindow.getByTestId("terminal-run-profile")).toBeVisible();

@@ -37,6 +37,12 @@ Scope completed in this pass:
   - skip single-instance lock;
   - skip tray creation;
   - skip native OpenIM SDK initialization.
+- Stabilized Electron E2E window behavior:
+  - show the main window directly in `E2E_MODE`;
+  - let the E2E window close terminate instead of hiding to tray;
+  - navigate tests directly to the built `dist/index.html#/e2e-harness`;
+  - make Terminal Dock opt-in for the harness via `?terminal=1`, so message
+    selection tests are not covered by the dock overlay.
 
 Changed files in this pass:
 
@@ -70,11 +76,8 @@ Validation run:
   specified in eslint-plugin-react settings.
 - `npx.cmd tsc --noEmit`: pass.
 - `npm.cmd run build`: pass. Existing Vite/AntD/chunk-size warnings remain.
-- `npm.cmd run test:e2e`: Electron launch cannot run inside the current sandbox.
-  Playwright reaches `_electron.launch`, but Electron exits before a window is
-  attached. A minimal Electron command also exits in the sandbox. The next
-  verification step is to rerun `npm.cmd run test:e2e` in an unsandboxed desktop
-  shell or approve the GUI escalation request.
+- `npm.cmd run test:e2e`: pass in approved GUI/Electron execution. Result:
+  5 passed.
 
 Important semantics and limits:
 
@@ -90,12 +93,10 @@ Important semantics and limits:
 
 Recommended next implementation slice:
 
-1. Rerun `npm.cmd run test:e2e` outside the sandbox and fix any page-level
-   assertion failures that appear after Electron can launch.
-2. If the hidden `#/e2e-harness` route is not acceptable in production bundles,
+1. If the hidden `#/e2e-harness` route is not acceptable in production bundles,
    add a stable Windows-safe build flag or separate harness entry that avoids the
    current esbuild config-loader crash.
-3. Continue with P4/P5 hardening only after this baseline is green in Electron.
+2. Continue with P4/P5 hardening on top of the now-green Electron baseline.
 
 ## Latest Update - Message Search and Range Context MVP
 

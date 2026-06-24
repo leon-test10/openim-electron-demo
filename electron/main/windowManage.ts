@@ -26,12 +26,14 @@ function createSplashWindow() {
 }
 
 export function createMainWindow() {
-  createSplashWindow();
+  if (!isE2EMode) {
+    createSplashWindow();
+  }
   mainWindow = new BrowserWindow({
     title: "Dev-ER",
     icon: join(global.pathConfig.publicPath, "favicon.ico"),
     frame: false,
-    show: false,
+    show: isE2EMode,
     width: 1024,
     height: 726,
     minWidth: 1024,
@@ -83,7 +85,7 @@ export function createMainWindow() {
   });
 
   mainWindow.on("close", (e) => {
-    if (getIsForceQuit() || !mainWindow.isVisible()) {
+    if (isE2EMode || getIsForceQuit() || !mainWindow.isVisible()) {
       mainWindow = null;
       destroyTray();
     } else {
