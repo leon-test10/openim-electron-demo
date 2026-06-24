@@ -34,4 +34,6 @@ export const IpcRenderToMain = {
   workspaceGetConversationDir: "workspace:getConversationDir",
   workspaceWriteFile: "workspace:writeFile",
   workspaceWriteWorkspaceFile: "workspace:writeWorkspaceFile",
+  workspaceCopyWorkspaceFile: "workspace:copyWorkspaceFile",
+  workspaceDownloadWorkspaceFile: "workspace:downloadWorkspaceFile",
 };

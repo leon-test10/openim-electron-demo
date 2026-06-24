@@ -14,6 +14,8 @@ import { changeLanguage } from "../i18n";
 import { runtimeManager } from "./runtimeManage";
 import { terminalManager } from "./terminalManage";
 import {
+  copyFileToTerminalWorkspace,
+  downloadFileToTerminalWorkspace,
   getConversationWorkspaceDir,
   getTerminalWorkspaceDir,
   writeFileToConversationWorkspace,
@@ -143,6 +145,12 @@ export const setIpcMainListener = () => {
   });
   ipcMain.handle(IpcRenderToMain.workspaceWriteWorkspaceFile, (_, params) => {
     return writeFileToTerminalWorkspace(params);
+  });
+  ipcMain.handle(IpcRenderToMain.workspaceCopyWorkspaceFile, (_, params) => {
+    return copyFileToTerminalWorkspace(params);
+  });
+  ipcMain.handle(IpcRenderToMain.workspaceDownloadWorkspaceFile, (_, params) => {
+    return downloadFileToTerminalWorkspace(params);
   });
   ipcMain.on(IpcRenderToMain.getDataPath, (e, key: string) => {
     switch (key) {

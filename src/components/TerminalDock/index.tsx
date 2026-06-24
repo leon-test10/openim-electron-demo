@@ -30,7 +30,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { IMSDK } from "@/layout/MainContentWrap";
-import { ContextBundle, ContextSource, IMContextService } from "@/services/imContext";
+import {
+  ContextBundle,
+  ContextSource,
+  exportContextAttachments,
+  IMContextService,
+} from "@/services/imContext";
 import {
   useConversationStore,
   useMessageSelectionStore,
@@ -47,6 +52,12 @@ type ContextExportResult = {
   prompt: string;
   files: string[];
   bundle: ContextBundle;
+};
+
+type WorkspaceAttachmentExportResponse = {
+  path?: string;
+  size?: number;
+  sha256?: string;
 };
 
 type TerminalSelectionFallbackState = {
@@ -480,36 +491,69 @@ const TerminalDock = () => {
   ): Promise<ContextExportResult | undefined> => {
     if (!activeWorkspace || !window.electronAPI) return undefined;
 
+    const finalizedBundle =
+      bundle.attachments.length > 0
+        ? IMContextService.withContextAttachments(
+            bundle,
+            await exportContextAttachments({
+              attachments: bundle.attachments,
+              copyFile: (sourcePath, relativePath, maxBytes) =>
+                window.electronAPI!.ipcInvoke<WorkspaceAttachmentExportResponse>(
+                  "workspace:copyWorkspaceFile",
+                  {
+                    workspaceID: activeWorkspace.id,
+                    sourcePath,
+                    relativePath,
+                    maxBytes,
+                  },
+                ),
+              downloadFile: (url, relativePath, maxBytes) =>
+                window.electronAPI!.ipcInvoke<WorkspaceAttachmentExportResponse>(
+                  "workspace:downloadWorkspaceFile",
+                  {
+                    workspaceID: activeWorkspace.id,
+                    url,
+                    relativePath,
+                    maxBytes,
+                  },
+                ),
+            }),
+          )
+        : bundle;
+
     await window.electronAPI.ipcInvoke("workspace:writeWorkspaceFile", {
       workspaceID: activeWorkspace.id,
-      relativePath: bundle.files.markdownPath,
-      content: bundle.markdown,
+      relativePath: finalizedBundle.files.markdownPath,
+      content: finalizedBundle.markdown,
     });
     await window.electronAPI.ipcInvoke("workspace:writeWorkspaceFile", {
       workspaceID: activeWorkspace.id,
-      relativePath: bundle.files.manifestPath,
-      content: JSON.stringify(bundle.manifest, null, 2),
+      relativePath: finalizedBundle.files.manifestPath,
+      content: JSON.stringify(finalizedBundle.manifest, null, 2),
     });
 
-    setLastContextPrompt(activeWorkspace.id, bundle.promptText);
+    setLastContextPrompt(activeWorkspace.id, finalizedBundle.promptText);
     addContextBundleRecord(activeWorkspace.id, {
-      id: bundle.id,
+      id: finalizedBundle.id,
       workspaceID: activeWorkspace.id,
-      createdAt: bundle.createdAt,
-      sourceKind: bundle.source.kind,
-      conversationID: bundle.source.conversationID,
-      messageCount: bundle.stats.messageCount,
-      attachmentCount: bundle.stats.attachmentCount,
-      approxChars: bundle.stats.approxChars,
-      markdownPath: bundle.files.markdownPath,
-      manifestPath: bundle.files.manifestPath,
-      promptText: bundle.promptText,
+      createdAt: finalizedBundle.createdAt,
+      sourceKind: finalizedBundle.source.kind,
+      conversationID: finalizedBundle.source.conversationID,
+      messageCount: finalizedBundle.stats.messageCount,
+      attachmentCount: finalizedBundle.stats.attachmentCount,
+      exportedAttachmentCount: finalizedBundle.stats.exportedAttachmentCount,
+      failedAttachmentCount: finalizedBundle.stats.failedAttachmentCount,
+      unsupportedAttachmentCount: finalizedBundle.stats.unsupportedAttachmentCount,
+      approxChars: finalizedBundle.stats.approxChars,
+      markdownPath: finalizedBundle.files.markdownPath,
+      manifestPath: finalizedBundle.files.manifestPath,
+      promptText: finalizedBundle.promptText,
     });
 
     return {
-      prompt: bundle.promptText,
-      files: [bundle.files.markdownPath, bundle.files.manifestPath],
-      bundle,
+      prompt: finalizedBundle.promptText,
+      files: [finalizedBundle.files.markdownPath, finalizedBundle.files.manifestPath],
+      bundle: finalizedBundle,
     };
   };
 
@@ -528,12 +572,16 @@ const TerminalDock = () => {
       return undefined;
     }
 
-    setContextPreviewBundle(bundle);
+    setContextPreviewBundle(result.bundle);
     if (options.copyPrompt) {
-      await navigator.clipboard.writeText(bundle.promptText);
+      await navigator.clipboard.writeText(result.bundle.promptText);
       message.success("Context prompt copied");
     } else {
-      message.success("Context bundle created");
+      message.success(
+        result.bundle.stats.attachmentCount > 0
+          ? `Context created with ${result.bundle.stats.exportedAttachmentCount} exported attachments and ${result.bundle.stats.failedAttachmentCount} failed attachments`
+          : "Context bundle created",
+      );
     }
 
     if (options.sendPrompt) {
@@ -541,7 +589,7 @@ const TerminalDock = () => {
         message.warning("No active terminal");
         return result;
       }
-      await writeToTab(activeTab.id, `${bundle.promptText}\r\n`);
+      await writeToTab(activeTab.id, `${result.bundle.promptText}\r\n`);
       terminalApisRef.current.get(activeTab.id)?.focus();
       message.success("Context prompt sent to terminal");
     }
@@ -565,12 +613,16 @@ const TerminalDock = () => {
       return undefined;
     }
 
-    setContextPreviewBundle(bundle);
+    setContextPreviewBundle(result.bundle);
     if (options.copyPrompt) {
-      await navigator.clipboard.writeText(bundle.promptText);
+      await navigator.clipboard.writeText(result.bundle.promptText);
       message.success("IM context prompt copied");
     } else {
-      message.success("IM context bundle created");
+      message.success(
+        result.bundle.stats.attachmentCount > 0
+          ? `IM context created with ${result.bundle.stats.exportedAttachmentCount} exported attachments and ${result.bundle.stats.failedAttachmentCount} failed attachments`
+          : "IM context bundle created",
+      );
     }
 
     if (options.sendPrompt) {
@@ -578,7 +630,7 @@ const TerminalDock = () => {
         message.warning("No active terminal");
         return result;
       }
-      await writeToTab(activeTab.id, `${bundle.promptText}\r\n`);
+      await writeToTab(activeTab.id, `${result.bundle.promptText}\r\n`);
       terminalApisRef.current.get(activeTab.id)?.focus();
       message.success("IM context prompt sent to terminal");
     }
@@ -1283,6 +1335,10 @@ const TerminalDock = () => {
               <div className="terminal-dock-context-stats">
                 <span>{contextPreviewBundle.stats.messageCount} messages</span>
                 <span>{contextPreviewBundle.stats.attachmentCount} attachments</span>
+                <span>
+                  {contextPreviewBundle.stats.exportedAttachmentCount} exported
+                </span>
+                <span>{contextPreviewBundle.stats.failedAttachmentCount} failed</span>
                 <span>{contextPreviewBundle.stats.approxChars} chars</span>
               </div>
               <div className="terminal-dock-context-files">
@@ -1293,12 +1349,14 @@ const TerminalDock = () => {
                 readOnly
                 className="terminal-dock-context-preview"
                 value={contextPreviewBundle.markdown}
+                data-testid="terminal-context-markdown-preview"
                 autoSize={{ minRows: 14, maxRows: 22 }}
               />
               <Input.TextArea
                 readOnly
                 className="terminal-dock-context-preview"
                 value={contextPreviewBundle.promptText}
+                data-testid="terminal-context-prompt-preview"
                 autoSize={{ minRows: 5, maxRows: 8 }}
               />
             </>
@@ -1343,6 +1401,8 @@ const TerminalDock = () => {
                       <div className="terminal-dock-context-history-meta">
                         <span>{record.messageCount} messages</span>
                         <span>{record.attachmentCount} attachments</span>
+                        <span>{record.exportedAttachmentCount} exported</span>
+                        <span>{record.failedAttachmentCount} failed</span>
                         <span>{record.approxChars} chars</span>
                       </div>
                       <div className="terminal-dock-context-history-path">

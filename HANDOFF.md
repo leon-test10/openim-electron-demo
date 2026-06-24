@@ -1,5 +1,97 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P7 Attachment Export and Manifest
+
+Current branch: `feature/attachment-context-export`
+
+Source branch: `feature/im-context-service`
+
+Scope completed:
+
+- Added attachment schema and helpers under `src/services/imContext/attachments/`.
+- Added `ContextAttachment`, attachment kind/status/source types, stable
+  `attachmentId`, `logicalUri`, safe file names, and workspace-relative
+  attachment paths.
+- Added defensive attachment extraction for OpenIM image, file, video, audio,
+  and unsupported message types.
+- Image/file/pdf/text attachments receive workspace-relative export targets.
+- Video/audio are represented in manifest as skipped placeholders in this first
+  P7 slice to avoid large automatic workspace exports.
+- Added `exportContextAttachments` with per-attachment failure isolation.
+- Local file copy is attempted first; if it fails and an HTTP(S) URL exists, the
+  export falls back to download.
+- Added Electron main IPC:
+  - `workspace:copyWorkspaceFile`;
+  - `workspace:downloadWorkspaceFile`.
+- Workspace file export validates the destination remains inside the active
+  terminal workspace and computes size plus SHA-256 for exported files.
+- Manifest now includes a top-level `attachments` array and attachment IDs per
+  message.
+- Markdown now includes an `Attachments:` section under each relevant message,
+  including status, path, logical URI, source URL, size, SHA-256, and errors.
+- Prompt now tells the terminal agent to inspect markdown, manifest, and
+  exported workspace-relative attachment paths.
+- Terminal Dock context persistence now exports attachments before writing the
+  final markdown/manifest files.
+- Context History now stores and displays attachment/export/failure stats.
+- E2E harness now includes mock image/file attachment messages and mock
+  copy/download IPC behavior.
+- Added E2E coverage for:
+  - exported image attachment paths;
+  - failed attachment export not blocking bundle creation;
+  - Send Prompt to Terminal containing attachment/status guidance.
+
+Files changed in this pass:
+
+- `electron/constants/index.ts`
+- `electron/main/ipcHandlerManage.ts`
+- `electron/main/workspaceManage.ts`
+- `src/services/imContext/attachments/*`
+- `src/services/imContext/IMContextService.ts`
+- `src/services/imContext/index.ts`
+- `src/services/imContext/types.ts`
+- `src/components/TerminalDock/index.tsx`
+- `src/store/type.d.ts`
+- `src/store/terminalDock.ts`
+- `src/pages/e2e/E2EHarness.tsx`
+- `src/utils/e2eMockData.ts`
+- `e2e/electron/fixtures/mockOpenIM.ts`
+- `e2e/electron/specs/history-drawer.spec.ts`
+- `e2e/electron/specs/terminal-dock.spec.ts`
+
+Validation run:
+
+- `git diff --check`: pass.
+- `npm.cmd run lint -- --quiet`: pass. Existing warning: React version is not
+  specified in eslint-plugin-react settings.
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd run build`: pass. Existing Vite/AntD/chunk-size warnings remain.
+- `npm.cmd run test:e2e`: pass. Result: 11 passed.
+
+Important semantics and limits:
+
+- P7 was validated with mock/harness E2E only.
+- Real OpenIM server attachment URL/local-cache behavior still requires manual
+  or real-account validation.
+- No `@bot` behavior was added.
+- No Auto Inject behavior was added.
+- No Auto Reply or automated IM sending behavior was added.
+- No direct multimodal LLM API call was added.
+- No runtime-specific attachment flags were added.
+- No workspace-file-to-IM attachment send was added.
+- No terminal output path auto-parse was added.
+- `workspaceAbsolutePath` remains an in-memory export result; manifest output is
+  path-first with workspace-relative paths.
+
+Recommended next implementation slice:
+
+1. Validate real OpenIM image/file messages against Docker/local accounts and
+   confirm actual `sourcePath` / `filePath` / URL behavior.
+2. Add optional `Open Attachments Folder` / `Copy Attachments Path` actions to
+   Context History.
+3. Add workspace-file-to-IM attachment sending only after explicit UX/safety
+   planning.
+
 ## Latest Update - P6 Neutral IM Context Service
 
 Current branch: `feature/im-context-service`

@@ -144,6 +144,18 @@ const normalizeContextBundleHistory = (
             messageCount: typeof item.messageCount === "number" ? item.messageCount : 0,
             attachmentCount:
               typeof item.attachmentCount === "number" ? item.attachmentCount : 0,
+            exportedAttachmentCount:
+              typeof item.exportedAttachmentCount === "number"
+                ? item.exportedAttachmentCount
+                : 0,
+            failedAttachmentCount:
+              typeof item.failedAttachmentCount === "number"
+                ? item.failedAttachmentCount
+                : 0,
+            unsupportedAttachmentCount:
+              typeof item.unsupportedAttachmentCount === "number"
+                ? item.unsupportedAttachmentCount
+                : 0,
             approxChars: typeof item.approxChars === "number" ? item.approxChars : 0,
             markdownPath: item.markdownPath,
             manifestPath: item.manifestPath,

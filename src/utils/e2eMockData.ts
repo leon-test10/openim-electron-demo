@@ -46,8 +46,77 @@ export const createE2ETextMessage = (
     sendTime: Date.now() - sendTimeOffset,
   } as unknown as MessageItem);
 
+export const createE2EPictureMessage = (clientMsgID: string, sendTimeOffset: number) =>
+  ({
+    clientMsgID,
+    serverMsgID: clientMsgID,
+    conversationID: e2eConversationID,
+    sendID: "e2e_peer",
+    recvID: "e2e_self",
+    senderNickname: "E2E Peer",
+    senderFaceUrl: "",
+    sessionType: SessionType.Single,
+    contentType: MessageType.PictureMessage,
+    pictureElem: {
+      sourcePath: "C:\\OpenIM-E2E\\fixtures\\context-image.png",
+      sourcePicture: {
+        uuid: "context-image.png",
+        type: "image/png",
+        size: 1024,
+        width: 640,
+        height: 360,
+        url: "mock://context-image.png",
+      },
+      bigPicture: {
+        uuid: "context-image.png",
+        type: "image/png",
+        size: 1024,
+        width: 640,
+        height: 360,
+        url: "mock://context-image.png",
+      },
+      snapshotPicture: {
+        uuid: "context-image-thumb.png",
+        type: "image/png",
+        size: 256,
+        width: 160,
+        height: 90,
+        url: "mock://context-image-thumb.png",
+      },
+    },
+    sendTime: Date.now() - sendTimeOffset,
+  } as unknown as MessageItem);
+
+export const createE2EFileMessage = (clientMsgID: string, sendTimeOffset: number) =>
+  ({
+    clientMsgID,
+    serverMsgID: clientMsgID,
+    conversationID: e2eConversationID,
+    sendID: "e2e_self",
+    recvID: "e2e_peer",
+    senderNickname: "E2E Self",
+    senderFaceUrl: "",
+    sessionType: SessionType.Single,
+    contentType: MessageType.FileMessage,
+    fileElem: {
+      filePath: "",
+      uuid: "failed-download.log",
+      sourceUrl: "mock://fail-download.log",
+      fileName: "failed-download.log",
+      fileSize: 2048,
+    },
+    sendTime: Date.now() - sendTimeOffset,
+  } as unknown as MessageItem);
+
+export const e2eAttachmentMessageIDs = {
+  image: "e2e_msg_image",
+  failedFile: "e2e_msg_failed_file",
+};
+
 export const e2eMessages = [
-  createE2ETextMessage("e2e_msg_1", "hello from e2e self", 3000),
-  createE2ETextMessage("e2e_msg_2", "reply from e2e peer", 2000),
-  createE2ETextMessage("e2e_msg_3", "searchable history message", 1000),
+  createE2ETextMessage("e2e_msg_1", "hello from e2e self", 5000),
+  createE2ETextMessage("e2e_msg_2", "reply from e2e peer", 4000),
+  createE2ETextMessage("e2e_msg_3", "searchable history message", 3000),
+  createE2EPictureMessage(e2eAttachmentMessageIDs.image, 2000),
+  createE2EFileMessage(e2eAttachmentMessageIDs.failedFile, 1000),
 ];

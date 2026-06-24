@@ -20,6 +20,15 @@ const installE2EElectronMock = () => {
 
   const subscribers = new Map<string, Set<(...args: unknown[]) => void>>();
   const workspaceRoot = "C:\\OpenIM-E2E\\workspaces";
+  const e2eWindow = window as unknown as {
+    __e2eTerminalWrites?: string[];
+    __e2eWorkspaceWrites?: Array<{
+      relativePath?: string;
+      content?: string;
+    }>;
+  };
+  e2eWindow.__e2eTerminalWrites = [];
+  e2eWindow.__e2eWorkspaceWrites = [];
 
   window.electronAPI = {
     getDataPath: () => "C:\\OpenIM-E2E",
@@ -72,13 +81,47 @@ const installE2EElectronMock = () => {
         return Promise.resolve(result as T);
       }
 
-      if (
-        channel === "terminal:write" ||
-        channel === "terminal:resize" ||
-        channel === "terminal:interrupt" ||
-        channel === "workspace:writeWorkspaceFile"
-      ) {
+      if (channel === "terminal:write") {
+        const params = args[0] as { data?: string };
+        e2eWindow.__e2eTerminalWrites?.push(params.data ?? "");
         result = { ok: true };
+        return Promise.resolve(result as T);
+      }
+
+      if (channel === "workspace:writeWorkspaceFile") {
+        const params = args[0] as { relativePath?: string; content?: string };
+        e2eWindow.__e2eWorkspaceWrites?.push(params);
+        result = { ok: true };
+        return Promise.resolve(result as T);
+      }
+
+      if (channel === "terminal:resize" || channel === "terminal:interrupt") {
+        result = { ok: true };
+        return Promise.resolve(result as T);
+      }
+
+      if (channel === "workspace:copyWorkspaceFile") {
+        const params = args[0] as { relativePath: string };
+        result = {
+          ok: true,
+          path: `${workspaceRoot}\\mock\\${params.relativePath.replaceAll("/", "\\")}`,
+          size: 1024,
+          sha256: "e2e-image-sha256",
+        };
+        return Promise.resolve(result as T);
+      }
+
+      if (channel === "workspace:downloadWorkspaceFile") {
+        const params = args[0] as { url: string; relativePath: string };
+        if (params.url.includes("fail-download")) {
+          return Promise.reject(new Error("E2E attachment download failed"));
+        }
+        result = {
+          ok: true,
+          path: `${workspaceRoot}\\mock\\${params.relativePath.replaceAll("/", "\\")}`,
+          size: 2048,
+          sha256: "e2e-download-sha256",
+        };
         return Promise.resolve(result as T);
       }
 

@@ -1,3 +1,7 @@
+import { MessageItem } from "@openim/wasm-client-sdk/lib/types/entity";
+
+import { ContextAttachment } from "./attachments";
+
 export type ContextSourceKind =
   | "recentMessages"
   | "selectedMessages"
@@ -30,23 +34,31 @@ export interface ContextBundle {
   };
   promptText: string;
   markdown: string;
-  manifest: {
-    id: string;
-    createdAt: number;
-    workspacePath: string;
-    source: ContextSource;
-    messages: Array<{
-      clientMsgID: string;
-      contentType: number;
-      sendTime?: number;
-      senderNickname?: string;
-      attachment?: Record<string, unknown>;
-    }>;
-    stats: ContextBundle["stats"];
-  };
+  messages: MessageItem[];
+  attachments: ContextAttachment[];
+  manifest: ContextManifest;
   stats: {
     messageCount: number;
     attachmentCount: number;
+    exportedAttachmentCount: number;
+    failedAttachmentCount: number;
+    unsupportedAttachmentCount: number;
     approxChars: number;
   };
+}
+
+export interface ContextManifest {
+  id: string;
+  createdAt: number;
+  workspacePath: string;
+  source: ContextSource;
+  messages: Array<{
+    clientMsgID: string;
+    contentType: number;
+    sendTime?: number;
+    senderNickname?: string;
+    attachments: string[];
+  }>;
+  attachments: ContextAttachment[];
+  stats: ContextBundle["stats"];
 }

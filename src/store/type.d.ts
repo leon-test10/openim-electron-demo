@@ -206,6 +206,9 @@ export interface TerminalContextBundleRecord {
   conversationID: string;
   messageCount: number;
   attachmentCount: number;
+  exportedAttachmentCount: number;
+  failedAttachmentCount: number;
+  unsupportedAttachmentCount: number;
   approxChars: number;
   markdownPath: string;
   manifestPath: string;
