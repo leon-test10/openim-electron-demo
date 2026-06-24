@@ -5,6 +5,7 @@ import {
   messageActionTrigger,
   messageItem,
 } from "../helpers/selectors";
+import { setupTerminalHarness } from "../helpers/terminal";
 import { waitForHarness } from "../helpers/wait";
 
 test("header selection flow uses IM-native toolbar", async ({ appWindow }) => {
@@ -64,4 +65,20 @@ test("selected toolbar nests agent actions under More", async ({ appWindow }) =>
   await expect(
     appWindow.getByTestId("message-selection-agent-send-terminal"),
   ).toBeVisible();
+});
+
+test("selected messages create neutral IM context", async ({ appWindow }) => {
+  await setupTerminalHarness(appWindow);
+
+  await appWindow.locator(messageActionTrigger(e2eMessageIDs[0])).click();
+  await appWindow.getByTestId("message-action-select").click();
+
+  await appWindow.getByTestId("message-selection-more").click();
+  await appWindow.getByTestId("message-selection-agent-menu").hover();
+  await appWindow.getByTestId("message-selection-agent-create-context").click();
+
+  await expect(appWindow.getByTestId("terminal-context-modal")).toBeVisible();
+  await expect(appWindow.getByTestId("terminal-context-history")).toContainText(
+    "selectedMessages",
+  );
 });

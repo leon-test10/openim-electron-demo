@@ -1,5 +1,94 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P6 Neutral IM Context Service
+
+Current branch: `feature/im-context-service`
+
+Source branch: `feature/terminal-dock-redesign`
+
+Scope completed:
+
+- Added neutral IM context service under `src/services/imContext/`.
+- Defined shared `ContextSource`, `ContextBundle`, and `ContextAction` types.
+- Supported context source kinds:
+  - `recentMessages`;
+  - `selectedMessages`;
+  - `historyMessages`;
+  - `searchResults`.
+- Moved markdown, manifest, prompt, message formatting, and bundle generation
+  logic out of the old utility path and into `IMContextService`.
+- Kept `src/utils/imContextBuilder.ts` as a deprecated re-export shim for
+  compatibility.
+- Added neutral `IM_CONTEXT_ACTION` event.
+- Kept `TERMINAL_CONTEXT_ACTION` as a deprecated compatibility alias.
+- Updated selected-message toolbar, per-message action menu, and history drawer
+  actions to emit `IM_CONTEXT_ACTION`.
+- `MessageHistoryDrawer` now sends `historyMessages` for normal history
+  selections and `searchResults` for search-result selections.
+- Added History Drawer `Copy Prompt` and `Send Prompt` entries beside
+  `Create Context`.
+- Refactored `TerminalDock` so it consumes `ContextBundle` from the neutral
+  service, while still owning terminal/workspace-specific responsibilities:
+  workspace file writes, prompt copy, prompt send, and Context History.
+- Recent-message context still starts from Terminal Dock UI, but bundle creation
+  now also goes through `IMContextService`.
+- Extended Electron E2E coverage for selected-message, history-message,
+  search-result, and Terminal Dock context-history flows.
+- Added an E2E-only Electron API mock in the hidden harness so terminal workspace
+  flows can be tested without a real PTY/runtime process.
+
+Files changed in this pass:
+
+- `src/services/imContext/types.ts`
+- `src/services/imContext/IMContextService.ts`
+- `src/services/imContext/index.ts`
+- `src/utils/imContextBuilder.ts`
+- `src/utils/events.ts`
+- `src/store/type.d.ts`
+- `src/store/terminalDock.ts`
+- `src/components/TerminalDock/index.tsx`
+- `src/components/TerminalDock/WorkspaceBar.tsx`
+- `src/components/TerminalDock/TerminalTabs.tsx`
+- `src/pages/chat/queryChat/MessageSelectionToolbar.tsx`
+- `src/pages/chat/queryChat/MessageItem/MessageActionMenu.tsx`
+- `src/pages/chat/queryChat/MessageHistoryDrawer.tsx`
+- `src/pages/e2e/E2EHarness.tsx`
+- `e2e/electron/helpers/terminal.ts`
+- `e2e/electron/specs/message-selection.spec.ts`
+- `e2e/electron/specs/history-drawer.spec.ts`
+- `e2e/electron/specs/terminal-dock.spec.ts`
+
+Validation run:
+
+- `git diff --check`: pass.
+- `npm.cmd run lint -- --quiet`: pass. Existing warning: React version is not
+  specified in eslint-plugin-react settings.
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd run build`: pass. Existing Vite/AntD/chunk-size warnings remain.
+- `npm.cmd run test:e2e`: pass. Result: 9 passed.
+
+Important semantics and limits:
+
+- `IMContextService` is pure bundle generation. It does not write workspace
+  files, write terminal input, send IM messages, or manage runtime state.
+- Terminal Dock is no longer the sole owner of IM-message-to-context generation,
+  but it still owns workspace persistence and terminal handoff.
+- No `@bot` behavior was added.
+- No Auto Inject behavior was added.
+- No Auto Reply or automated IM sending behavior was added.
+- No attachment binary export was added.
+- No multi-conversation context selector was added.
+- `TERMINAL_CONTEXT_ACTION` remains only as a deprecated compatibility path;
+  new UI actions use `IM_CONTEXT_ACTION`.
+
+Recommended next implementation slice:
+
+1. Add attachment binary save/export into workspace for local files and images.
+2. Add a multi-conversation selector for context bundle creation.
+3. Add an explicit context preview/reload path from persisted workspace files if
+   needed.
+4. Keep any future `@bot` / auto-send behavior behind a separate safety plan.
+
 ## Latest Update - P3 Fix + Electron E2E Baseline
 
 Current branch: `feature/terminal-dock-redesign`

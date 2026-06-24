@@ -50,6 +50,7 @@ const WorkspaceBar = ({
           disabled={disabled}
           icon={<PlusOutlined rev={undefined} />}
           onClick={onCreateWorkspace}
+          data-testid="terminal-new-workspace"
         />
       </Tooltip>
       <Tooltip title="Open Workspace Folder">
@@ -80,6 +81,7 @@ const WorkspaceBar = ({
           disabled={disabled || !activeWorkspace}
           icon={<ExportOutlined rev={undefined} />}
           onClick={onExportContext}
+          data-testid="terminal-export-context"
         />
       </Tooltip>
     </div>

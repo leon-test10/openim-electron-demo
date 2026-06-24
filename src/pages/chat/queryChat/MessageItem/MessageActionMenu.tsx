@@ -41,8 +41,12 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
 
     selectOnlyMessage(conversationID, message);
     setTerminalPanelOpen(true);
-    emitter.emit("TERMINAL_CONTEXT_ACTION", {
-      source: "selectedMessages",
+    emitter.emit("IM_CONTEXT_ACTION", {
+      source: {
+        kind: "selectedMessages",
+        conversationID,
+        messageIDs: [message.clientMsgID],
+      },
       action,
     });
   };

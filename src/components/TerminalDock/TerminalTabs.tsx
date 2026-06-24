@@ -31,6 +31,7 @@ const TerminalTabs = ({
         className="terminal-dock-icon-button h-8 w-8"
         onClick={onAdd}
         title="New Terminal"
+        data-testid="terminal-new-tab"
       >
         <PlusOutlined rev={undefined} />
       </button>

@@ -253,12 +253,17 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
     antdMessage.success("Selected history messages copied");
   };
 
-  const createContextFromSelection = () => {
+  const runContextActionFromSelection = (action: "preview" | "copy" | "send") => {
     if (selectedMessages.length === 0) return;
     setTerminalPanelOpen(true);
-    emitter.emit("TERMINAL_CONTEXT_ACTION", {
-      source: "selectedMessages",
-      action: "preview",
+    emitter.emit("IM_CONTEXT_ACTION", {
+      source: {
+        kind: mode === "search" ? "searchResults" : "historyMessages",
+        conversationID,
+        messageIDs: selectedMessages.map((message) => message.clientMsgID),
+        keyword: mode === "search" ? keyword.trim() : undefined,
+      },
+      action,
     });
   };
 
@@ -375,10 +380,26 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
           <Button
             size="small"
             disabled={selectedCount === 0}
-            onClick={createContextFromSelection}
+            onClick={() => runContextActionFromSelection("preview")}
             data-testid="history-create-context"
           >
             Create Context
+          </Button>
+          <Button
+            size="small"
+            disabled={selectedCount === 0}
+            onClick={() => runContextActionFromSelection("copy")}
+            data-testid="history-copy-prompt"
+          >
+            Copy Prompt
+          </Button>
+          <Button
+            size="small"
+            disabled={selectedCount === 0}
+            onClick={() => runContextActionFromSelection("send")}
+            data-testid="history-send-terminal"
+          >
+            Send Prompt
           </Button>
           <Button
             size="small"

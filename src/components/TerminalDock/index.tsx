@@ -30,14 +30,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { IMSDK } from "@/layout/MainContentWrap";
+import { ContextBundle, ContextSource, IMContextService } from "@/services/imContext";
 import {
   useConversationStore,
   useMessageSelectionStore,
   useTerminalDockStore,
 } from "@/store";
 import { TerminalContextBundleRecord, TerminalTab } from "@/store/type";
-import emitter, { emit, TerminalContextActionParams } from "@/utils/events";
-import { ContextBundle, createContextBundle } from "@/utils/imContextBuilder";
+import emitter, { emit, IMContextActionParams } from "@/utils/events";
 
 import TerminalSurface, { TerminalSurfaceApi } from "./TerminalSurface";
 import TerminalTabs from "./TerminalTabs";
@@ -431,7 +431,7 @@ const TerminalDock = () => {
       viewType: ViewType.History,
     });
 
-    return createContextBundle({
+    return IMContextService.createContextBundle({
       workspacePath: activeWorkspace.rootPath,
       source: {
         kind: "recentMessages",
@@ -442,20 +442,36 @@ const TerminalDock = () => {
     });
   };
 
-  const buildSelectedContextBundle = (): ContextBundle | undefined => {
-    if (!activeWorkspace || !conversationID || selectedMessages.length === 0) {
+  const buildMessagesContextBundle = (
+    params?: IMContextActionParams,
+  ): ContextBundle | undefined => {
+    const sourceConversationID = params?.source.conversationID ?? conversationID;
+    const sourceKind = params?.source.kind ?? "selectedMessages";
+
+    if (!activeWorkspace || !sourceConversationID || selectedMessages.length === 0) {
       return undefined;
     }
 
-    linkConversationToWorkspace(activeWorkspace.id, conversationID);
-    return createContextBundle({
+    const messageIDSet = new Set(params?.source.messageIDs ?? []);
+    const messages =
+      messageIDSet.size > 0
+        ? selectedMessages.filter((item) => messageIDSet.has(item.clientMsgID))
+        : selectedMessages;
+
+    if (messages.length === 0) return undefined;
+
+    const source: ContextSource = {
+      kind: sourceKind,
+      conversationID: sourceConversationID,
+      messageIDs: messages.map((item) => item.clientMsgID),
+      keyword: params?.source.keyword,
+    };
+
+    linkConversationToWorkspace(activeWorkspace.id, sourceConversationID);
+    return IMContextService.createContextBundle({
       workspacePath: activeWorkspace.rootPath,
-      source: {
-        kind: "selectedMessages",
-        conversationID,
-        messageIDs: selectedMessages.map((item) => item.clientMsgID),
-      },
-      messages: selectedMessages,
+      source,
+      messages,
     });
   };
 
@@ -533,10 +549,11 @@ const TerminalDock = () => {
     return result;
   };
 
-  const createSelectedContext = async (
+  const createMessagesContext = async (
     options: { copyPrompt?: boolean; sendPrompt?: boolean } = {},
+    params?: IMContextActionParams,
   ) => {
-    const bundle = buildSelectedContextBundle();
+    const bundle = buildMessagesContextBundle(params);
     if (!bundle) {
       message.warning("No selected messages");
       return undefined;
@@ -551,9 +568,9 @@ const TerminalDock = () => {
     setContextPreviewBundle(bundle);
     if (options.copyPrompt) {
       await navigator.clipboard.writeText(bundle.promptText);
-      message.success("Selected context prompt copied");
+      message.success("IM context prompt copied");
     } else {
-      message.success("Selected context bundle created");
+      message.success("IM context bundle created");
     }
 
     if (options.sendPrompt) {
@@ -563,32 +580,32 @@ const TerminalDock = () => {
       }
       await writeToTab(activeTab.id, `${bundle.promptText}\r\n`);
       terminalApisRef.current.get(activeTab.id)?.focus();
-      message.success("Selected context prompt sent to terminal");
+      message.success("IM context prompt sent to terminal");
     }
 
     return result;
   };
 
   useEffect(() => {
-    const handleContextAction = (params: TerminalContextActionParams) => {
-      if (params.source !== "selectedMessages") return;
-
+    const handleContextAction = (params: IMContextActionParams) => {
       setContextModalOpen(true);
       if (params.action === "preview") {
-        void createSelectedContext();
+        void createMessagesContext({}, params);
         return;
       }
       if (params.action === "copy") {
-        void createSelectedContext({ copyPrompt: true });
+        void createMessagesContext({ copyPrompt: true }, params);
         return;
       }
       if (params.action === "send") {
-        void createSelectedContext({ sendPrompt: true });
+        void createMessagesContext({ sendPrompt: true }, params);
       }
     };
 
+    emitter.on("IM_CONTEXT_ACTION", handleContextAction);
     emitter.on("TERMINAL_CONTEXT_ACTION", handleContextAction);
     return () => {
+      emitter.off("IM_CONTEXT_ACTION", handleContextAction);
       emitter.off("TERMINAL_CONTEXT_ACTION", handleContextAction);
     };
   });
@@ -810,7 +827,7 @@ const TerminalDock = () => {
       return;
     }
     if (key === "create-selected") {
-      void createSelectedContext({ copyPrompt: true });
+      void createMessagesContext({ copyPrompt: true });
       setContextModalOpen(true);
       return;
     }
@@ -893,6 +910,7 @@ const TerminalDock = () => {
             disabled={!activeTab || activeTab.status === "running"}
             icon={<PlayCircleOutlined rev={undefined} />}
             onClick={() => activeTab && void startTab(activeTab.id)}
+            data-testid="terminal-start"
           >
             Start
           </Button>
@@ -1104,7 +1122,10 @@ const TerminalDock = () => {
         open={workspaceModalOpen}
         onCancel={() => setWorkspaceModalOpen(false)}
         onOk={() => void onCreateWorkspace()}
-        okButtonProps={{ disabled: !terminalAvailable }}
+        okButtonProps={{
+          disabled: !terminalAvailable,
+          "data-testid": "terminal-workspace-ok",
+        }}
       >
         <Input
           autoFocus
@@ -1112,6 +1133,7 @@ const TerminalDock = () => {
           value={workspaceTitle}
           onChange={(event) => setWorkspaceTitle(event.target.value)}
           onPressEnter={() => void onCreateWorkspace()}
+          data-testid="terminal-workspace-name"
         />
       </Modal>
 
@@ -1201,6 +1223,7 @@ const TerminalDock = () => {
             key="preview"
             disabled={!activeWorkspace || !conversationID}
             onClick={() => void createRecentContext()}
+            data-testid="terminal-context-recent-preview"
           >
             Recent Preview
           </Button>,
@@ -1209,7 +1232,8 @@ const TerminalDock = () => {
             disabled={
               !activeWorkspace || !conversationID || selectedMessages.length === 0
             }
-            onClick={() => void createSelectedContext()}
+            onClick={() => void createMessagesContext()}
+            data-testid="terminal-context-selected-preview"
           >
             Selected Preview
           </Button>,
@@ -1217,6 +1241,7 @@ const TerminalDock = () => {
             key="copy"
             disabled={!activeWorkspace || !conversationID}
             onClick={() => void createRecentContext({ copyPrompt: true })}
+            data-testid="terminal-context-copy-prompt"
           >
             Copy Prompt
           </Button>,
@@ -1225,12 +1250,16 @@ const TerminalDock = () => {
             type="primary"
             disabled={!activeWorkspace || !conversationID || !activeTab}
             onClick={() => void createRecentContext({ sendPrompt: true })}
+            data-testid="terminal-context-send-prompt"
           >
             Send Prompt
           </Button>,
         ]}
       >
-        <div className="terminal-dock-context-builder">
+        <div
+          className="terminal-dock-context-builder"
+          data-testid="terminal-context-modal"
+        >
           <div className="terminal-dock-context-row">
             <div>
               <div className="text-xs text-[#cccccc]">Source</div>
@@ -1306,7 +1335,9 @@ const TerminalDock = () => {
                   <div key={record.id} className="terminal-dock-context-history-item">
                     <div className="min-w-0 flex-1">
                       <div className="terminal-dock-context-history-title">
-                        <span>{record.sourceKind}</span>
+                        <span data-testid="terminal-context-record-source">
+                          {record.sourceKind}
+                        </span>
                         <span>{new Date(record.createdAt).toLocaleString()}</span>
                       </div>
                       <div className="terminal-dock-context-history-meta">
@@ -1325,6 +1356,7 @@ const TerminalDock = () => {
                       <Button
                         size="small"
                         onClick={() => void copyContextRecordPrompt(record)}
+                        data-testid="terminal-context-record-copy-prompt"
                       >
                         Copy Prompt
                       </Button>
@@ -1360,6 +1392,7 @@ const TerminalDock = () => {
                         type="primary"
                         disabled={!activeTab}
                         onClick={() => void sendContextRecordPrompt(record)}
+                        data-testid="terminal-context-record-send"
                       >
                         Send
                       </Button>

@@ -1,3 +1,4 @@
+import { Platform } from "@openim/wasm-client-sdk";
 import { useEffect, useState } from "react";
 
 import TerminalDock from "@/components/TerminalDock";
@@ -13,6 +14,90 @@ import ChatHeader from "../chat/queryChat/ChatHeader";
 import MessageHistoryDrawer from "../chat/queryChat/MessageHistoryDrawer";
 import MessageItem from "../chat/queryChat/MessageItem";
 import MessageSelectionToolbar from "../chat/queryChat/MessageSelectionToolbar";
+
+const installE2EElectronMock = () => {
+  if (typeof window === "undefined" || window.electronAPI) return;
+
+  const subscribers = new Map<string, Set<(...args: unknown[]) => void>>();
+  const workspaceRoot = "C:\\OpenIM-E2E\\workspaces";
+
+  window.electronAPI = {
+    getDataPath: () => "C:\\OpenIM-E2E",
+    getVersion: () => "e2e",
+    getPlatform: () => Platform.Windows,
+    getSystemVersion: () => "e2e",
+    subscribe: (channel: string, callback: (...args: unknown[]) => void) => {
+      const callbacks = subscribers.get(channel) ?? new Set();
+      callbacks.add(callback);
+      subscribers.set(channel, callbacks);
+      return () => {
+        callbacks.delete(callback);
+      };
+    },
+    subscribeOnce: (channel: string, callback: (...args: unknown[]) => void) => {
+      const unsubscribe = window.electronAPI?.subscribe(
+        channel,
+        (...args: unknown[]) => {
+          unsubscribe?.();
+          callback(...args);
+        },
+      );
+    },
+    unsubscribeAll: (channel: string) => {
+      subscribers.delete(channel);
+    },
+    ipcInvoke: <T,>(channel: string, ...args: unknown[]): Promise<T> => {
+      let result: unknown;
+
+      if (channel === "terminal:getWorkspaceDir") {
+        result = `${workspaceRoot}\\${args[0]}`;
+        return Promise.resolve(result as T);
+      }
+
+      if (channel === "terminal:start") {
+        const params = args[0] as {
+          tabID: string;
+          workspaceID: string;
+          cwd: string;
+        };
+        result = {
+          id: params.tabID,
+          workspaceID: params.workspaceID,
+          cwd: params.cwd,
+          shell: "powershell.exe",
+          status: "running",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        return Promise.resolve(result as T);
+      }
+
+      if (
+        channel === "terminal:write" ||
+        channel === "terminal:resize" ||
+        channel === "terminal:interrupt" ||
+        channel === "workspace:writeWorkspaceFile"
+      ) {
+        result = { ok: true };
+        return Promise.resolve(result as T);
+      }
+
+      if (channel === "terminal:stop") {
+        return Promise.resolve(undefined as T);
+      }
+
+      if (channel === "terminal:openWorkspace") {
+        result = "";
+        return Promise.resolve(result as T);
+      }
+
+      return Promise.resolve(undefined as T);
+    },
+    ipcSendSync: <T,>() => undefined as T,
+    saveFileToDisk: () => Promise.resolve(""),
+    getFileByPath: () => Promise.resolve(null),
+  };
+};
 
 const E2EHarness = () => {
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -49,6 +134,9 @@ const E2EHarness = () => {
       currentConversation: e2eConversation,
       conversationList: [e2eConversation],
     });
+    if (terminalEnabled) {
+      installE2EElectronMock();
+    }
     useTerminalDockStore.getState().setPanelOpen(terminalEnabled);
 
     return () => {
@@ -58,30 +146,36 @@ const E2EHarness = () => {
   }, [terminalEnabled]);
 
   return (
-    <div className="flex h-screen flex-col bg-white">
-      <ChatHeader onOpenHistory={() => setHistoryOpen(true)} />
-      <div
-        className="relative min-h-0 flex-1 overflow-auto"
-        data-testid="e2e-chat-area"
-      >
-        {selectionActive && (
-          <MessageSelectionToolbar conversationID={e2eConversationID} />
-        )}
-        {e2eMessages.map((message) => (
-          <MessageItem
-            key={message.clientMsgID}
-            conversationID={e2eConversationID}
-            message={message}
-            isSender={message.sendID === "e2e_self"}
-          />
-        ))}
+    <div className="flex h-screen bg-white">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <ChatHeader onOpenHistory={() => setHistoryOpen(true)} />
+        <div
+          className="relative min-h-0 flex-1 overflow-auto"
+          data-testid="e2e-chat-area"
+        >
+          {selectionActive && (
+            <MessageSelectionToolbar conversationID={e2eConversationID} />
+          )}
+          {e2eMessages.map((message) => (
+            <MessageItem
+              key={message.clientMsgID}
+              conversationID={e2eConversationID}
+              message={message}
+              isSender={message.sendID === "e2e_self"}
+            />
+          ))}
+        </div>
+        <MessageHistoryDrawer
+          conversationID={e2eConversationID}
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+        />
       </div>
-      <MessageHistoryDrawer
-        conversationID={e2eConversationID}
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-      />
-      {terminalEnabled && <TerminalDock />}
+      {terminalEnabled && (
+        <div className="h-full w-[560px] shrink-0" data-testid="e2e-terminal-pane">
+          <TerminalDock />
+        </div>
+      )}
     </div>
   );
 };

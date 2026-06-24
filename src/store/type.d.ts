@@ -11,6 +11,7 @@ import {
 } from "@openim/wasm-client-sdk/lib/types/entity";
 
 import { BusinessUserInfo } from "@/api/login";
+import { ContextSourceKind } from "@/services/imContext";
 import {
   RuntimeEvent,
   RuntimeInstance,
@@ -201,7 +202,7 @@ export interface TerminalContextBundleRecord {
   id: string;
   workspaceID: string;
   createdAt: number;
-  sourceKind: "recentMessages" | "selectedMessages";
+  sourceKind: ContextSourceKind;
   conversationID: string;
   messageCount: number;
   attachmentCount: number;

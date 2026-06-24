@@ -124,7 +124,9 @@ const normalizeContextBundleHistory = (
             typeof item.workspaceID !== "string" ||
             typeof item.createdAt !== "number" ||
             (item.sourceKind !== "recentMessages" &&
-              item.sourceKind !== "selectedMessages") ||
+              item.sourceKind !== "selectedMessages" &&
+              item.sourceKind !== "historyMessages" &&
+              item.sourceKind !== "searchResults") ||
             typeof item.conversationID !== "string" ||
             typeof item.markdownPath !== "string" ||
             typeof item.manifestPath !== "string" ||

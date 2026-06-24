@@ -36,8 +36,12 @@ const MessageSelectionToolbar: FC<MessageSelectionToolbarProps> = ({
 
   const runSelectedContextAction = (action: "preview" | "copy" | "send") => {
     setTerminalPanelOpen(true);
-    emitter.emit("TERMINAL_CONTEXT_ACTION", {
-      source: "selectedMessages",
+    emitter.emit("IM_CONTEXT_ACTION", {
+      source: {
+        kind: "selectedMessages",
+        conversationID,
+        messageIDs: selectedMessages.map((item) => item.clientMsgID),
+      },
       action,
     });
   };
