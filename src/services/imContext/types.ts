@@ -6,7 +6,8 @@ export type ContextSourceKind =
   | "recentMessages"
   | "selectedMessages"
   | "historyMessages"
-  | "searchResults";
+  | "searchResults"
+  | "botTrigger";
 
 export type ContextAction = "preview" | "copy" | "send";
 
@@ -21,6 +22,8 @@ export interface ContextSourceSummary {
   rangeStartTime?: number;
   rangeEndTime?: number;
   keyword?: string;
+  triggerMessageID?: string;
+  triggerText?: string;
 }
 
 export interface ContextAttachmentStatusSummary {
@@ -66,6 +69,14 @@ export type ContextSource =
       conversationID: string;
       messageIDs: string[];
       keyword?: string;
+    }
+  | {
+      kind: "botTrigger";
+      conversationID: string;
+      triggerMessageID: string;
+      triggerText: string;
+      messageIDs: string[];
+      recentLimit: number;
     };
 
 export interface ContextBundle {

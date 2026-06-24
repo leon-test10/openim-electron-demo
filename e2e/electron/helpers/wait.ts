@@ -4,13 +4,17 @@ import { pathToFileURL } from "node:url";
 
 type HarnessOptions = {
   terminal?: boolean;
+  group?: boolean;
 };
 
 export const getHarnessURL = (options: HarnessOptions = {}) => {
   const indexURL = pathToFileURL(path.join(process.cwd(), "dist/index.html"));
-  const terminalQuery = options.terminal ? "?terminal=1" : "";
+  const params = new URLSearchParams();
+  if (options.terminal) params.set("terminal", "1");
+  if (options.group) params.set("group", "1");
+  const query = params.toString();
 
-  return `${indexURL.toString()}#/e2e-harness${terminalQuery}`;
+  return `${indexURL.toString()}#/e2e-harness${query ? `?${query}` : ""}`;
 };
 
 export const gotoHarness = async (page: Page, options: HarnessOptions = {}) => {

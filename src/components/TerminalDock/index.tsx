@@ -30,6 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { IMSDK } from "@/layout/MainContentWrap";
+import { PendingAgentRequest } from "@/services/botTrigger";
 import {
   ContextBundle,
   ContextSource,
@@ -39,10 +40,15 @@ import {
 import {
   useConversationStore,
   useMessageSelectionStore,
+  usePendingAgentRequestStore,
   useTerminalDockStore,
 } from "@/store";
 import { TerminalContextBundleRecord, TerminalTab } from "@/store/type";
-import emitter, { emit, IMContextActionParams } from "@/utils/events";
+import emitter, {
+  BotAgentRequestActionParams,
+  emit,
+  IMContextActionParams,
+} from "@/utils/events";
 
 import TerminalSurface, { TerminalSurfaceApi } from "./TerminalSurface";
 import TerminalTabs from "./TerminalTabs";
@@ -180,6 +186,19 @@ const TerminalDock = () => {
   const selectedMessagesByConversation = useMessageSelectionStore(
     (state) => state.selectedMessagesByConversation,
   );
+  const botDetectionEnabled = usePendingAgentRequestStore(
+    (state) => state.botDetectionEnabled,
+  );
+  const setBotDetectionEnabled = usePendingAgentRequestStore(
+    (state) => state.setBotDetectionEnabled,
+  );
+  const pendingRequestsByConversation = usePendingAgentRequestStore(
+    (state) => state.requestsByConversation,
+  );
+  const markPendingRequestSent = usePendingAgentRequestStore((state) => state.markSent);
+  const markPendingRequestIgnored = usePendingAgentRequestStore(
+    (state) => state.markIgnored,
+  );
   const panelOpen = useTerminalDockStore((state) => state.panelOpen);
   const setPanelOpen = useTerminalDockStore((state) => state.setPanelOpen);
   const workspaces = useTerminalDockStore((state) => state.workspaces);
@@ -293,6 +312,11 @@ const TerminalDock = () => {
   const contextBundleHistory = activeWorkspaceID
     ? contextBundlesByWorkspace[activeWorkspaceID] ?? []
     : [];
+  const pendingRequestCount = conversationID
+    ? (pendingRequestsByConversation[conversationID] ?? []).filter(
+        (request) => request.status === "pending",
+      ).length
+    : 0;
   const activeTabOutput = activeTab ? outputByTab[activeTab.id] ?? [] : [];
   const activeTabOutputSignature = useMemo(
     () => activeTabOutput.map((item) => item.id).join("|"),
@@ -545,6 +569,27 @@ const TerminalDock = () => {
     });
   };
 
+  const buildBotTriggerContextBundle = (
+    request: PendingAgentRequest,
+  ): ContextBundle | undefined => {
+    if (!activeWorkspace) return undefined;
+    if (request.contextMessages.length === 0) return undefined;
+
+    linkConversationToWorkspace(activeWorkspace.id, request.conversationID);
+    return IMContextService.createContextBundle({
+      workspacePath: activeWorkspace.rootPath,
+      source: {
+        kind: "botTrigger",
+        conversationID: request.conversationID,
+        triggerMessageID: request.triggerMessageID,
+        triggerText: request.triggerText,
+        messageIDs: request.contextMessages.map((message) => message.clientMsgID),
+        recentLimit: request.contextScope.recentLimit ?? request.contextMessages.length,
+      },
+      messages: request.contextMessages,
+    });
+  };
+
   const persistContextBundle = async (
     bundle: ContextBundle,
   ): Promise<ContextExportResult | undefined> => {
@@ -640,12 +685,11 @@ const TerminalDock = () => {
     if (action === "copy") {
       await navigator.clipboard.writeText(result.bundle.promptText);
       message.success("Context prompt copied");
-      return;
+      return true;
     }
 
     if (action === "send") {
-      await sendPromptToTerminal(result.bundle.promptText);
-      return;
+      return sendPromptToTerminal(result.bundle.promptText);
     }
 
     message.success(
@@ -653,6 +697,7 @@ const TerminalDock = () => {
         ? `Context preview updated with ${result.bundle.stats.exportedAttachmentCount} exported, ${result.bundle.stats.skippedAttachmentCount} skipped, and ${result.bundle.stats.failedAttachmentCount} failed attachments`
         : "Context preview updated",
     );
+    return true;
   };
 
   const copyPreviewedContext = async () => {
@@ -771,6 +816,37 @@ const TerminalDock = () => {
     return result;
   };
 
+  const runBotAgentRequestAction = async (params: BotAgentRequestActionParams) => {
+    const { request, action } = params;
+
+    if (action === "ignore") {
+      markPendingRequestIgnored(request.conversationID, request.id);
+      message.success("Pending agent request ignored");
+      return;
+    }
+
+    const bundle = buildBotTriggerContextBundle(request);
+    if (!bundle) {
+      message.warning("No bot trigger context available");
+      return;
+    }
+
+    const result = await persistContextBundle(bundle);
+    if (!result) {
+      message.warning("No active workspace");
+      return;
+    }
+
+    if (action === "preview") {
+      setContextModalOpen(true);
+    }
+
+    const succeeded = await applyContextActionResult(result, action);
+    if (action === "send" && succeeded) {
+      markPendingRequestSent(request.conversationID, request.id);
+    }
+  };
+
   useEffect(() => {
     const handleContextAction = (params: IMContextActionParams) => {
       if (params.action === "preview") {
@@ -789,11 +865,13 @@ const TerminalDock = () => {
 
     emitter.on("IM_CONTEXT_ACTION", handleContextAction);
     emitter.on("TERMINAL_CONTEXT_ACTION", handleContextAction);
+    emitter.on("BOT_AGENT_REQUEST_ACTION", runBotAgentRequestAction);
     return () => {
       emitter.off("IM_CONTEXT_ACTION", handleContextAction);
       emitter.off("TERMINAL_CONTEXT_ACTION", handleContextAction);
+      emitter.off("BOT_AGENT_REQUEST_ACTION", runBotAgentRequestAction);
     };
-  }, [runSelectedContextAction]);
+  }, [runBotAgentRequestAction, runSelectedContextAction]);
 
   const copyContextPrompt = async () => {
     if (!lastContextPrompt) {
@@ -1143,6 +1221,25 @@ const TerminalDock = () => {
           data-testid="terminal-im-agent-group"
         >
           <span className="terminal-dock-toolbar-label">IM -&gt; Agent</span>
+          <div className="terminal-dock-toggle">
+            <Tooltip title="Detect @bot and /bot messages as pending agent requests. Detection only creates a pending card.">
+              <span>Bot Requests</span>
+            </Tooltip>
+            <Switch
+              size="small"
+              checked={botDetectionEnabled}
+              onChange={setBotDetectionEnabled}
+              data-testid="terminal-bot-detection-toggle"
+            />
+          </div>
+          {pendingRequestCount > 0 && (
+            <span
+              className="terminal-dock-pending-count"
+              data-testid="terminal-pending-agent-count"
+            >
+              Pending: {pendingRequestCount}
+            </span>
+          )}
           <Dropdown
             menu={{
               items: contextMenuItems,

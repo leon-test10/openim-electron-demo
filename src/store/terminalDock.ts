@@ -126,7 +126,8 @@ const normalizeContextBundleHistory = (
             (item.sourceKind !== "recentMessages" &&
               item.sourceKind !== "selectedMessages" &&
               item.sourceKind !== "historyMessages" &&
-              item.sourceKind !== "searchResults") ||
+              item.sourceKind !== "searchResults" &&
+              item.sourceKind !== "botTrigger") ||
             typeof item.conversationID !== "string" ||
             typeof item.markdownPath !== "string" ||
             typeof item.manifestPath !== "string" ||

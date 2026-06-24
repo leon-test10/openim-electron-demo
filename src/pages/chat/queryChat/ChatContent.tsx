@@ -1,20 +1,42 @@
+import { SessionType } from "@openim/wasm-client-sdk";
 import { Layout, Spin } from "antd";
 import clsx from "clsx";
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
 import { SystemMessageTypes } from "@/constants/im";
-import { useMessageSelectionStore, useUserStore } from "@/store";
+import {
+  createPendingAgentRequest,
+  detectBotTrigger,
+  extractTextMessageContent,
+  isAgentGeneratedMessage,
+} from "@/services/botTrigger";
+import {
+  useConversationStore,
+  useMessageSelectionStore,
+  usePendingAgentRequestStore,
+  useUserStore,
+} from "@/store";
 import emitter from "@/utils/events";
 
 import MessageItem from "./MessageItem";
 import MessageSelectionToolbar from "./MessageSelectionToolbar";
 import NotificationMessage from "./NotificationMessage";
+import PendingAgentRequests from "./PendingAgentRequests";
 import { useHistoryMessageList } from "./useHistoryMessageList";
 
 const ChatContent = () => {
   const virtuoso = useRef<VirtuosoHandle>(null);
   const selfUserID = useUserStore((state) => state.selfInfo.userID);
+  const currentConversation = useConversationStore(
+    (state) => state.currentConversation,
+  );
+  const botDetectionEnabled = usePendingAgentRequestStore(
+    (state) => state.botDetectionEnabled,
+  );
+  const addPendingAgentRequest = usePendingAgentRequestStore(
+    (state) => state.addRequest,
+  );
   const activeSelectionConversationID = useMessageSelectionStore(
     (state) => state.activeConversationID,
   );
@@ -31,6 +53,10 @@ const ChatContent = () => {
 
   const { SPLIT_COUNT, conversationID, loadState, moreOldLoading, getMoreOldMessages } =
     useHistoryMessageList();
+  const messageIDSignature = useMemo(
+    () => loadState.messageList.map((message) => message.clientMsgID).join("|"),
+    [loadState.messageList],
+  );
   const selectionActive =
     Boolean(conversationID) && activeSelectionConversationID === conversationID;
 
@@ -47,6 +73,52 @@ const ChatContent = () => {
     getMoreOldMessages();
   };
 
+  useEffect(() => {
+    if (!botDetectionEnabled || !conversationID || !selfUserID) return;
+
+    const recentLimit = 20;
+    const conversationType =
+      currentConversation?.conversationType === SessionType.Group ? "group" : "single";
+
+    loadState.messageList.forEach((message, index) => {
+      if (message.sendID === selfUserID) return;
+      if (isAgentGeneratedMessage(message)) return;
+
+      const text = extractTextMessageContent(message);
+      const trigger = detectBotTrigger({
+        text,
+        currentUserID: selfUserID,
+        conversationType,
+      });
+
+      if (!trigger) return;
+
+      const contextMessages = loadState.messageList.slice(
+        Math.max(0, index - recentLimit + 1),
+        index + 1,
+      );
+
+      addPendingAgentRequest(
+        createPendingAgentRequest({
+          conversationID,
+          triggerMessage: message,
+          trigger,
+          contextMessages,
+          isGroup: conversationType === "group",
+          recentLimit,
+        }),
+      );
+    });
+  }, [
+    addPendingAgentRequest,
+    botDetectionEnabled,
+    conversationID,
+    currentConversation?.conversationType,
+    loadState.messageList,
+    messageIDSignature,
+    selfUserID,
+  ]);
+
   return (
     <Layout.Content
       className="relative flex h-full overflow-hidden !bg-white"
@@ -61,6 +133,7 @@ const ChatContent = () => {
           {selectionActive && (
             <MessageSelectionToolbar conversationID={conversationID} />
           )}
+          <PendingAgentRequests conversationID={conversationID} />
           <Virtuoso
             id="chat-list"
             className="w-full overflow-x-hidden"

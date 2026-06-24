@@ -3,6 +3,7 @@ import { CheckListItem } from "@/pages/common/ChooseModal/ChooseBox/CheckItem";
 import mitt from "mitt";
 import { GroupItem, MessageItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { InviteData } from "@/pages/common/RtcCallModal/data";
+import { PendingAgentRequest } from "@/services/botTrigger";
 import { ContextAction, ContextSource, ContextSourceKind } from "@/services/imContext";
 
 type EmitterEvents = {
@@ -19,6 +20,7 @@ type EmitterEvents = {
   REPLACE_CHAT_INPUT: string;
   SEND_CHAT_INPUT: string;
   ADD_PENDING_CHAT_ATTACHMENT: PendingChatAttachmentParams;
+  BOT_AGENT_REQUEST_ACTION: BotAgentRequestActionParams;
   IM_CONTEXT_ACTION: IMContextActionParams;
   /** @deprecated Use IM_CONTEXT_ACTION instead. */
   TERMINAL_CONTEXT_ACTION: TerminalContextActionParams;
@@ -28,7 +30,7 @@ type EmitterEvents = {
 
 export type IMContextActionParams = {
   source: {
-    kind: Exclude<ContextSourceKind, "recentMessages">;
+    kind: Exclude<ContextSourceKind, "recentMessages" | "botTrigger">;
     conversationID?: string;
     messageIDs?: string[];
     keyword?: string;
@@ -49,6 +51,11 @@ export type PendingChatAttachmentParams = {
   fileType: string;
   fileSize: number;
   sendKind: "image" | "file";
+};
+
+export type BotAgentRequestActionParams = {
+  request: PendingAgentRequest;
+  action: ContextAction | "ignore";
 };
 
 export type SelectUserParams = {

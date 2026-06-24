@@ -1,20 +1,33 @@
-import { Platform } from "@openim/wasm-client-sdk";
+import { Platform, SessionType } from "@openim/wasm-client-sdk";
 import { useEffect, useState } from "react";
 
 import TerminalDock from "@/components/TerminalDock";
 import {
+  createPendingAgentRequest,
+  detectBotTrigger,
+  extractTextMessageContent,
+  isAgentGeneratedMessage,
+} from "@/services/botTrigger";
+import {
   useConversationStore,
   useMessageSelectionStore,
+  usePendingAgentRequestStore,
   useTerminalDockStore,
   useUserStore,
 } from "@/store";
-import { e2eConversation, e2eConversationID, e2eMessages } from "@/utils/e2eMockData";
+import {
+  e2eConversation,
+  e2eGroupConversation,
+  e2eGroupMessages,
+  e2eMessages,
+} from "@/utils/e2eMockData";
 import emitter, { PendingChatAttachmentParams } from "@/utils/events";
 
 import ChatHeader from "../chat/queryChat/ChatHeader";
 import MessageHistoryDrawer from "../chat/queryChat/MessageHistoryDrawer";
 import MessageItem from "../chat/queryChat/MessageItem";
 import MessageSelectionToolbar from "../chat/queryChat/MessageSelectionToolbar";
+import PendingAgentRequests from "../chat/queryChat/PendingAgentRequests";
 
 const installE2EElectronMock = () => {
   if (typeof window === "undefined" || window.electronAPI) return;
@@ -245,8 +258,20 @@ const E2EHarness = () => {
   const [terminalEnabled, setTerminalEnabled] = useState(
     () => typeof window !== "undefined" && window.location.hash.includes("terminal=1"),
   );
+  const [groupMode, setGroupMode] = useState(
+    () => typeof window !== "undefined" && window.location.hash.includes("group=1"),
+  );
+  const activeConversation = groupMode ? e2eGroupConversation : e2eConversation;
+  const activeConversationID = activeConversation.conversationID;
+  const activeMessages = groupMode ? e2eGroupMessages : e2eMessages;
   const selectionActive = useMessageSelectionStore(
-    (state) => state.activeConversationID === e2eConversationID,
+    (state) => state.activeConversationID === activeConversationID,
+  );
+  const botDetectionEnabled = usePendingAgentRequestStore(
+    (state) => state.botDetectionEnabled,
+  );
+  const addPendingAgentRequest = usePendingAgentRequestStore(
+    (state) => state.addRequest,
   );
 
   if (terminalEnabled) {
@@ -256,6 +281,7 @@ const E2EHarness = () => {
   useEffect(() => {
     const syncTerminalFlag = () => {
       setTerminalEnabled(window.location.hash.includes("terminal=1"));
+      setGroupMode(window.location.hash.includes("group=1"));
     };
 
     syncTerminalFlag();
@@ -272,8 +298,8 @@ const E2EHarness = () => {
       nickname: "E2E Self",
     });
     useConversationStore.setState({
-      currentConversation: e2eConversation,
-      conversationList: [e2eConversation],
+      currentConversation: activeConversation,
+      conversationList: [activeConversation],
     });
     if (terminalEnabled) {
       installE2EElectronMock();
@@ -281,10 +307,10 @@ const E2EHarness = () => {
     useTerminalDockStore.getState().setPanelOpen(terminalEnabled);
 
     return () => {
-      useMessageSelectionStore.getState().clearSelection(e2eConversationID);
+      useMessageSelectionStore.getState().clearSelection(activeConversationID);
       useTerminalDockStore.getState().setPanelOpen(false);
     };
-  }, [terminalEnabled]);
+  }, [activeConversation, activeConversationID, terminalEnabled]);
 
   useEffect(() => {
     const handleAppendDraft = (value: string) => {
@@ -314,6 +340,49 @@ const E2EHarness = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!botDetectionEnabled) return;
+
+    const selfUserID = "e2e_self";
+    const recentLimit = 20;
+    const conversationType =
+      activeConversation.conversationType === SessionType.Group ? "group" : "single";
+
+    activeMessages.forEach((message, index) => {
+      if (message.sendID === selfUserID) return;
+      if (isAgentGeneratedMessage(message)) return;
+
+      const text = extractTextMessageContent(message);
+      const trigger = detectBotTrigger({
+        text,
+        currentUserID: selfUserID,
+        conversationType,
+      });
+
+      if (!trigger) return;
+
+      addPendingAgentRequest(
+        createPendingAgentRequest({
+          conversationID: activeConversationID,
+          triggerMessage: message,
+          trigger,
+          contextMessages: activeMessages.slice(
+            Math.max(0, index - recentLimit + 1),
+            index + 1,
+          ),
+          isGroup: conversationType === "group",
+          recentLimit,
+        }),
+      );
+    });
+  }, [
+    activeConversation.conversationType,
+    activeConversationID,
+    activeMessages,
+    addPendingAgentRequest,
+    botDetectionEnabled,
+  ]);
+
   return (
     <div className="flex h-screen bg-white">
       <div className="flex min-w-0 flex-1 flex-col">
@@ -323,19 +392,20 @@ const E2EHarness = () => {
           data-testid="e2e-chat-area"
         >
           {selectionActive && (
-            <MessageSelectionToolbar conversationID={e2eConversationID} />
+            <MessageSelectionToolbar conversationID={activeConversationID} />
           )}
-          {e2eMessages.map((message) => (
+          <PendingAgentRequests conversationID={activeConversationID} />
+          {activeMessages.map((message) => (
             <MessageItem
               key={message.clientMsgID}
-              conversationID={e2eConversationID}
+              conversationID={activeConversationID}
               message={message}
               isSender={message.sendID === "e2e_self"}
             />
           ))}
         </div>
         <MessageHistoryDrawer
-          conversationID={e2eConversationID}
+          conversationID={activeConversationID}
           open={historyOpen}
           onClose={() => setHistoryOpen(false)}
         />

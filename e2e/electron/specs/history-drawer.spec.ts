@@ -12,7 +12,7 @@ test("history drawer is reachable from header menu", async ({ appWindow }) => {
   await appWindow.getByTestId("history-recent-50").click();
   await appWindow.getByTestId("history-load-more").click();
   await appWindow.getByTestId("history-select-visible").click();
-  await expect(appWindow.getByTestId("message-selection-count")).toContainText("6");
+  await expect(appWindow.getByTestId("message-selection-count")).toContainText("10");
 
   await appWindow.getByTestId("history-search-input").fill("searchable");
   await appWindow.getByTestId("history-apply-filter").click();

@@ -5,6 +5,7 @@ import {
 } from "@openim/wasm-client-sdk/lib/types/entity";
 
 export const e2eConversationID = "si_e2e_user_peer";
+export const e2eGroupConversationID = "sg_e2e_group";
 
 export const e2eConversation = {
   conversationID: e2eConversationID,
@@ -25,25 +26,45 @@ export const e2eConversation = {
   ex: "",
 } as ConversationItem;
 
+export const e2eGroupConversation = {
+  ...e2eConversation,
+  conversationID: e2eGroupConversationID,
+  conversationType: SessionType.Group,
+  userID: "",
+  groupID: "e2e_group",
+  showName: "E2E Group",
+} as ConversationItem;
+
 export const createE2ETextMessage = (
   clientMsgID: string,
   content: string,
   sendTimeOffset: number,
+  options: {
+    conversationID?: string;
+    sendID?: string;
+    recvID?: string;
+    senderNickname?: string;
+    sessionType?: SessionType;
+    ex?: string;
+  } = {},
 ) =>
   ({
     clientMsgID,
     serverMsgID: clientMsgID,
-    conversationID: e2eConversationID,
-    sendID: clientMsgID.endsWith("1") ? "e2e_self" : "e2e_peer",
-    recvID: clientMsgID.endsWith("1") ? "e2e_peer" : "e2e_self",
-    senderNickname: clientMsgID.endsWith("1") ? "E2E Self" : "E2E Peer",
+    conversationID: options.conversationID ?? e2eConversationID,
+    sendID: options.sendID ?? (clientMsgID.endsWith("1") ? "e2e_self" : "e2e_peer"),
+    recvID: options.recvID ?? (clientMsgID.endsWith("1") ? "e2e_peer" : "e2e_self"),
+    senderNickname:
+      options.senderNickname ??
+      (clientMsgID.endsWith("1") ? "E2E Self" : "E2E Peer"),
     senderFaceUrl: "",
-    sessionType: SessionType.Single,
+    sessionType: options.sessionType ?? SessionType.Single,
     contentType: MessageType.TextMessage,
     textElem: {
       content,
     },
     sendTime: Date.now() - sendTimeOffset,
+    ex: options.ex,
   } as unknown as MessageItem);
 
 export const createE2EPictureMessage = (clientMsgID: string, sendTimeOffset: number) =>
@@ -138,6 +159,14 @@ export const e2eAttachmentMessageIDs = {
   dangerousFile: "e2e_msg_dangerous_file",
 };
 
+export const e2eBotMessageIDs = {
+  mention: "e2e_msg_bot_mention",
+  slash: "e2e_msg_bot_slash",
+  selfMention: "e2e_msg_bot_self",
+  agentGenerated: "e2e_msg_bot_agent_generated",
+  groupMention: "e2e_group_msg_bot_mention",
+};
+
 export const e2eMessages = [
   createE2ETextMessage("e2e_msg_1", "hello from e2e self", 5000),
   createE2ETextMessage("e2e_msg_2", "reply from e2e peer", 4000),
@@ -145,4 +174,48 @@ export const e2eMessages = [
   createE2EPictureMessage(e2eAttachmentMessageIDs.image, 2000),
   createE2EDangerousFileMessage(e2eAttachmentMessageIDs.dangerousFile, 1500),
   createE2EFileMessage(e2eAttachmentMessageIDs.failedFile, 1000),
+  createE2ETextMessage(
+    e2eBotMessageIDs.mention,
+    "@bot summarize this conversation.",
+    800,
+  ),
+  createE2ETextMessage(
+    e2eBotMessageIDs.slash,
+    "/bot explain the previous error.",
+    700,
+  ),
+  createE2ETextMessage(e2eBotMessageIDs.selfMention, "@bot from myself", 600, {
+    sendID: "e2e_self",
+    recvID: "e2e_peer",
+    senderNickname: "E2E Self",
+  }),
+  createE2ETextMessage(
+    e2eBotMessageIDs.agentGenerated,
+    "@bot generated loop should be ignored",
+    500,
+    {
+      ex: JSON.stringify({
+        agent: {
+          generated_by: "terminal-dock-e2e",
+        },
+      }),
+    },
+  ),
+];
+
+export const e2eGroupMessages = [
+  createE2ETextMessage("e2e_group_msg_1", "group context before bot", 3000, {
+    conversationID: e2eGroupConversationID,
+    sessionType: SessionType.Group,
+  }),
+  createE2ETextMessage(
+    e2eBotMessageIDs.groupMention,
+    "@bot summarize this group thread.",
+    1000,
+    {
+      conversationID: e2eGroupConversationID,
+      sessionType: SessionType.Group,
+      senderNickname: "E2E Group Peer",
+    },
+  ),
 ];

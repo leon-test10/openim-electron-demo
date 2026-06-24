@@ -1,5 +1,99 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P9 Bot Trigger Detection and Pending Agent Requests
+
+Current branch: `feature/p9-bot-trigger-detection`
+
+Source branch: `feature/attachment-context-export`
+
+Plan source:
+
+- `C:\Users\leon\Desktop\# Plan P9 Bot Trigger Detection and.txt`
+- `docs/terminal-bot-routing-spec-v0.md`
+
+Scope completed:
+
+- Added neutral bot-trigger detection service under `src/services/botTrigger/`.
+- Supported text-only triggers:
+  - `@bot`;
+  - `/bot`.
+- Added `usePendingAgentRequestStore` for pending agent handoff state.
+- Bot detection is off by default and can be enabled explicitly from Terminal
+  Dock via the `Bot Requests` switch.
+- Incoming text messages are scanned only when detection is enabled.
+- Detection skips:
+  - self-sent messages;
+  - messages marked with `ex.agent.generated_by`;
+  - non-text messages.
+- Pending requests are deduplicated by conversation and trigger message ID.
+- Added `PendingAgentRequests` review cards in chat with explicit actions:
+  - `Preview Context`;
+  - `Copy Prompt`;
+  - `Send to Terminal`;
+  - `Ignore`.
+- Context bundle creation remains lazy: no markdown/manifest/prompt bundle is
+  generated at detection time.
+- Added `ContextSource.kind = "botTrigger"` and prompt/manifest/markdown source
+  metadata for bot-trigger requests.
+- Bot-trigger prompt includes the trigger message, message count, and safety
+  instruction:
+  `Do not send messages back to OpenIM by yourself.`
+- Terminal Dock listens for explicit bot request actions and remains the only
+  owner of workspace persistence, context history, clipboard, and terminal
+  writes.
+- Group-chat pending requests show an explicit review warning.
+- E2E harness now supports single-chat and group-chat bot-trigger scenarios.
+
+Files changed in this pass:
+
+- `src/services/botTrigger/*`
+- `src/store/pendingAgentRequests.ts`
+- `src/store/index.ts`
+- `src/utils/events.ts`
+- `src/services/imContext/types.ts`
+- `src/services/imContext/IMContextService.ts`
+- `src/pages/chat/queryChat/ChatContent.tsx`
+- `src/pages/chat/queryChat/PendingAgentRequests.tsx`
+- `src/components/TerminalDock/index.tsx`
+- `src/components/TerminalDock/terminalDock.css`
+- `src/pages/e2e/E2EHarness.tsx`
+- `src/utils/e2eMockData.ts`
+- `e2e/electron/fixtures/mockOpenIM.ts`
+- `e2e/electron/helpers/wait.ts`
+- `e2e/electron/specs/bot-trigger.spec.ts`
+- `e2e/electron/specs/history-drawer.spec.ts`
+
+Validation run:
+
+- `git diff --check`: pass.
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd run lint -- --quiet`: pass. Existing warning: React version is not
+  specified in eslint-plugin-react settings.
+- `npm.cmd run build`: pass. Existing Vite/AntD/chunk-size warnings remain.
+- `npm.cmd run test:e2e`: pass. Result: 18 passed.
+
+Important semantics and limits:
+
+- P9 adds pending request detection and manual review only.
+- It does not implement Auto Inject.
+- It does not implement Auto Reply.
+- It does not automatically write IM messages into terminal.
+- It does not automatically send terminal output back to IM.
+- `Draft -> Chat (experimental)` remains separate, opt-in, and disabled by
+  default.
+- No runtime-specific API key/model/provider configuration was added.
+- The terminal/agent CLI remains responsible for its own session, memory,
+  permissions, tools, and resume behavior.
+
+Recommended next implementation slice:
+
+1. Add a better pending-request inbox/history so ignored/sent requests can be
+   inspected per conversation.
+2. Add configurable bot aliases only after deciding per-user/per-conversation
+   policy.
+3. Keep any Auto Inject or Auto Reply behavior behind a separate explicit
+   safety plan and off by default.
+
 ## Latest Update - P7/P8 Stabilized Manual IM-Agent Handoff
 
 Current branch: `feature/attachment-context-export`

@@ -45,6 +45,10 @@ const getSourceLabel = (source: ContextSource) => {
     return `${conversation}-recent-${source.limit}`;
   }
 
+  if (source.kind === "botTrigger") {
+    return `${conversation}-botTrigger-${sanitizeFileSegment(source.triggerMessageID)}`;
+  }
+
   return `${conversation}-${source.kind}`;
 };
 
@@ -69,6 +73,20 @@ const buildSourceSummary = (
       detail: `Recent messages from conversation ${source.conversationID}. Requested limit ${source.limit}. Time range: ${timeRange}.`,
       rangeStartTime,
       rangeEndTime,
+    };
+  }
+
+  if (source.kind === "botTrigger") {
+    return {
+      kind: source.kind,
+      conversationID: source.conversationID,
+      messageCount,
+      title: `Bot trigger context from ${messageCount} messages`,
+      detail: `Bot trigger from conversation ${source.conversationID}. Trigger message: ${source.triggerMessageID}. Recent limit ${source.recentLimit}. Time range: ${timeRange}.`,
+      rangeStartTime,
+      rangeEndTime,
+      triggerMessageID: source.triggerMessageID,
+      triggerText: source.triggerText,
     };
   }
 
@@ -288,6 +306,22 @@ export const createContextPrompt = (
     );
   }
 
+  if (bundle.sourceSummary.kind === "botTrigger") {
+    lines.push(
+      "Context source: botTrigger",
+      `Message count: ${bundle.stats.messageCount}`,
+      `Attachment count: ${bundle.stats.attachmentCount}`,
+      "",
+      "Trigger message:",
+      bundle.sourceSummary.triggerText ?? "",
+      "",
+      "Bot request safety:",
+      "Do not send messages back to OpenIM by yourself.",
+      "Return your answer in the terminal. The user will review it before sending.",
+      "",
+    );
+  }
+
   lines.push("Use this context to answer the user's latest request.");
 
   return lines.join("\n");
@@ -346,6 +380,14 @@ const buildBundleArtifacts = ({
   const sourceMeta =
     source.kind === "recentMessages"
       ? [`Limit: ${source.limit}`]
+      : source.kind === "botTrigger"
+      ? [
+          `Context source: botTrigger`,
+          `Trigger message: ${source.triggerMessageID}`,
+          `Trigger text: ${source.triggerText}`,
+          `Recent limit: ${source.recentLimit}`,
+          `Message IDs: ${source.messageIDs.join(", ")}`,
+        ]
       : [
           `Message IDs: ${source.messageIDs.join(", ")}`,
           source.keyword ? `Keyword: ${source.keyword}` : undefined,
