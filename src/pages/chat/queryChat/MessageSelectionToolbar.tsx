@@ -115,25 +115,35 @@ const MessageSelectionToolbar: FC<MessageSelectionToolbarProps> = ({
 
   return (
     <div
-      className="sticky top-3 z-10 mx-4 mt-3 flex w-fit flex-wrap items-center gap-2 rounded-md border border-[#d9e2f3] bg-white/95 px-2 py-1 shadow-sm"
+      className="absolute bottom-4 left-1/2 z-20 flex max-w-[calc(100%-32px)] -translate-x-1/2 items-center gap-3 overflow-x-auto rounded-full border border-[#d9e2f3] bg-white/95 px-4 py-3 shadow-[0_12px_32px_rgba(16,24,40,0.16)] backdrop-blur"
       data-testid="message-selection-toolbar"
     >
-      <span className="text-xs text-[#667085]" data-testid="message-selection-count">
+      <span
+        className="shrink-0 text-sm text-[#1677ff]"
+        data-testid="message-selection-count"
+      >
         Selected {selectedCount} messages
       </span>
       <Button
         size="small"
+        className="shrink-0"
         disabled={selectedCount === 0}
         onClick={() => void copySelectedMessages()}
         data-testid="message-selection-copy"
       >
         Copy
       </Button>
-      <Button size="small" disabled data-testid="message-selection-forward">
+      <Button
+        size="small"
+        className="shrink-0"
+        disabled
+        data-testid="message-selection-forward"
+      >
         Forward
       </Button>
       <Button
         size="small"
+        className="shrink-0"
         disabled={selectedCount === 0}
         onClick={() => runSelectedContextAction("send")}
         data-testid="message-selection-send"
@@ -150,6 +160,7 @@ const MessageSelectionToolbar: FC<MessageSelectionToolbarProps> = ({
       >
         <Button
           size="small"
+          className="shrink-0"
           disabled={selectedCount === 0}
           onClick={(event) => event.stopPropagation()}
           data-testid="message-selection-more"
@@ -160,6 +171,7 @@ const MessageSelectionToolbar: FC<MessageSelectionToolbarProps> = ({
       </Dropdown>
       <Button
         size="small"
+        className="shrink-0"
         disabled={selectedCount === 0}
         onClick={() => clearSelection(conversationID)}
         data-testid="message-selection-clear"

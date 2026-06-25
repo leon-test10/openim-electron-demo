@@ -20,6 +20,11 @@ test("header selection flow uses IM-native toolbar", async ({ appWindow }) => {
   await appWindow.locator(messageItem(e2eMessageIDs[0])).click();
   await appWindow.locator(messageItem(e2eMessageIDs[1])).click();
   await expect(appWindow.getByTestId("message-selection-count")).toContainText("2");
+  const toolbarBox = await appWindow
+    .getByTestId("message-selection-toolbar")
+    .boundingBox();
+  expect(toolbarBox?.height ?? 0).toBeLessThan(96);
+  expect(toolbarBox?.width ?? 0).toBeGreaterThan(360);
 
   await appWindow.getByTestId("message-selection-clear").click();
   await expect(appWindow.getByTestId("message-selection-toolbar")).toHaveCount(0);

@@ -9,6 +9,7 @@ import {
   forwardRef,
   ForwardRefRenderFunction,
   memo,
+  useEffect,
   useImperativeHandle,
   useRef,
 } from "react";
@@ -91,6 +92,15 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     }),
     [],
   );
+
+  useEffect(() => {
+    const editor = ckEditor.current;
+    if (!editor) return;
+    if (editor.getData() === value) return;
+
+    editor.setData(value);
+    focus(true);
+  }, [value]);
 
   return (
     <CKEditor

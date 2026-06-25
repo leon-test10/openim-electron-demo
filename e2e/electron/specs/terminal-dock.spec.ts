@@ -246,10 +246,6 @@ test("context library can attach a generated workspace file as pending draft att
     /context\//,
   );
   await appWindow.getByTestId("terminal-workspace-file-attach").click();
-  await expect(
-    appWindow.getByTestId("terminal-workspace-file-confirmation"),
-  ).toContainText("File name:");
-  await appWindow.getByTestId("terminal-workspace-file-confirm").click();
   await expect(appWindow.getByTestId("e2e-pending-attachments")).toContainText(/\.md/);
   await expect(appWindow.getByTestId("e2e-pending-attachments")).toContainText(
     "context/",

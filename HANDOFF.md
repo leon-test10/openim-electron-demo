@@ -92,6 +92,56 @@ Recommended next implementation slice:
 3. Keep any Auto Inject or Auto Reply behavior behind a separate explicit
    safety plan and off by default.
 
+## Latest Update - P9.1 Hardening Follow-up
+
+Current branch: `feature/p9-bot-trigger-detection`
+
+Reason:
+
+- Real usage showed `Use Selection as Reply` could confirm successfully but not
+  update the actual CKEditor input.
+- `Attach Workspace File` produced a pending chip that could not be cancelled
+  or sent.
+- The selected-message toolbar could collapse into a tall side card when the
+  Terminal Dock reduced the chat width.
+- Generic `final_answer` extraction from arbitrary TUI output remains unreliable
+  without runtime-specific adapters.
+
+Scope completed:
+
+- Made the CKEditor wrapper synchronize external `value` changes into the live
+  editor via `setData`, so Terminal Dock reply insertion reaches the real input.
+- Workspace files now attach directly to the reply draft without a custom
+  confirmation modal.
+- Pending workspace-file chips in ChatFooter now have a remove button.
+- ChatFooter send now handles text plus pending workspace files, or file-only
+  drafts, and sends them through OpenIM image/file message creation.
+- Selected-message toolbar was rebuilt as a bottom floating horizontal action
+  bar, closer to DingTalk-style multi-select actions and no longer a narrow
+  sticky card in the message stream.
+- Added E2E coverage to guard the selected toolbar against vertical/card
+  regression and updated workspace-file attach expectations.
+
+Validation run:
+
+- `git diff --check`: pass.
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd run lint -- --quiet`: pass. Existing warning: React version is not
+  specified in eslint-plugin-react settings.
+- `npm.cmd run build`: pass. Existing Vite/AntD/chunk-size warnings remain.
+- `npm.cmd run test:e2e`: pass. Result: 19 passed.
+
+Important semantics and limits:
+
+- `Use Selection as Reply` still only drafts text; it does not auto-send.
+- Workspace-file attachment sending uses explicit user send from ChatFooter.
+- Generic terminal screen scraping is still not treated as reliable
+  `final_answer` extraction.
+- For opencode, prefer a future runtime-specific adapter based on supported
+  structured surfaces such as `opencode run --format json`,
+  `opencode serve`, `opencode export`, or `opencode acp`.
+- `/bot` remains pending-only and manually reviewed before terminal handoff.
+
 ## Latest Update - P9.1 IM-Agent Product UX Cleanup
 
 Current branch: `feature/p9-bot-trigger-detection`

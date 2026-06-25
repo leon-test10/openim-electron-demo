@@ -1,5 +1,6 @@
+import { CloseOutlined } from "@ant-design/icons";
 import { useLatest } from "ahooks";
-import { Button } from "antd";
+import { Button, message as antdMessage } from "antd";
 import { t } from "i18next";
 import { forwardRef, ForwardRefRenderFunction, memo, useEffect, useState } from "react";
 
@@ -30,7 +31,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   >([]);
   const latestHtml = useLatest(html);
 
-  const { getImageMessage } = useFileMessage();
+  const { getFileMessage, getImageMessage } = useFileMessage();
   const { sendMessage } = useSendMessage();
 
   const onChange = (value: string) => {
@@ -81,13 +82,52 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     };
   }, [sendMessage]);
 
+  const removePendingAttachment = (index: number) => {
+    setPendingAttachments((current) =>
+      current.filter((_, currentIndex) => currentIndex !== index),
+    );
+  };
+
+  const sendPendingAttachment = async (attachment: PendingChatAttachmentParams) => {
+    const workspaceFile = await window.electronAPI?.getFileByPath(attachment.filePath);
+    if (!workspaceFile) {
+      throw new Error(`Cannot read workspace file: ${attachment.relativePath}`);
+    }
+
+    const fileWithPath = Object.assign(workspaceFile, {
+      path: attachment.filePath,
+    });
+    const message =
+      attachment.sendKind === "image"
+        ? await getImageMessage(fileWithPath)
+        : await getFileMessage(fileWithPath);
+
+    await sendMessage({ message });
+  };
+
   const enterToSend = async () => {
     const cleanText = getCleanText(latestHtml.current ?? "");
-    const message = (await IMSDK.createTextMessage(cleanText)).data;
-    setHtml("");
-    if (!cleanText) return;
+    const attachmentsToSend = [...pendingAttachments];
 
-    sendMessage({ message });
+    if (!cleanText && attachmentsToSend.length === 0) return;
+
+    setHtml("");
+    setPendingAttachments([]);
+
+    if (cleanText) {
+      const message = (await IMSDK.createTextMessage(cleanText)).data;
+      await sendMessage({ message });
+    }
+
+    for (const attachment of attachmentsToSend) {
+      try {
+        await sendPendingAttachment(attachment);
+      } catch (error) {
+        setPendingAttachments((current) => [...current, attachment]);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        antdMessage.error(errorMessage || "Failed to send workspace file");
+      }
+    }
   };
 
   return (
@@ -99,11 +139,21 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
             <div className="mx-4 mt-2 flex flex-wrap gap-2">
               {pendingAttachments.map((attachment, index) => (
                 <div
-                  className="max-w-[260px] truncate rounded border border-[#d0d5dd] bg-[#f8fafc] px-2 py-1 text-xs text-[#344054]"
+                  className="flex max-w-[280px] items-center gap-1 rounded border border-[#d0d5dd] bg-[#f8fafc] px-2 py-1 text-xs text-[#344054]"
                   key={`${attachment.filePath}-${index}`}
                   title={attachment.filePath}
                 >
-                  Pending {attachment.sendKind}: {attachment.fileName}
+                  <span className="truncate">
+                    Pending {attachment.sendKind}: {attachment.fileName}
+                  </span>
+                  <Button
+                    size="small"
+                    type="text"
+                    className="!h-5 !w-5 shrink-0 !p-0"
+                    icon={<CloseOutlined rev={undefined} />}
+                    onClick={() => removePendingAttachment(index)}
+                    aria-label={`Remove ${attachment.fileName}`}
+                  />
                 </div>
               ))}
             </div>

@@ -112,13 +112,6 @@ const inferWorkspaceAttachmentKind = (fileName: string, fileType?: string) => {
   return IMAGE_FILE_EXTENSIONS.has(getFileExtension(fileName)) ? "image" : "file";
 };
 
-const formatFileSize = (bytes: number) => {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "Unknown size";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-};
-
 const getStoredOutputFallback = (
   outputByTab: Record<string, Array<{ content: string }>>,
   tabID: string,
@@ -265,8 +258,6 @@ const TerminalDock = () => {
   const [commandModalOpen, setCommandModalOpen] = useState(false);
   const [contextModalOpen, setContextModalOpen] = useState(false);
   const [replyDebugModalOpen, setReplyDebugModalOpen] = useState(false);
-  const [workspaceAttachmentCandidate, setWorkspaceAttachmentCandidate] =
-    useState<WorkspaceAttachmentCandidate>();
   const [contextMessageLimit, setContextMessageLimit] = useState("50");
   const [contextPreviewBundle, setContextPreviewBundle] = useState<ContextBundle>();
   const [workspaceFileInput, setWorkspaceFileInput] = useState("");
@@ -738,36 +729,25 @@ const TerminalDock = () => {
       const fileType = file?.type || "application/octet-stream";
       const fileSize = file?.size ?? 0;
 
-      setWorkspaceAttachmentCandidate({
+      const attachmentCandidate: WorkspaceAttachmentCandidate = {
         relativePath: normalizedRelativePath,
         absolutePath,
         fileName,
         fileType,
         fileSize,
         sendKind: inferWorkspaceAttachmentKind(fileName, fileType),
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      message.error(errorMessage || "Failed to attach workspace file");
-    }
-  };
+      };
 
-  const attachWorkspaceFile = () => {
-    if (!workspaceAttachmentCandidate) return;
-
-    try {
       emit("ADD_PENDING_CHAT_ATTACHMENT", {
         source: "workspace",
-        fileName: workspaceAttachmentCandidate.fileName,
-        filePath: workspaceAttachmentCandidate.absolutePath,
-        relativePath: workspaceAttachmentCandidate.relativePath,
-        fileType: workspaceAttachmentCandidate.fileType,
-        fileSize: workspaceAttachmentCandidate.fileSize,
-        sendKind: workspaceAttachmentCandidate.sendKind,
+        fileName: attachmentCandidate.fileName,
+        filePath: attachmentCandidate.absolutePath,
+        relativePath: attachmentCandidate.relativePath,
+        fileType: attachmentCandidate.fileType,
+        fileSize: attachmentCandidate.fileSize,
+        sendKind: attachmentCandidate.sendKind,
       });
-      setWorkspaceFileInput(workspaceAttachmentCandidate.relativePath);
-      setWorkspaceAttachmentCandidate(undefined);
-      message.success("Workspace file added to draft attachments");
+      message.success("Workspace file added to reply draft");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       message.error(errorMessage || "Failed to attach workspace file");
@@ -1782,38 +1762,6 @@ const TerminalDock = () => {
             />
           </div>
         </div>
-      </Modal>
-
-      <Modal
-        title="Confirm Workspace Attachment"
-        open={Boolean(workspaceAttachmentCandidate)}
-        okText="Attach"
-        cancelText="Cancel"
-        onCancel={() => setWorkspaceAttachmentCandidate(undefined)}
-        onOk={attachWorkspaceFile}
-        okButtonProps={{
-          "data-testid": "terminal-workspace-file-confirm",
-        }}
-      >
-        {workspaceAttachmentCandidate && (
-          <div
-            className="terminal-dock-template-list"
-            data-testid="terminal-workspace-file-confirmation"
-          >
-            <div className="text-xs text-[#8c8c8c]">
-              Review the workspace file before attaching it back to the current chat.
-            </div>
-            <div className="terminal-dock-context-files">
-              <div>File name: {workspaceAttachmentCandidate.fileName}</div>
-              <div>Relative path: {workspaceAttachmentCandidate.relativePath}</div>
-              <div>
-                Type:{" "}
-                {workspaceAttachmentCandidate.fileType || "application/octet-stream"}
-              </div>
-              <div>Size: {formatFileSize(workspaceAttachmentCandidate.fileSize)}</div>
-            </div>
-          </div>
-        )}
       </Modal>
 
       <Modal
