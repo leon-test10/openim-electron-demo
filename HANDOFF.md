@@ -1,5 +1,84 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Phase 2: @bot @user Auto-Inject & Auto-Reply Complete (2026-06-25)
+
+Current branch: `feature/p9-bot-trigger-detection`
+
+Phase 2 of the roadmap is implemented and verified.
+
+### Completed
+
+**2.1 Trigger format: `@bot @targetUserID`** (`detectBotTrigger.ts`):
+- New format: `@bot @targetUserID instruction` (or `/bot @targetUserID instruction`)
+- Extracts `targetUserID` via `@mention` regex after the bot alias
+- In group chats, strips leading `@currentUserID` mention first
+- Single chat: `@bot @selfUserID do something` — calls own terminal
+- Group chat: `@bot @memberUserID task` — calls that member's terminal (if they're logged in)
+- Backward compatible: if no `@targetUserID` is specified, the request is still created
+
+**2.2 Types** (`types.ts`):
+- `BotTriggerResult.targetUserID?: string`
+- `PendingAgentRequest.targetUserID?: string`
+- Passed through `createPendingAgentRequest`
+
+**2.3 Auto-Inject toggle** (TerminalDock "IM → Agent" toolbar):
+- `autoInjectEnabled` — persisted to localStorage (safety-reset to false on reload)
+- When ON: `@bot @selfUserID` messages auto-inject into terminal (skip pending review)
+- When OFF: normal pending request flow with manual "Send to Agent" button
+- Toggle is in the "IM → Agent" group alongside "Bot Requests"
+
+**2.4 Auto-Reply toggle** (TerminalDock "Agent → IM" toolbar):
+- `autoReplyEnabled` — persisted to localStorage (safety-reset to false on reload)
+- When ON: structured `final_answer` events auto-send to the current IM conversation
+- Deduplication via text hash (won't re-send the same answer)
+- Uses Phase 1's `agent:structuredOutput` IPC channel
+
+**2.5 ChatContent detection logic**:
+- Filters by `targetUserID === selfUserID` (only process messages targeting ME)
+- When `autoInjectEnabled`: creates request with `status: "sent"`, emits `BOT_AGENT_REQUEST_ACTION` immediately
+- `promoteToAutoInject` effect: when auto-inject is toggled ON after detection, promotes existing pending requests to sent
+
+**2.6 Store**:
+- `autoInjectEnabled`/`autoReplyEnabled` in `TerminalDockStore` (persisted)
+- `promoteToAutoInject(conversationID)` in `PendingAgentRequestStore`
+- `addStructuredEvent`/`clearStructuredEvents` actions
+
+**2.7 E2E tests** (`bot-trigger.spec.ts`):
+- Updated all 4 existing tests for new `@bot @e2e_self` format
+- New: auto-inject skips pending review and sends directly to terminal
+- New: auto-reply sends structured final_answer to IM
+- Full E2E suite: **25 passed, 0 failed**
+
+### @User mention display
+
+OpenIM raw message text contains userIDs in `@mentions` (e.g., `@3297174239`). The UI renders these as nicknames via the contact store. So:
+- Raw text: unique userID (e.g., `@e2e_self`)
+- UI display: nickname (e.g., "E2E Self")
+- Detection extracts the userID for comparison with `selfUserID`
+
+### Files changed
+
+- `src/services/botTrigger/detectBotTrigger.ts`
+- `src/services/botTrigger/types.ts`
+- `src/services/botTrigger/createPendingAgentRequest.ts`
+- `src/components/TerminalDock/index.tsx`
+- `src/pages/chat/queryChat/ChatContent.tsx`
+- `src/store/terminalDock.ts`
+- `src/store/type.d.ts`
+- `src/store/pendingAgentRequests.ts`
+- `src/pages/e2e/E2EHarness.tsx`
+- `src/utils/e2eMockData.ts`
+- `e2e/electron/specs/bot-trigger.spec.ts`
+
+### Validation
+
+- `npx.cmd tsc --noEmit`: pass
+- `npm.cmd run lint -- --quiet`: pass
+- `npm.cmd run build`: pass
+- `npx.cmd playwright test -c playwright.electron.config.ts`: 25 passed
+
+---
+
 ## Latest Update - Phase 1: Structured Agent Output Protocol Complete (2026-06-25)
 
 Current branch: `feature/p9-bot-trigger-detection`
