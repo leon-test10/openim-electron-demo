@@ -40,6 +40,8 @@ type StoredTerminalDockState = Pick<
   | "commandTemplates"
   | "autoReceiveEnabled"
   | "autoSendEnabled"
+  | "autoInjectEnabled"
+  | "autoReplyEnabled"
   | "captureSource"
 >;
 
@@ -55,6 +57,8 @@ const defaultState: StoredTerminalDockState = {
   autoReceiveEnabled: false,
   autoSendEnabled: false,
   captureSource: "auto",
+  autoInjectEnabled: false,
+  autoReplyEnabled: false,
 };
 
 const canUseLocalStorage = () => typeof window !== "undefined" && window.localStorage;
@@ -245,6 +249,8 @@ const readStoredState = (): StoredTerminalDockState => {
       // Safety reset: debug handoff features should always come back disabled after reload.
       autoReceiveEnabled: false,
       autoSendEnabled: false,
+      autoInjectEnabled: false,
+      autoReplyEnabled: false,
       captureSource:
         parsed.captureSource === "screen" ||
         parsed.captureSource === "raw" ||
@@ -274,6 +280,8 @@ const toStoredState = (state: TerminalDockStore): StoredTerminalDockState => ({
   commandTemplates: state.commandTemplates,
   autoReceiveEnabled: state.autoReceiveEnabled,
   autoSendEnabled: state.autoSendEnabled,
+  autoInjectEnabled: state.autoInjectEnabled,
+  autoReplyEnabled: state.autoReplyEnabled,
   captureSource: state.captureSource,
 });
 
@@ -672,6 +680,12 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
   },
   setAutoSendEnabled: (autoSendEnabled) => {
     set((state) => save(state, { autoSendEnabled }));
+  },
+  setAutoInjectEnabled: (autoInjectEnabled) => {
+    set((state) => save(state, { autoInjectEnabled }));
+  },
+  setAutoReplyEnabled: (autoReplyEnabled) => {
+    set((state) => save(state, { autoReplyEnabled }));
   },
   setCaptureSource: (captureSource: TerminalCaptureSource) => {
     set((state) => save(state, { captureSource }));

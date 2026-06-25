@@ -176,22 +176,22 @@ export const e2eMessages = [
   createE2EFileMessage(e2eAttachmentMessageIDs.failedFile, 1000),
   createE2ETextMessage(
     e2eBotMessageIDs.mention,
-    "@bot summarize this conversation.",
+    "@bot @e2e_self summarize this conversation.",
     800,
   ),
   createE2ETextMessage(
     e2eBotMessageIDs.slash,
-    "/bot explain the previous error.",
+    "/bot @e2e_self explain the previous error.",
     700,
   ),
-  createE2ETextMessage(e2eBotMessageIDs.selfMention, "@bot from myself", 600, {
+  createE2ETextMessage(e2eBotMessageIDs.selfMention, "@bot @e2e_self from myself", 600, {
     sendID: "e2e_self",
     recvID: "e2e_peer",
     senderNickname: "E2E Self",
   }),
   createE2ETextMessage(
     e2eBotMessageIDs.agentGenerated,
-    "@bot generated loop should be ignored",
+    "@bot @e2e_self generated loop should be ignored",
     500,
     {
       ex: JSON.stringify({
@@ -210,7 +210,7 @@ export const e2eGroupMessages = [
   }),
   createE2ETextMessage(
     e2eBotMessageIDs.groupMention,
-    "@bot summarize this group thread.",
+    "@bot @e2e_self summarize this group thread.",
     1000,
     {
       conversationID: e2eGroupConversationID,

@@ -243,6 +243,8 @@ export interface TerminalDockStore {
   commandTemplates: TerminalCommandTemplate[];
   autoReceiveEnabled: boolean;
   autoSendEnabled: boolean;
+  autoInjectEnabled: boolean;
+  autoReplyEnabled: boolean;
   captureSource: TerminalCaptureSource;
   lastCapturedTextByTab: Record<string, string | undefined>;
   structuredEventsByWorkspace: Record<string, AgentOutputEvent[]>;
@@ -279,6 +281,8 @@ export interface TerminalDockStore {
   resetCommandTemplates: () => void;
   setAutoReceiveEnabled: (enabled: boolean) => void;
   setAutoSendEnabled: (enabled: boolean) => void;
+  setAutoInjectEnabled: (enabled: boolean) => void;
+  setAutoReplyEnabled: (enabled: boolean) => void;
   setCaptureSource: (source: TerminalCaptureSource) => void;
   setLastCapturedText: (tabID: string, text: string) => void;
   addStructuredEvent: (workspaceID: string, event: AgentOutputEvent) => void;

@@ -10,6 +10,7 @@ export interface PendingAgentRequestStore {
   markSent: (conversationID: string, requestID: string) => void;
   markIgnored: (conversationID: string, requestID: string) => void;
   dismissRequest: (conversationID: string, requestID: string) => void;
+  promoteToAutoInject: (conversationID: string) => void;
   clearConversationRequests: (conversationID: string) => void;
 }
 
@@ -85,6 +86,23 @@ export const usePendingAgentRequestStore = create<PendingAgentRequestStore>()(
           ),
         },
       }));
+    },
+    promoteToAutoInject: (conversationID) => {
+      set((state) => {
+        const current = state.requestsByConversation[conversationID];
+        if (!current || current.length === 0) return state;
+
+        return {
+          requestsByConversation: {
+            ...state.requestsByConversation,
+            [conversationID]: current.map((request) =>
+              request.status === "pending"
+                ? { ...request, status: "sent" as const }
+                : request,
+            ),
+          },
+        };
+      });
     },
     clearConversationRequests: (conversationID) => {
       set((state) => {

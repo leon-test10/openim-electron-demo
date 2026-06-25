@@ -11,6 +11,8 @@ export interface BotTriggerResult {
   alias: string;
   rawText: string;
   instructionText: string;
+  /** The @mentioned user whose terminal should process this request. */
+  targetUserID?: string;
 }
 
 export interface PendingAgentRequest {
@@ -30,4 +32,6 @@ export interface PendingAgentRequest {
   status: PendingAgentRequestStatus;
   isGroup: boolean;
   contextMessages: MessageItem[];
+  /** The @mentioned target user for this request. */
+  targetUserID?: string;
 }

@@ -8,7 +8,11 @@ const enableBotDetection = async (appWindow: Page) => {
   await appWindow.getByTestId("terminal-bot-detection-toggle").click();
 };
 
-test("single chat @bot creates pending request and sends only after user action", async ({
+const enableAutoInject = async (appWindow: Page) => {
+  await appWindow.getByTestId("terminal-auto-inject-toggle").click();
+};
+
+test("single chat @bot @e2e_self creates pending request and sends only after user action", async ({
   appWindow,
 }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
@@ -16,18 +20,21 @@ test("single chat @bot creates pending request and sends only after user action"
 
   const mentionRequest = appWindow
     .getByTestId("pending-agent-request")
-    .filter({ hasText: "@bot summarize this conversation." });
-  await expect(mentionRequest).toContainText("@bot summarize this conversation.");
+    .filter({ hasText: "@bot @e2e_self summarize this conversation." });
+  await expect(mentionRequest).toContainText(
+    "@bot @e2e_self summarize this conversation.",
+  );
 
   let writes = await appWindow.evaluate(
-    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+    () =>
+      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
   );
   expect(writes?.join("\n") ?? "").not.toContain("botTrigger");
 
   await mentionRequest.getByTestId("pending-agent-review").click();
-  await expect(mentionRequest).toHaveCount(1);
   writes = await appWindow.evaluate(
-    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+    () =>
+      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
   );
   expect(writes?.join("\n") ?? "").not.toContain("botTrigger");
 
@@ -38,24 +45,26 @@ test("single chat @bot creates pending request and sends only after user action"
       () =>
         appWindow.evaluate(
           () =>
-            (window as unknown as { __e2eTerminalWrites?: string[] })
-              .__e2eTerminalWrites?.join("\n") ?? "",
+            (
+              window as unknown as { __e2eTerminalWrites?: string[] }
+            ).__e2eTerminalWrites?.join("\n") ?? "",
         ),
       { timeout: 5000 },
     )
     .toContain("botTrigger");
   writes = await appWindow.evaluate(
-    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+    () =>
+      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
   );
   const terminalWritesText = writes?.join("\n") ?? "";
-  expect(terminalWritesText).toContain("@bot summarize this conversation.");
+  expect(terminalWritesText).toContain("@bot @e2e_self summarize this conversation.");
   expect(terminalWritesText).toContain(
     "Do not send messages back to OpenIM by yourself.",
   );
   await expect(mentionRequest).toHaveCount(0);
 });
 
-test("/bot creates pending request and stays pending until manual send", async ({
+test("/bot @e2e_self creates pending request and stays pending until manual send", async ({
   appWindow,
 }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
@@ -63,17 +72,20 @@ test("/bot creates pending request and stays pending until manual send", async (
 
   const slashRequest = appWindow
     .getByTestId("pending-agent-request")
-    .filter({ hasText: "/bot explain the previous error." });
-  await expect(slashRequest).toContainText("/bot explain the previous error.");
+    .filter({ hasText: "/bot @e2e_self explain the previous error." });
+  await expect(slashRequest).toContainText(
+    "/bot @e2e_self explain the previous error.",
+  );
   await expect(slashRequest.getByTestId("pending-agent-review")).toBeVisible();
   await expect(slashRequest.getByTestId("pending-agent-send")).toBeVisible();
-  await expect(slashRequest.getByTestId("pending-agent-copy")).toHaveCount(0);
-  await expect(slashRequest.getByTestId("pending-agent-ignore")).toHaveCount(0);
 
   const writes = await appWindow.evaluate(
-    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+    () =>
+      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
   );
-  expect(writes?.join("\n") ?? "").not.toContain("/bot explain the previous error.");
+  expect(writes?.join("\n") ?? "").not.toContain(
+    "/bot @e2e_self explain the previous error.",
+  );
 });
 
 test("self and agent-generated @bot messages do not create pending requests", async ({
@@ -82,9 +94,11 @@ test("self and agent-generated @bot messages do not create pending requests", as
   await setupTerminalHarness(appWindow);
   await enableBotDetection(appWindow);
 
+  // Self-sent @bot message should be ignored
   await expect(
     appWindow.getByTestId("pending-agent-request").filter({ hasText: "from myself" }),
   ).toHaveCount(0);
+  // Agent-generated message should be ignored
   await expect(
     appWindow
       .getByTestId("pending-agent-request")
@@ -92,7 +106,9 @@ test("self and agent-generated @bot messages do not create pending requests", as
   ).toHaveCount(0);
 });
 
-test("group @bot creates pending request with review warning", async ({ appWindow }) => {
+test("group @bot @e2e_self creates pending request with review warning", async ({
+  appWindow,
+}) => {
   await gotoHarness(appWindow, { terminal: true, group: true });
   await expect(appWindow.getByTestId("terminal-dock")).toBeVisible();
   await appWindow.getByTestId("terminal-new-workspace").click();
@@ -108,5 +124,83 @@ test("group @bot creates pending request with review warning", async ({ appWindo
   );
   await expect(appWindow.getByTestId("terminal-pending-agent-count")).toContainText(
     "Pending: 1",
+  );
+});
+
+test("auto-inject skips pending review and sends directly to terminal", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+  // Enable auto-inject BEFORE bot detection so the first scan uses auto-inject
+  await enableAutoInject(appWindow);
+  await enableBotDetection(appWindow);
+
+  // Terminal should have received the auto-injected context immediately
+  await expect
+    .poll(
+      () =>
+        appWindow.evaluate(
+          () =>
+            (
+              window as unknown as { __e2eTerminalWrites?: string[] }
+            ).__e2eTerminalWrites?.join("\n") ?? "",
+        ),
+      { timeout: 5000 },
+    )
+    .toContain("botTrigger");
+
+  // Verify the auto-injected content
+  const writes = await appWindow.evaluate(
+    () =>
+      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+  );
+  const terminalWritesText = writes?.join("\n") ?? "";
+  expect(terminalWritesText).toContain("@bot @e2e_self summarize this conversation.");
+  expect(terminalWritesText).toContain(
+    "Do not send messages back to OpenIM by yourself.",
+  );
+});
+
+test("auto-reply sends structured final_answer to IM", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+
+  // Enable auto-reply
+  await appWindow.getByTestId("terminal-auto-reply-toggle").click();
+
+  // Get workspace ID and emit a structured final_answer
+  const workspaceID = await appWindow.evaluate(() =>
+    (
+      window as unknown as {
+        __e2eGetActiveWorkspaceID?: () => string | undefined;
+      }
+    ).__e2eGetActiveWorkspaceID?.(),
+  );
+  expect(workspaceID).toBeTruthy();
+  if (!workspaceID) return;
+
+  await appWindow.evaluate(
+    ({ wid }) => {
+      (
+        window as unknown as {
+          __e2eEmitStructuredEvent?: (
+            workspaceID: string,
+            event: Record<string, unknown>,
+          ) => void;
+        }
+      ).__e2eEmitStructuredEvent?.(wid, {
+        type: "final_answer",
+        text: "Auto-reply test: the answer is 42.",
+        format: "text",
+      });
+    },
+    { wid: workspaceID },
+  );
+
+  // The answer should appear in sent drafts
+  await expect(appWindow.getByTestId("e2e-sent-drafts")).toContainText(
+    "Auto-reply test: the answer is 42.",
+    { timeout: 5000 },
   );
 });

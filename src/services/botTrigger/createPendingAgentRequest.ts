@@ -30,5 +30,6 @@ export function createPendingAgentRequest(args: {
     status: "pending",
     isGroup: args.isGroup,
     contextMessages: args.contextMessages,
+    targetUserID: args.trigger.targetUserID,
   };
 }

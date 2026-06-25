@@ -15,6 +15,7 @@ import {
   useConversationStore,
   useMessageSelectionStore,
   usePendingAgentRequestStore,
+  useTerminalDockStore,
   useUserStore,
 } from "@/store";
 import emitter from "@/utils/events";
@@ -38,6 +39,10 @@ const ChatContent = () => {
   const addPendingAgentRequest = usePendingAgentRequestStore(
     (state) => state.addRequest,
   );
+  const promoteToAutoInject = usePendingAgentRequestStore(
+    (state) => state.promoteToAutoInject,
+  );
+  const autoInjectEnabled = useTerminalDockStore((state) => state.autoInjectEnabled);
   const activeSelectionConversationID = useMessageSelectionStore(
     (state) => state.activeConversationID,
   );
@@ -110,30 +115,78 @@ const ChatContent = () => {
 
       if (!trigger) return;
 
+      // Only process triggers targeting this user (or no specific target).
+      if (trigger.targetUserID && trigger.targetUserID !== selfUserID) return;
+
       const contextMessages = loadState.messageList.slice(
         Math.max(0, index - recentLimit + 1),
         index + 1,
       );
 
-      addPendingAgentRequest(
-        createPendingAgentRequest({
-          conversationID,
-          triggerMessage: message,
-          trigger,
-          contextMessages,
-          isGroup: conversationType === "group",
-          recentLimit,
-        }),
-      );
+      const request = createPendingAgentRequest({
+        conversationID,
+        triggerMessage: message,
+        trigger,
+        contextMessages,
+        isGroup: conversationType === "group",
+        recentLimit,
+      });
+
+      if (autoInjectEnabled) {
+        // Auto-inject: mark as sent immediately and notify TerminalDock.
+        addPendingAgentRequest({
+          ...request,
+          status: "sent",
+        });
+        emitter.emit("BOT_AGENT_REQUEST_ACTION", {
+          request,
+          action: "send",
+        });
+      } else {
+        addPendingAgentRequest(request);
+      }
     });
   }, [
     addPendingAgentRequest,
+    autoInjectEnabled,
     botDetectionEnabled,
     conversationID,
     currentConversation?.conversationType,
     loadState.messageList,
     messageIDSignature,
     selfUserID,
+  ]);
+
+  // When auto-inject is enabled, promote any existing pending requests to sent
+  // and emit BOT_AGENT_REQUEST_ACTION for each.
+  useEffect(() => {
+    if (!autoInjectEnabled || !botDetectionEnabled || !conversationID) return;
+
+    const pendingRequests =
+      usePendingAgentRequestStore.getState().requestsByConversation[conversationID] ??
+      [];
+
+    const pendingForSelf = pendingRequests.filter(
+      (r) =>
+        r.status === "pending" && (!r.targetUserID || r.targetUserID === selfUserID),
+    );
+
+    if (pendingForSelf.length === 0) return;
+
+    promoteToAutoInject(conversationID);
+
+    for (const request of pendingForSelf) {
+      emitter.emit("BOT_AGENT_REQUEST_ACTION", {
+        request,
+        action: "send",
+      });
+    }
+  }, [
+    autoInjectEnabled,
+    botDetectionEnabled,
+    conversationID,
+    selfUserID,
+    promoteToAutoInject,
   ]);
 
   return (

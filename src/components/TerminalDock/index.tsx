@@ -207,6 +207,8 @@ const TerminalDock = () => {
   const commandTemplates = useTerminalDockStore((state) => state.commandTemplates);
   const autoReceiveEnabled = useTerminalDockStore((state) => state.autoReceiveEnabled);
   const autoSendEnabled = useTerminalDockStore((state) => state.autoSendEnabled);
+  const autoInjectEnabled = useTerminalDockStore((state) => state.autoInjectEnabled);
+  const autoReplyEnabled = useTerminalDockStore((state) => state.autoReplyEnabled);
   const lastCapturedTextByTab = useTerminalDockStore(
     (state) => state.lastCapturedTextByTab,
   );
@@ -257,6 +259,12 @@ const TerminalDock = () => {
     (state) => state.setAutoReceiveEnabled,
   );
   const setAutoSendEnabled = useTerminalDockStore((state) => state.setAutoSendEnabled);
+  const setAutoInjectEnabled = useTerminalDockStore(
+    (state) => state.setAutoInjectEnabled,
+  );
+  const setAutoReplyEnabled = useTerminalDockStore(
+    (state) => state.setAutoReplyEnabled,
+  );
   const setLastCapturedText = useTerminalDockStore(
     (state) => state.setLastCapturedText,
   );
@@ -483,6 +491,49 @@ const TerminalDock = () => {
     autoSendEnabled,
     getResolvedFinalAnswer,
     setLastCapturedText,
+  ]);
+
+  // Auto-reply: when autoReplyEnabled and a new structured final_answer arrives,
+  // send it directly to the IM conversation.
+  const autoRepliedHashesRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!autoReplyEnabled || !activeWorkspaceID || !conversationID) return;
+
+    const events = structuredEventsByWorkspace[activeWorkspaceID];
+    if (!events || events.length === 0) return;
+
+    // Find the last final_answer event
+    let lastFinalAnswer:
+      | import("@/services/agentOutput").AgentFinalAnswerEvent
+      | undefined;
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+      const event = events[index];
+      if (event.type === "final_answer") {
+        lastFinalAnswer = event;
+        break;
+      }
+    }
+
+    if (!lastFinalAnswer?.text) return;
+
+    const textHash = hashText(lastFinalAnswer.text);
+    if (autoRepliedHashesRef.current.has(textHash)) return;
+
+    autoRepliedHashesRef.current.add(textHash);
+    // Keep the set bounded
+    if (autoRepliedHashesRef.current.size > 20) {
+      autoRepliedHashesRef.current = new Set(
+        [...autoRepliedHashesRef.current].slice(-10),
+      );
+    }
+
+    emit("SEND_CHAT_INPUT", lastFinalAnswer.text);
+    message.success("Structured answer auto-sent to chat");
+  }, [
+    autoReplyEnabled,
+    activeWorkspaceID,
+    conversationID,
+    structuredEventsByWorkspace,
   ]);
 
   const onCreateWorkspace = async () => {
@@ -1206,6 +1257,17 @@ const TerminalDock = () => {
               data-testid="terminal-bot-detection-toggle"
             />
           </div>
+          <div className="terminal-dock-toggle">
+            <Tooltip title="When enabled, @bot messages targeting you auto-inject into the terminal without manual review.">
+              <span>Auto Inject</span>
+            </Tooltip>
+            <Switch
+              size="small"
+              checked={autoInjectEnabled}
+              onChange={setAutoInjectEnabled}
+              data-testid="terminal-auto-inject-toggle"
+            />
+          </div>
           {pendingRequestCount > 0 && (
             <span
               className="terminal-dock-pending-count"
@@ -1234,6 +1296,18 @@ const TerminalDock = () => {
           data-testid="terminal-agent-im-group"
         >
           <span className="terminal-dock-toolbar-label">Agent -&gt; IM</span>
+          <div className="terminal-dock-toggle">
+            <Tooltip title="When enabled, structured final_answer from the terminal is auto-sent to the IM conversation.">
+              <span>Auto Reply</span>
+            </Tooltip>
+            <Switch
+              size="small"
+              checked={autoReplyEnabled}
+              disabled={!activeTab}
+              onChange={setAutoReplyEnabled}
+              data-testid="terminal-auto-reply-toggle"
+            />
+          </div>
           <Tooltip title="Review selected terminal text before inserting it into the current reply draft. If a TUI blocks terminal selection, this opens a selectable screen snapshot.">
             <Button
               size="small"

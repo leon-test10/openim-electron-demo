@@ -413,6 +413,7 @@ const E2EHarness = () => {
     const recentLimit = 20;
     const conversationType =
       activeConversation.conversationType === SessionType.Group ? "group" : "single";
+    const autoInject = useTerminalDockStore.getState().autoInjectEnabled;
 
     activeMessages.forEach((message, index) => {
       if (message.sendID === selfUserID) return;
@@ -427,19 +428,32 @@ const E2EHarness = () => {
 
       if (!trigger) return;
 
-      addPendingAgentRequest(
-        createPendingAgentRequest({
-          conversationID: activeConversationID,
-          triggerMessage: message,
-          trigger,
-          contextMessages: activeMessages.slice(
-            Math.max(0, index - recentLimit + 1),
-            index + 1,
-          ),
-          isGroup: conversationType === "group",
-          recentLimit,
-        }),
+      // Only process triggers targeting this user (or no specific target).
+      if (trigger.targetUserID && trigger.targetUserID !== selfUserID) return;
+
+      const contextMessages = activeMessages.slice(
+        Math.max(0, index - recentLimit + 1),
+        index + 1,
       );
+
+      const request = createPendingAgentRequest({
+        conversationID: activeConversationID,
+        triggerMessage: message,
+        trigger,
+        contextMessages,
+        isGroup: conversationType === "group",
+        recentLimit,
+      });
+
+      if (autoInject) {
+        addPendingAgentRequest({ ...request, status: "sent" });
+        emitter.emit("BOT_AGENT_REQUEST_ACTION", {
+          request,
+          action: "send",
+        });
+      } else {
+        addPendingAgentRequest(request);
+      }
     });
   }, [
     activeConversation.conversationType,
@@ -448,6 +462,33 @@ const E2EHarness = () => {
     addPendingAgentRequest,
     botDetectionEnabled,
   ]);
+
+  // When auto-inject is enabled, promote pending requests to sent.
+  useEffect(() => {
+    const autoInject = useTerminalDockStore.getState().autoInjectEnabled;
+    if (!autoInject || !botDetectionEnabled) return;
+
+    const pendingRequests =
+      usePendingAgentRequestStore.getState().requestsByConversation[
+        activeConversationID
+      ] ?? [];
+
+    const pendingForSelf = pendingRequests.filter(
+      (r) =>
+        r.status === "pending" && (!r.targetUserID || r.targetUserID === "e2e_self"),
+    );
+
+    if (pendingForSelf.length === 0) return;
+
+    usePendingAgentRequestStore.getState().promoteToAutoInject(activeConversationID);
+
+    for (const request of pendingForSelf) {
+      emitter.emit("BOT_AGENT_REQUEST_ACTION", {
+        request,
+        action: "send",
+      });
+    }
+  }, [activeConversationID, botDetectionEnabled]);
 
   return (
     <div className="flex h-screen bg-white">
