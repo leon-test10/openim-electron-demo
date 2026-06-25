@@ -150,8 +150,7 @@ const MessageSelectionToolbar: FC<MessageSelectionToolbarProps> = ({
         className="bg-white/96 flex flex-wrap items-center justify-center gap-2 rounded-[32px] border border-[#d9e2f3] px-4 py-3 shadow-[0_12px_32px_rgba(16,24,40,0.16)] backdrop-blur"
         data-testid="message-selection-toolbar"
       >
-        <div className="mr-2 flex min-w-0 flex-col">
-          <span className="text-base font-medium text-[#1677ff]">选择以下信息</span>
+        <div className="mr-2 flex min-w-0 flex-col text-center">
           <span
             className="text-xs text-[#667085]"
             data-testid="message-selection-count"

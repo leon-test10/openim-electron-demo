@@ -20,6 +20,7 @@ import {
 import emitter from "@/utils/events";
 
 import MessageItem from "./MessageItem";
+import MessageSelectionBoundary from "./MessageSelectionBoundary";
 import MessageSelectionToolbar from "./MessageSelectionToolbar";
 import NotificationMessage from "./NotificationMessage";
 import PendingAgentRequests from "./PendingAgentRequests";
@@ -53,12 +54,28 @@ const ChatContent = () => {
 
   const { SPLIT_COUNT, conversationID, loadState, moreOldLoading, getMoreOldMessages } =
     useHistoryMessageList();
+  const selectionAnchorMessageID = useMessageSelectionStore((state) =>
+    conversationID
+      ? state.selectionAnchorMessageIDByConversation[conversationID]
+      : undefined,
+  );
   const messageIDSignature = useMemo(
     () => loadState.messageList.map((message) => message.clientMsgID).join("|"),
     [loadState.messageList],
   );
   const selectionActive =
     Boolean(conversationID) && activeSelectionConversationID === conversationID;
+  const selectionAnchorIndex = useMemo(() => {
+    if (!selectionActive || loadState.messageList.length === 0) return -1;
+    if (!selectionAnchorMessageID) return 0;
+
+    return Math.max(
+      0,
+      loadState.messageList.findIndex(
+        (message) => message.clientMsgID === selectionAnchorMessageID,
+      ),
+    );
+  }, [loadState.messageList, selectionActive, selectionAnchorMessageID]);
 
   useEffect(() => {
     emitter.on("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
@@ -157,7 +174,7 @@ const ChatContent = () => {
                 ) : null,
             }}
             computeItemKey={(_, item) => item.clientMsgID}
-            itemContent={(_, message) => {
+            itemContent={(index, message) => {
               if (SystemMessageTypes.includes(message.contentType)) {
                 return (
                   <NotificationMessage key={message.clientMsgID} message={message} />
@@ -165,13 +182,27 @@ const ChatContent = () => {
               }
               const isSender = selfUserID === message.sendID;
               return (
-                <MessageItem
-                  key={message.clientMsgID}
-                  conversationID={conversationID}
-                  message={message}
-                  messageUpdateFlag={message.senderNickname + message.senderFaceUrl}
-                  isSender={isSender}
-                />
+                <>
+                  {selectionActive && index === selectionAnchorIndex && (
+                    <MessageSelectionBoundary
+                      anchored={Boolean(selectionAnchorMessageID)}
+                      onClick={() =>
+                        conversationID &&
+                        useMessageSelectionStore
+                          .getState()
+                          .clearSelection(conversationID)
+                      }
+                    />
+                  )}
+                  <MessageItem
+                    key={message.clientMsgID}
+                    conversationID={conversationID}
+                    message={message}
+                    messageUpdateFlag={message.senderNickname + message.senderFaceUrl}
+                    isSender={isSender}
+                    selectionVisible={!selectionActive || index >= selectionAnchorIndex}
+                  />
+                </>
               );
             }}
           />

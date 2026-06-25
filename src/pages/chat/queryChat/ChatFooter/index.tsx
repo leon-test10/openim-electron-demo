@@ -136,12 +136,16 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
         <SendActionBar sendMessage={sendMessage} getImageMessage={getImageMessage} />
         <div className="relative flex flex-1 flex-col overflow-hidden">
           {pendingAttachments.length > 0 && (
-            <div className="mx-4 mt-2 flex flex-wrap gap-2">
+            <div
+              className="mx-4 mt-2 flex flex-wrap gap-2"
+              data-testid="chat-footer-pending-attachments"
+            >
               {pendingAttachments.map((attachment, index) => (
                 <div
                   className="flex max-w-[280px] items-center gap-1 rounded border border-[#d0d5dd] bg-[#f8fafc] px-2 py-1 text-xs text-[#344054]"
                   key={`${attachment.filePath}-${index}`}
                   title={attachment.filePath}
+                  data-testid="chat-footer-pending-attachment"
                 >
                   <span className="truncate">
                     Pending {attachment.sendKind}: {attachment.fileName}
@@ -153,6 +157,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
                     icon={<CloseOutlined rev={undefined} />}
                     onClick={() => removePendingAttachment(index)}
                     aria-label={`Remove ${attachment.fileName}`}
+                    data-testid="chat-footer-remove-pending-attachment"
                   />
                 </div>
               ))}

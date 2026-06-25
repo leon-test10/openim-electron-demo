@@ -21,6 +21,7 @@ export interface IMessageItemProps {
   disabled?: boolean;
   conversationID?: string;
   messageUpdateFlag?: string;
+  selectionVisible?: boolean;
 }
 
 const components: Record<number, FC<IMessageItemProps>> = {
@@ -33,6 +34,7 @@ const MessageItem: FC<IMessageItemProps> = ({
   disabled,
   isSender,
   conversationID,
+  selectionVisible = true,
 }) => {
   const messageWrapRef = useRef<HTMLDivElement>(null);
   const activeSelectionConversationID = useMessageSelectionStore(
@@ -46,7 +48,9 @@ const MessageItem: FC<IMessageItemProps> = ({
   );
   const MessageRenderComponent = components[message.contentType] || CatchMessageRender;
   const selectionActive =
-    Boolean(conversationID) && activeSelectionConversationID === conversationID;
+    Boolean(conversationID) &&
+    activeSelectionConversationID === conversationID &&
+    selectionVisible;
   const selected = conversationID
     ? Boolean(selectedMessagesByConversation[conversationID]?.[message.clientMsgID])
     : false;

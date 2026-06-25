@@ -1,0 +1,185 @@
+const ANSI_ESCAPE = String.fromCharCode(27);
+const ANSI_CONTROL_PATTERN = new RegExp(
+  `${ANSI_ESCAPE}(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\x07]*(?:\\x07|${ANSI_ESCAPE}\\\\)|[@-Z\\\\-_])`,
+  "g",
+);
+
+export type AgentOutputSource = "structured" | "raw" | "screen";
+
+export interface AgentOutputResolution {
+  text?: string;
+  source: AgentOutputSource;
+  sessionID?: string;
+}
+
+interface ResolveAgentOutputParams {
+  visibleText?: string;
+  recentOutputText?: string;
+  storedOutputText?: string;
+}
+
+const cleanText = (value: string) =>
+  value
+    .replace(ANSI_CONTROL_PATTERN, "")
+    .replace(/\r/g, "\n")
+    .replace(/\u2800/g, " ")
+    .split("\n")
+    .map((line) => line.replace(/\s+$/g, ""))
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      if (/^\d+(\.\d+)?[KMG]?\s+\(\d+%\)\s+ctrl\+p\s+commands$/i.test(trimmed)) {
+        return false;
+      }
+      return true;
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+const extractString = (value: unknown): string | undefined => {
+  if (typeof value === "string") {
+    const trimmed = cleanText(value);
+    return trimmed || undefined;
+  }
+
+  if (Array.isArray(value)) {
+    const text = value
+      .map((item) => extractString(item))
+      .filter((item): item is string => Boolean(item))
+      .join("\n")
+      .trim();
+    return text || undefined;
+  }
+
+  if (!value || typeof value !== "object") return undefined;
+
+  const record = value as Record<string, unknown>;
+  const directKeys = ["text", "final", "finalText", "answer", "content", "markdown"];
+
+  for (const key of directKeys) {
+    const candidate = extractString(record[key]);
+    if (candidate) return candidate;
+  }
+
+  if (record.message && typeof record.message === "object") {
+    const candidate = extractString(record.message);
+    if (candidate) return candidate;
+  }
+
+  if (record.delta && typeof record.delta === "object") {
+    const candidate = extractString(record.delta);
+    if (candidate) return candidate;
+  }
+
+  return undefined;
+};
+
+const parseStructuredObjects = (rawText: string) => {
+  const events: Array<Record<string, unknown>> = [];
+
+  for (const line of rawText.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) continue;
+
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (Array.isArray(parsed)) {
+        parsed.forEach((item) => {
+          if (item && typeof item === "object") {
+            events.push(item as Record<string, unknown>);
+          }
+        });
+        continue;
+      }
+
+      if (parsed && typeof parsed === "object") {
+        events.push(parsed as Record<string, unknown>);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return events;
+};
+
+const resolveStructuredOutput = (
+  rawText: string,
+): AgentOutputResolution | undefined => {
+  const events = parseStructuredObjects(rawText);
+  if (events.length === 0) return undefined;
+
+  let sessionID: string | undefined;
+
+  for (const event of events) {
+    const possibleSessionID =
+      typeof event.sessionID === "string"
+        ? event.sessionID
+        : event.session &&
+          typeof event.session === "object" &&
+          typeof (event.session as Record<string, unknown>).id === "string"
+        ? ((event.session as Record<string, unknown>).id as string)
+        : undefined;
+
+    if (possibleSessionID) {
+      sessionID = possibleSessionID;
+    }
+  }
+
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    const type = typeof event.type === "string" ? event.type.toLowerCase() : "";
+    const shouldTreatAsFinal =
+      type.includes("assistant.final") ||
+      type.includes("final") ||
+      type.includes("completed") ||
+      type.includes("response.done");
+
+    if (!shouldTreatAsFinal) continue;
+
+    const text = extractString(event);
+    if (text) {
+      return {
+        text,
+        source: "structured",
+        sessionID,
+      };
+    }
+  }
+
+  return undefined;
+};
+
+export const resolveAgentFinalAnswer = ({
+  visibleText,
+  recentOutputText,
+  storedOutputText,
+}: ResolveAgentOutputParams): AgentOutputResolution | undefined => {
+  const rawText = [storedOutputText, recentOutputText]
+    .filter((item): item is string => Boolean(item))
+    .join("\n");
+
+  const structured = rawText ? resolveStructuredOutput(rawText) : undefined;
+  if (structured?.text) return structured;
+
+  const normalizedRaw = recentOutputText?.trim() || storedOutputText?.trim();
+  if (normalizedRaw) {
+    return {
+      text: normalizedRaw,
+      source: "raw",
+      sessionID: structured?.sessionID,
+    };
+  }
+
+  const normalizedScreen = visibleText?.trim();
+  if (normalizedScreen) {
+    return {
+      text: normalizedScreen,
+      source: "screen",
+      sessionID: structured?.sessionID,
+    };
+  }
+
+  return undefined;
+};

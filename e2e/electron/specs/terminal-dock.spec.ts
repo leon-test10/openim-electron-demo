@@ -143,7 +143,9 @@ test("failed attachment export keeps bundle and terminal prompt", async ({
   expect(manifestWrite?.content).toContain('"status": "failed"');
 });
 
-test("selection and captured output only update draft", async ({ appWindow }) => {
+test("structured final answer capture prefers machine-readable output and only updates draft", async ({
+  appWindow,
+}) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
 
   await appWindow.locator(messageItem(e2eMessageIDs[1])).evaluate((node) => {
@@ -166,13 +168,16 @@ test("selection and captured output only update draft", async ({ appWindow }) =>
     (
       window as unknown as { __e2eEmitTerminalOutput?: (text: string) => void }
     ).__e2eEmitTerminalOutput?.(
-      "Windows PowerShell\nPS C:\\OpenIM-E2E\\workspaces> Write-Host READY\nREADY\n",
+      [
+        '{"type":"session.updated","session":{"id":"session_123"}}',
+        '{"type":"assistant.final","text":"Structured final answer from opencode"}',
+      ].join("\n"),
     );
   });
   await appWindow.getByTestId("terminal-reply-debug").click();
-  await appWindow.getByTestId("terminal-capture-output").click();
+  await appWindow.getByTestId("terminal-capture-final-answer").click();
   await expect(appWindow.getByTestId("e2e-draft-preview")).toContainText(
-    "Windows PowerShell",
+    "Structured final answer from opencode",
   );
   await expect(appWindow.getByTestId("e2e-sent-drafts")).toBeEmpty();
 });
@@ -250,5 +255,11 @@ test("context library can attach a generated workspace file as pending draft att
   await expect(appWindow.getByTestId("e2e-pending-attachments")).toContainText(
     "context/",
   );
+  await appWindow
+    .getByRole("dialog", { name: "Advanced / Debug Context Files" })
+    .getByLabel("Close", { exact: true })
+    .click();
+  await appWindow.getByTestId("chat-footer-remove-pending-attachment").click();
+  await expect(appWindow.getByTestId("e2e-pending-attachments")).toBeEmpty();
   await expect(appWindow.getByTestId("e2e-sent-drafts")).toBeEmpty();
 });

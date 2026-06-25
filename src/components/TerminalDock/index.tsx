@@ -29,6 +29,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { IMSDK } from "@/layout/MainContentWrap";
+import { resolveAgentFinalAnswer } from "@/services/agentOutput";
 import { PendingAgentRequest } from "@/services/botTrigger";
 import {
   ContextBundle,
@@ -206,7 +207,6 @@ const TerminalDock = () => {
   const commandTemplates = useTerminalDockStore((state) => state.commandTemplates);
   const autoReceiveEnabled = useTerminalDockStore((state) => state.autoReceiveEnabled);
   const autoSendEnabled = useTerminalDockStore((state) => state.autoSendEnabled);
-  const captureSource = useTerminalDockStore((state) => state.captureSource);
   const lastCapturedTextByTab = useTerminalDockStore(
     (state) => state.lastCapturedTextByTab,
   );
@@ -311,45 +311,28 @@ const TerminalDock = () => {
     [activeTabOutput],
   );
 
-  const getCapturedTerminalText = useCallback(
-    (tab: TerminalTab) => {
-      const api = terminalApisRef.current.get(tab.id);
-      const latestOutputByTab = useTerminalDockStore.getState().outputByTab;
-      if (!api) {
-        const fallbackOutput = getStoredOutputFallback(latestOutputByTab, tab.id);
-        return fallbackOutput || undefined;
-      }
+  const getResolvedFinalAnswer = useCallback((tab: TerminalTab) => {
+    const api = terminalApisRef.current.get(tab.id);
+    const latestOutputByTab = useTerminalDockStore.getState().outputByTab;
+    const storedOutputText = getStoredOutputFallback(latestOutputByTab, tab.id);
 
-      const visibleText = api.getVisibleText();
-      const recentOutputText = api.getRecentOutputText();
-      const storedOutputText = getStoredOutputFallback(latestOutputByTab, tab.id);
-      const capturedText =
-        captureSource === "screen"
-          ? visibleText || storedOutputText
-          : captureSource === "raw"
-          ? recentOutputText || storedOutputText
-          : visibleText.length >= 12
-          ? visibleText
-          : recentOutputText || storedOutputText;
+    return resolveAgentFinalAnswer({
+      visibleText: api?.getVisibleText(),
+      recentOutputText: api?.getRecentOutputText(),
+      storedOutputText,
+    });
+  }, []);
 
-      return capturedText?.trim();
-    },
-    [captureSource],
-  );
-
-  const captureTerminalOutput = useCallback(
+  const captureTerminalFinalAnswer = useCallback(
     (mode: "manual" | "auto") => {
       if (!activeTab) return;
 
-      const normalizedText = getCapturedTerminalText(activeTab);
-      if (typeof normalizedText !== "string") {
-        if (mode === "manual") message.info("No active terminal surface");
-        return;
-      }
+      const resolution = getResolvedFinalAnswer(activeTab);
+      const normalizedText = resolution?.text?.trim();
 
       if (!normalizedText) {
         if (mode === "manual") {
-          message.info("No terminal output captured");
+          message.info("No final answer captured");
         }
         return;
       }
@@ -360,7 +343,7 @@ const TerminalDock = () => {
         lastDraftHashByTabRef.current.get(activeTab.id) === nextDraftHash
       ) {
         if (mode === "manual") {
-          message.info("Terminal output already captured");
+          message.info("Final answer already captured");
         }
         return;
       }
@@ -369,10 +352,14 @@ const TerminalDock = () => {
       setLastCapturedText(activeTab.id, normalizedText);
       emit("REPLACE_CHAT_INPUT", normalizedText);
       if (mode === "manual") {
-        message.success("Reply draft replaced with captured terminal output");
+        message.success(
+          resolution?.source === "structured"
+            ? "Structured final answer captured"
+            : "Final answer captured from terminal fallback",
+        );
       }
     },
-    [activeTab, getCapturedTerminalText, lastCapturedTextByTab, setLastCapturedText],
+    [activeTab, getResolvedFinalAnswer, lastCapturedTextByTab, setLastCapturedText],
   );
 
   useEffect(() => {
@@ -391,11 +378,16 @@ const TerminalDock = () => {
     }
 
     const timer = window.setTimeout(() => {
-      captureTerminalOutput("auto");
+      captureTerminalFinalAnswer("auto");
     }, AUTO_CAPTURE_DEBOUNCE);
 
     return () => window.clearTimeout(timer);
-  }, [activeTab, activeTabOutputSignature, autoReceiveEnabled, captureTerminalOutput]);
+  }, [
+    activeTab,
+    activeTabOutputSignature,
+    autoReceiveEnabled,
+    captureTerminalFinalAnswer,
+  ]);
 
   useEffect(() => {
     if (
@@ -408,7 +400,7 @@ const TerminalDock = () => {
     }
 
     const timer = window.setTimeout(() => {
-      const normalizedText = getCapturedTerminalText(activeTab);
+      const normalizedText = getResolvedFinalAnswer(activeTab)?.text?.trim();
       if (!normalizedText || shouldSkipAutoSend(normalizedText)) return;
 
       const textHash = hashText(normalizedText);
@@ -439,7 +431,7 @@ const TerminalDock = () => {
     activeTabOutputSignature,
     autoReceiveEnabled,
     autoSendEnabled,
-    getCapturedTerminalText,
+    getResolvedFinalAnswer,
     setLastCapturedText,
   ]);
 
@@ -929,6 +921,9 @@ const TerminalDock = () => {
         return;
       }
 
+      message.info(
+        "Live terminal selection is unavailable in this TUI. Review the fallback snapshot or use Capture Final Answer.",
+      );
       setSelectionReplyReview({
         open: true,
         text: fallbackText,
@@ -1715,27 +1710,28 @@ const TerminalDock = () => {
           </div>
           <div className="terminal-dock-debug-row">
             <div>
-              <div className="text-xs text-[#262626]">Capture Output</div>
+              <div className="text-xs text-[#262626]">Capture Final Answer</div>
               <div className="text-[11px] text-[#8c8c8c]">
-                Replace the current reply draft with the latest terminal output
-                snapshot.
+                Prefer runtime structured output when available, then fall back to
+                terminal text.
               </div>
             </div>
             <Button
               size="small"
               disabled={!activeTab}
               icon={<CopyOutlined rev={undefined} />}
-              onClick={() => captureTerminalOutput("manual")}
-              data-testid="terminal-capture-output"
+              onClick={() => captureTerminalFinalAnswer("manual")}
+              data-testid="terminal-capture-final-answer"
             >
               Capture to Draft
             </Button>
           </div>
           <div className="terminal-dock-debug-row">
             <div>
-              <div className="text-xs text-[#262626]">Auto Capture Output</div>
+              <div className="text-xs text-[#262626]">Auto Receive Final Answer</div>
               <div className="text-[11px] text-[#8c8c8c]">
-                Keep the latest terminal snapshot in the reply draft. Off by default.
+                Keep the latest resolved final answer in the reply draft. Off by
+                default.
               </div>
             </div>
             <Switch
@@ -1748,9 +1744,9 @@ const TerminalDock = () => {
           </div>
           <div className="terminal-dock-debug-row">
             <div>
-              <div className="text-xs text-[#262626]">Draft -&gt; Chat</div>
+              <div className="text-xs text-[#262626]">Auto Send Final Answer</div>
               <div className="text-[11px] text-[#8c8c8c]">
-                Experimental auto-send. Requires Auto Capture and explicit confirmation.
+                Experimental auto-send. Requires Auto Receive and explicit confirmation.
               </div>
             </div>
             <Switch

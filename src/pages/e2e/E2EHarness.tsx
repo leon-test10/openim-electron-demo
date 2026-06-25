@@ -1,5 +1,5 @@
 import { Platform, SessionType } from "@openim/wasm-client-sdk";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import TerminalDock from "@/components/TerminalDock";
 import {
@@ -26,6 +26,7 @@ import emitter, { PendingChatAttachmentParams } from "@/utils/events";
 import ChatHeader from "../chat/queryChat/ChatHeader";
 import MessageHistoryDrawer from "../chat/queryChat/MessageHistoryDrawer";
 import MessageItem from "../chat/queryChat/MessageItem";
+import MessageSelectionBoundary from "../chat/queryChat/MessageSelectionBoundary";
 import MessageSelectionToolbar from "../chat/queryChat/MessageSelectionToolbar";
 import PendingAgentRequests from "../chat/queryChat/PendingAgentRequests";
 
@@ -267,12 +268,26 @@ const E2EHarness = () => {
   const selectionActive = useMessageSelectionStore(
     (state) => state.activeConversationID === activeConversationID,
   );
+  const selectionAnchorMessageID = useMessageSelectionStore(
+    (state) => state.selectionAnchorMessageIDByConversation[activeConversationID],
+  );
   const botDetectionEnabled = usePendingAgentRequestStore(
     (state) => state.botDetectionEnabled,
   );
   const addPendingAgentRequest = usePendingAgentRequestStore(
     (state) => state.addRequest,
   );
+  const selectionAnchorIndex = useMemo(() => {
+    if (!selectionActive || activeMessages.length === 0) return -1;
+    if (!selectionAnchorMessageID) return 0;
+
+    return Math.max(
+      0,
+      activeMessages.findIndex(
+        (message) => message.clientMsgID === selectionAnchorMessageID,
+      ),
+    );
+  }, [activeMessages, selectionActive, selectionAnchorMessageID]);
 
   if (terminalEnabled) {
     installE2EElectronMock();
@@ -395,13 +410,25 @@ const E2EHarness = () => {
             <MessageSelectionToolbar conversationID={activeConversationID} />
           )}
           <PendingAgentRequests conversationID={activeConversationID} />
-          {activeMessages.map((message) => (
-            <MessageItem
-              key={message.clientMsgID}
-              conversationID={activeConversationID}
-              message={message}
-              isSender={message.sendID === "e2e_self"}
-            />
+          {activeMessages.map((message, index) => (
+            <div key={message.clientMsgID}>
+              {selectionActive && index === selectionAnchorIndex && (
+                <MessageSelectionBoundary
+                  anchored={Boolean(selectionAnchorMessageID)}
+                  onClick={() =>
+                    useMessageSelectionStore
+                      .getState()
+                      .clearSelection(activeConversationID)
+                  }
+                />
+              )}
+              <MessageItem
+                conversationID={activeConversationID}
+                message={message}
+                isSender={message.sendID === "e2e_self"}
+                selectionVisible={!selectionActive || index >= selectionAnchorIndex}
+              />
+            </div>
           ))}
         </div>
         <MessageHistoryDrawer
@@ -427,17 +454,38 @@ const E2EHarness = () => {
           <div className="mt-2 text-xs font-medium text-[#475467]">
             E2E Pending Attachments
           </div>
-          <pre
-            className="mt-2 min-h-[48px] whitespace-pre-wrap rounded border border-[#d0d5dd] bg-white p-2 text-xs text-[#101828]"
+          <div
+            className="mt-2 min-h-[48px] rounded border border-[#d0d5dd] bg-white p-2 text-xs text-[#101828]"
             data-testid="e2e-pending-attachments"
           >
-            {pendingAttachments
-              .map(
-                (attachment) =>
-                  `${attachment.fileName} | ${attachment.relativePath} | ${attachment.sendKind}`,
-              )
-              .join("\n")}
-          </pre>
+            {pendingAttachments.length === 0 ? (
+              <div className="whitespace-pre-wrap" />
+            ) : (
+              pendingAttachments.map((attachment, index) => (
+                <div
+                  className="mb-2 flex items-center justify-between gap-2 last:mb-0"
+                  key={`${attachment.filePath}-${index}`}
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {attachment.fileName} | {attachment.relativePath} |{" "}
+                    {attachment.sendKind}
+                  </span>
+                  <button
+                    type="button"
+                    className="rounded border border-[#d0d5dd] px-2 py-1"
+                    onClick={() =>
+                      setPendingAttachments((current) =>
+                        current.filter((_, currentIndex) => currentIndex !== index),
+                      )
+                    }
+                    data-testid="chat-footer-remove-pending-attachment"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
       {terminalEnabled && (

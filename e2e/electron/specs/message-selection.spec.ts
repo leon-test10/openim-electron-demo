@@ -14,6 +14,10 @@ test("header selection flow uses IM-native toolbar", async ({ appWindow }) => {
   await appWindow.getByTestId("chat-header-more").click();
   await appWindow.getByTestId("chat-header-select-messages").click();
 
+  await expect(appWindow.getByTestId("message-selection-boundary-toggle")).toBeVisible();
+  await expect(appWindow.getByTestId("message-selection-boundary-toggle")).toContainText(
+    "Select below messages",
+  );
   await expect(appWindow.getByTestId("message-selection-toolbar")).toBeVisible();
   await expect(appWindow.getByTestId("floating-select-messages")).toHaveCount(0);
 
@@ -28,6 +32,9 @@ test("header selection flow uses IM-native toolbar", async ({ appWindow }) => {
 
   await appWindow.getByTestId("message-selection-clear").click();
   await expect(appWindow.getByTestId("message-selection-toolbar")).toHaveCount(0);
+  await expect(appWindow.getByTestId("message-selection-boundary-toggle")).toHaveCount(
+    0,
+  );
 });
 
 test("message right-click can start selection mode", async ({ appWindow }) => {
@@ -40,6 +47,9 @@ test("message right-click can start selection mode", async ({ appWindow }) => {
 
   await expect(appWindow.getByTestId("message-selection-toolbar")).toBeVisible();
   await expect(appWindow.getByTestId("message-selection-count")).toContainText("1");
+  await expect(appWindow.getByTestId("message-selection-boundary-toggle")).toContainText(
+    "Cancel select below messages",
+  );
 
   await appWindow.locator(messageItem(e2eMessageIDs[1])).click();
   await expect(appWindow.getByTestId("message-selection-count")).toContainText("2");

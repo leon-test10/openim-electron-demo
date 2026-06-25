@@ -4,7 +4,13 @@ import { create } from "zustand";
 export interface MessageSelectionStore {
   activeConversationID?: string;
   selectedMessagesByConversation: Record<string, Record<string, MessageItem>>;
-  setSelectionMode: (conversationID: string | undefined, active: boolean) => void;
+  selectionAnchorMessageIDByConversation: Record<string, string | undefined>;
+  setSelectionMode: (
+    conversationID: string | undefined,
+    active: boolean,
+    anchorMessageID?: string,
+  ) => void;
+  setSelectionAnchor: (conversationID: string, anchorMessageID?: string) => void;
   toggleMessageSelection: (conversationID: string, message: MessageItem) => void;
   addMessageSelection: (conversationID: string, message: MessageItem) => void;
   selectOnlyMessage: (conversationID: string, message: MessageItem) => void;
@@ -14,7 +20,8 @@ export interface MessageSelectionStore {
 export const useMessageSelectionStore = create<MessageSelectionStore>()((set) => ({
   activeConversationID: undefined,
   selectedMessagesByConversation: {},
-  setSelectionMode: (conversationID, active) => {
+  selectionAnchorMessageIDByConversation: {},
+  setSelectionMode: (conversationID, active, anchorMessageID) => {
     set((state) => ({
       activeConversationID: active ? conversationID : undefined,
       selectedMessagesByConversation:
@@ -24,6 +31,24 @@ export const useMessageSelectionStore = create<MessageSelectionStore>()((set) =>
               ...state.selectedMessagesByConversation,
               [conversationID]: {},
             },
+      selectionAnchorMessageIDByConversation:
+        active || !conversationID
+          ? {
+              ...state.selectionAnchorMessageIDByConversation,
+              ...(conversationID ? { [conversationID]: anchorMessageID } : undefined),
+            }
+          : {
+              ...state.selectionAnchorMessageIDByConversation,
+              [conversationID]: undefined,
+            },
+    }));
+  },
+  setSelectionAnchor: (conversationID, anchorMessageID) => {
+    set((state) => ({
+      selectionAnchorMessageIDByConversation: {
+        ...state.selectionAnchorMessageIDByConversation,
+        [conversationID]: anchorMessageID,
+      },
     }));
   },
   toggleMessageSelection: (conversationID, message) => {
@@ -55,6 +80,12 @@ export const useMessageSelectionStore = create<MessageSelectionStore>()((set) =>
           [message.clientMsgID]: message,
         },
       },
+      selectionAnchorMessageIDByConversation: {
+        ...state.selectionAnchorMessageIDByConversation,
+        [conversationID]:
+          state.selectionAnchorMessageIDByConversation[conversationID] ??
+          message.clientMsgID,
+      },
     }));
   },
   selectOnlyMessage: (conversationID, message) => {
@@ -66,6 +97,10 @@ export const useMessageSelectionStore = create<MessageSelectionStore>()((set) =>
           [message.clientMsgID]: message,
         },
       },
+      selectionAnchorMessageIDByConversation: {
+        ...state.selectionAnchorMessageIDByConversation,
+        [conversationID]: message.clientMsgID,
+      },
     }));
   },
   clearSelection: (conversationID) => {
@@ -74,6 +109,7 @@ export const useMessageSelectionStore = create<MessageSelectionStore>()((set) =>
         return {
           activeConversationID: undefined,
           selectedMessagesByConversation: {},
+          selectionAnchorMessageIDByConversation: {},
         };
       }
 
@@ -85,6 +121,10 @@ export const useMessageSelectionStore = create<MessageSelectionStore>()((set) =>
         selectedMessagesByConversation: {
           ...state.selectedMessagesByConversation,
           [conversationID]: {},
+        },
+        selectionAnchorMessageIDByConversation: {
+          ...state.selectionAnchorMessageIDByConversation,
+          [conversationID]: undefined,
         },
       };
     });

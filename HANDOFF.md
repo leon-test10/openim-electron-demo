@@ -1,5 +1,81 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P9.1 Low-Token Stabilization
+
+Current branch: `feature/p9-bot-trigger-detection`
+
+Reason:
+
+- We needed a lower-risk stabilization pass instead of widening scope again.
+- `final answer` extraction needed a runtime-adapter shape so later auto-send
+  is not tied only to fragile TUI scraping.
+- Multi-select still behaved too much like a floating custom tool instead of an
+  in-conversation DingTalk-like selection flow.
+
+Scope completed:
+
+- Added neutral agent-output resolver service:
+  - `src/services/agentOutput/AgentOutputResolver.ts`
+  - `src/services/agentOutput/index.ts`
+- Final answer capture is now ordered as:
+  1. structured machine-readable output parsed from PTY/raw output;
+  2. raw/stored terminal output fallback;
+  3. visible xterm screen fallback.
+- Added first structured-path support for opencode-style JSON/event lines, so
+  `assistant.final` / `final` / similar completion objects are preferred over
+  visible-screen scraping when they exist.
+- Terminal Dock now exposes `Capture Final Answer`, `Auto Receive Final Answer`,
+  and `Auto Send Final Answer` semantics on top of the resolver.
+- `Use Selection as Reply` is no longer treated as the primary extraction path;
+  when live selection is unavailable inside a TUI, the UI now points users to
+  final-answer capture instead.
+- Added conversation-stream selection boundary UI:
+  - new `MessageSelectionBoundary`
+  - `Select below messages` / `Cancel select below messages`
+  - anchor-aware selection state in `useMessageSelectionStore`
+- The selected-message toolbar no longer owns the "select below" entry; it now
+  only carries action buttons.
+- Reduced the right terminal panel minimum size further so the chat side can be
+  compressed more naturally during side-by-side work.
+- Added stable test ids for pending draft attachments and removal, and extended
+  the E2E harness so workspace-file pending attachments can be removed in tests.
+
+Files changed in this pass:
+
+- `src/services/agentOutput/*`
+- `src/components/TerminalDock/index.tsx`
+- `src/pages/chat/queryChat/MessageSelectionBoundary.tsx`
+- `src/store/messageSelection.ts`
+- `src/pages/chat/queryChat/ChatContent.tsx`
+- `src/pages/chat/queryChat/MessageItem/index.tsx`
+- `src/pages/chat/queryChat/MessageSelectionToolbar.tsx`
+- `src/pages/chat/index.tsx`
+- `src/pages/chat/queryChat/ChatFooter/index.tsx`
+- `src/pages/e2e/E2EHarness.tsx`
+- `e2e/electron/specs/message-selection.spec.ts`
+- `e2e/electron/specs/terminal-dock.spec.ts`
+
+Validation run:
+
+- `git diff --check`: pass.
+- `npm.cmd run lint -- --quiet`: pass.
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd run build`: pass. Existing Vite/AntD/chunk-size warnings remain.
+- `$env:VITE_DEV_SERVER_URL=''; npx.cmd playwright test -c playwright.electron.config.ts e2e/electron/specs/message-selection.spec.ts e2e/electron/specs/terminal-dock.spec.ts e2e/electron/specs/history-drawer.spec.ts e2e/electron/specs/bot-trigger.spec.ts`: pass. Result: 19 passed.
+
+Important semantics and limits:
+
+- This pass does not add `@bot` auto-send, Auto Inject, Auto Reply, or broader
+  runtime management.
+- The new resolver prefers structured output, but generic arbitrary TUI screens
+  still fall back to heuristic text capture when no machine-readable channel is
+  available.
+- For opencode specifically, `npx.cmd -y opencode-ai@1.17.9` exposes structured
+  paths such as `opencode run --format json`, `serve`, and `export`; the live
+  fullscreen TUI itself should not be assumed to emit stable JSON on screen.
+- `VITE_DEV_SERVER_URL` must be cleared for reliable Electron E2E runs in this
+  workspace, otherwise tests can accidentally target a stale dev server.
+
 ## Latest Update - P9.1 Selection Toolbar and Forwarding Hardening
 
 Current branch: `feature/p9-bot-trigger-detection`
