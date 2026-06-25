@@ -1,5 +1,165 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Structured Output & Auto-Feed Analysis (2026-06-25)
+
+Current branch: `feature/p9-bot-trigger-detection`
+
+### Context
+
+The goal is twofold:
+
+1. **Structured extraction of terminal output** — reliably capture agent results from the terminal so they can be automatically sent back to IM chat.
+2. **IM-based @bot auto-feed into TUI** — when someone `@bot`s in chat, the message should automatically flow into the terminal agent without manual review.
+
+### Current Architecture (as of `12cf91f`)
+
+**Terminal → IM direction:**
+
+```
+node-pty (Electron Main)
+  → IPC "terminal:event" (type:"stdout", raw PTY bytes)
+  → outputByTab (TerminalOutputChunk[], in-memory, not persisted)
+  → xterm.js rendering
+  → AgentOutputResolver (heuristic: scan JSON lines → raw text → screen scrape)
+  → captureTerminalFinalAnswer() → emit("REPLACE_CHAT_INPUT" / "SEND_CHAT_INPUT")
+  → ChatFooter → OpenIM SDK send
+```
+
+**IM → Terminal direction:**
+
+```
+ChatContent scans messages
+  → detectBotTrigger("@bot" / "/bot" prefix)
+  → createPendingAgentRequest → store
+  → PendingAgentRequests component (manual "Send to Agent" click)
+  → emit("BOT_AGENT_REQUEST_ACTION")
+  → TerminalDock → IMContextService.createContextBundle → writeToTab(prompt)
+```
+
+### Key Gaps
+
+| Gap | Severity | Detail |
+|-----|----------|--------|
+| No structured output channel | Critical | All output arrives as raw PTY bytes. `AgentOutputResolver` is a heuristic JSON scanner — if the agent doesn't emit JSON, fallback is raw text or screen scraping. There is no dedicated structured IPC channel from Electron Main. |
+| @bot auto-inject missing | Critical | `@bot` detection works, but the flow stops at `PendingAgentRequests`. User must manually click "Send to Agent". No auto-routing. |
+| Auto-reply missing | Critical | Terminal results cannot be automatically sent back to the IM conversation that triggered the bot. |
+| Output not persisted | Medium | `outputByTab` and `lastCapturedTextByTab` are in-memory only. Lost on reload. |
+| No artifact detection | Medium | Agent-generated workspace files are not automatically detected or offered for IM attachment. |
+| No streaming progress | Medium | Only debounced 1200ms "final answer" capture exists. No incremental progress events to chat. |
+| No bot session concept | Medium | No lifecycle tracking of `@bot` → Agent → Reply interactions. |
+
+### Recommended Roadmap
+
+#### Phase 1: Structured Agent Output Protocol (Foundation)
+
+This is the critical prerequisite. Without a reliable structured channel, all downstream automation is fragile.
+
+**1.1 Define typed Agent Output Events** (`src/services/agentOutput/types.ts`):
+
+```ts
+type AgentOutputEvent =
+  | { type: "progress"; stage: string; message: string; percent?: number }
+  | { type: "final_answer"; text: string; format: "markdown" | "text" | "json" }
+  | { type: "artifact"; path: string; mime: string; size: number; label?: string }
+  | { type: "error"; message: string; code?: string }
+  | { type: "session"; id: string; status: "started" | "completed" | "failed" }
+```
+
+**1.2 File-based NDJSON protocol:**
+- Convention: agent writes structured events to `$WORKSPACE/.agent/events.ndjson`
+- opencode already supports `--format json`; we can redirect or tee structured output to this file
+- Even in TUI mode, the agent can write a sidecar structured log
+
+**1.3 Electron Main file watcher + new IPC channel:**
+- `terminalManage.ts`: after workspace starts, `fs.watch` on `.agent/events.ndjson`
+- New IPC channel: `agent:structuredOutput` — sends typed events to renderer
+- Backward compatible: no file → fall back to current heuristic parsing
+
+**1.4 Refactor AgentOutputResolver:**
+- Tier 1: consume structured IPC events (reliable, type-safe)
+- Tier 2: JSON scanning of PTY output (current heuristic, for agents without the protocol)
+- Tier 3: raw/screen fallback (last resort)
+
+**Files to create/modify:**
+- `src/services/agentOutput/types.ts` (new)
+- `src/services/agentOutput/AgentOutputResolver.ts` (refactor)
+- `electron/main/terminalManage.ts` (add file watcher + IPC)
+- `electron/constants/index.ts` (add `agent:structuredOutput` channel)
+- `src/store/terminalDock.ts` (subscribe to new IPC)
+- `src/components/TerminalDock/index.tsx` (consume structured events)
+
+#### Phase 2: @bot Auto-Inject to Terminal
+
+**2.1 Bot routing policy** (per-conversation setting):
+```ts
+type BotRoutingPolicy = "off" | "manual" | "auto"
+```
+
+**2.2 Auto-inject flow:**
+- `@bot` detected + policy = `auto` → skip `PendingAgentRequests` review card
+- Auto-call `IMContextService.createContextBundle` → `writeToTab(prompt)`
+- Create `BotSession` record tracking this interaction
+
+**2.3 Bot session lifecycle:**
+```ts
+interface BotSession {
+  id: string
+  conversationID: string
+  triggerMessageID: string
+  status: "pending" | "processing" | "completed" | "failed"
+  startedAt: number
+  completedAt?: number
+  resultText?: string
+  artifacts?: string[]
+}
+```
+
+**Files to create/modify:**
+- `src/services/botTrigger/types.ts` (add BotSession, BotRoutingPolicy)
+- `src/store/pendingAgentRequests.ts` (add auto-routing logic)
+- `src/pages/chat/queryChat/ChatContent.tsx` (auto-inject path)
+- `src/components/TerminalDock/index.tsx` (BotSession tracking)
+
+#### Phase 3: Terminal Result Auto-Reply to IM
+
+Depends on Phase 1 structured output.
+
+**3.1 Auto-reply flow:**
+- Agent emits `final_answer` via structured channel
+- If `autoSendEnabled` + conversation has active `BotSession` → auto `emit("SEND_CHAT_INPUT", text)` back to the triggering conversation
+- Include artifact references if agent generated files
+
+**3.2 Streaming progress (optional):**
+- Agent emits `progress` → optionally send status messages to IM ("Analyzing...", "Generating...")
+- Configurable verbosity
+
+**Files to create/modify:**
+- `src/components/TerminalDock/index.tsx` (auto-reply on structured final_answer)
+- `src/store/terminalDock.ts` (BotSession association)
+
+#### Phase 4: Persistence & Artifact Management
+
+**4.1 Terminal transcript persistence:**
+- `outputByTab` periodically flushed to disk
+- Restore on reload
+
+**4.2 Artifact auto-detection:**
+- Watch workspace for new files
+- Auto-offer to attach to IM chat
+
+**4.3 Bot Session history:**
+- Persist bot sessions
+- UI to review past bot interactions
+
+### Not in Scope (Yet)
+
+- True background bot (agent running without visible terminal)
+- Multi-modal (image/voice) bot triggers
+- Per-user/per-conversation bot alias configuration
+- Agent API key/provider management (agent CLIs own their config)
+
+---
+
 ## Latest Update - P9.1 Low-Token Stabilization
 
 Current branch: `feature/p9-bot-trigger-detection`
