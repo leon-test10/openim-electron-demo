@@ -14,6 +14,7 @@ import { changeLanguage } from "../i18n";
 import { runtimeManager } from "./runtimeManage";
 import { terminalManager } from "./terminalManage";
 import { agentWatchManager } from "./agentWatchManage";
+import { opencodeManager } from "./opencodeManage";
 import {
   copyFileToTerminalWorkspace,
   downloadFileToTerminalWorkspace,
@@ -143,6 +144,18 @@ export const setIpcMainListener = () => {
   });
   ipcMain.handle(IpcRenderToMain.agentStopWatch, (_, workspaceID) => {
     return agentWatchManager.stop(workspaceID);
+  });
+  ipcMain.handle(IpcRenderToMain.opencodeProbeServer, (_, params) => {
+    return opencodeManager.probeServer(params);
+  });
+  ipcMain.handle(IpcRenderToMain.opencodeStartServer, (_, params) => {
+    return opencodeManager.startServer(params);
+  });
+  ipcMain.handle(IpcRenderToMain.opencodeStopServer, (_, workspaceID) => {
+    return opencodeManager.stopServer(workspaceID);
+  });
+  ipcMain.handle(IpcRenderToMain.opencodeGetBinding, (_, workspaceID) => {
+    return opencodeManager.getBinding(workspaceID);
   });
 
   ipcMain.handle(IpcRenderToMain.workspaceGetConversationDir, (_, conversationID) => {

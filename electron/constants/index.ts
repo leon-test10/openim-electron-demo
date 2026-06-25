@@ -34,6 +34,10 @@ export const IpcRenderToMain = {
 
   agentStartWatch: "agent:startWatch",
   agentStopWatch: "agent:stopWatch",
+  opencodeProbeServer: "opencode:probeServer",
+  opencodeStartServer: "opencode:startServer",
+  opencodeStopServer: "opencode:stopServer",
+  opencodeGetBinding: "opencode:getBinding",
 
   workspaceGetConversationDir: "workspace:getConversationDir",
   workspaceWriteFile: "workspace:writeFile",

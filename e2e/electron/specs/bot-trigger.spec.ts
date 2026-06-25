@@ -8,8 +8,28 @@ const enableBotDetection = async (appWindow: Page) => {
   await appWindow.getByTestId("terminal-bot-detection-toggle").click();
 };
 
+const linkActiveConversationToWorkspace = async (appWindow: Page) => {
+  await appWindow.evaluate(() => {
+    (
+      window as unknown as {
+        __e2eLinkActiveConversationToWorkspace?: () => void;
+      }
+    ).__e2eLinkActiveConversationToWorkspace?.();
+  });
+};
+
 const enableAutoInject = async (appWindow: Page) => {
+  await appWindow.getByTestId("terminal-reply-debug").click();
   await appWindow.getByTestId("terminal-auto-inject-toggle").click();
+  await appWindow.getByRole("button", { name: "Enable Auto Inject" }).click();
+  await appWindow.getByRole("dialog", { name: "Reply Debug Tools" }).getByLabel("Close", { exact: true }).click();
+};
+
+const enableAutoReply = async (appWindow: Page) => {
+  await appWindow.getByTestId("terminal-reply-debug").click();
+  await appWindow.getByTestId("terminal-auto-reply-toggle").click();
+  await appWindow.getByRole("button", { name: "Enable Auto Reply" }).click();
+  await appWindow.getByRole("dialog", { name: "Reply Debug Tools" }).getByLabel("Close", { exact: true }).click();
 };
 
 test("single chat @bot @e2e_self creates pending request and sends only after user action", async ({
@@ -131,6 +151,7 @@ test("auto-inject skips pending review and sends directly to terminal", async ({
   appWindow,
 }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
+  await linkActiveConversationToWorkspace(appWindow);
   // Enable auto-inject BEFORE bot detection so the first scan uses auto-inject
   await enableAutoInject(appWindow);
   await enableBotDetection(appWindow);
@@ -165,6 +186,7 @@ test("auto-inject does not duplicate the same trigger on repeated scans", async 
   appWindow,
 }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
+  await linkActiveConversationToWorkspace(appWindow);
   await enableAutoInject(appWindow);
   await enableBotDetection(appWindow);
 
@@ -190,8 +212,11 @@ test("auto-inject does not duplicate the same trigger on repeated scans", async 
     beforeWritesText.match(/Context source: botTrigger/g)?.length ?? 0;
   expect(beforeOccurrences).toBeGreaterThan(0);
 
+  await appWindow.getByTestId("terminal-reply-debug").click();
   await appWindow.getByTestId("terminal-auto-inject-toggle").click();
   await appWindow.getByTestId("terminal-auto-inject-toggle").click();
+  await appWindow.getByRole("button", { name: "Enable Auto Inject" }).click();
+  await appWindow.getByRole("dialog", { name: "Reply Debug Tools" }).getByLabel("Close", { exact: true }).click();
 
   const writesText = await appWindow.evaluate(
     () =>
@@ -206,9 +231,10 @@ test("auto-reply sends structured final_answer to IM", async ({
   appWindow,
 }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
+  await linkActiveConversationToWorkspace(appWindow);
 
   // Enable auto-reply
-  await appWindow.getByTestId("terminal-auto-reply-toggle").click();
+  await enableAutoReply(appWindow);
 
   // Get workspace ID and emit a structured final_answer
   const workspaceID = await appWindow.evaluate(() =>
@@ -250,7 +276,8 @@ test("auto-reply dedupes per session but allows same text from a new session", a
   appWindow,
 }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
-  await appWindow.getByTestId("terminal-auto-reply-toggle").click();
+  await linkActiveConversationToWorkspace(appWindow);
+  await enableAutoReply(appWindow);
 
   const workspaceID = await appWindow.evaluate(() =>
     (

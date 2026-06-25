@@ -213,6 +213,14 @@ const readStoredState = (): StoredTerminalDockState => {
       };
     }
     const parsed = JSON.parse(raw) as Partial<StoredTerminalDockState>;
+    if (
+      parsed.autoReceiveEnabled ||
+      parsed.autoSendEnabled ||
+      parsed.autoInjectEnabled ||
+      parsed.autoReplyEnabled
+    ) {
+      console.warn("[terminalDock] unsafe automation flags reset to false on startup");
+    }
 
     return {
       panelOpen:

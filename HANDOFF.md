@@ -1,5 +1,101 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P10.0 Safety Containment + OpenCode Same-Session Probe (2026-06-25)
+
+Current branch: `feature/p10-safety-opencode-same-session`
+
+P10.0 is implemented as a safety containment and probe layer, not as a broader
+automation expansion.
+
+### Implemented
+
+- Unsafe automation defaults are reset to `false` on startup/reload:
+  - `autoReceiveEnabled`
+  - `autoSendEnabled`
+  - `autoInjectEnabled`
+  - `autoReplyEnabled`
+- Auto Inject and Auto Reply were removed from the primary Terminal Dock toolbar
+  and moved into `Reply Debug Tools -> Experimental Bot Automation`.
+- Enabling Auto Inject or Auto Reply now requires an explicit risk confirmation.
+- Auto Inject now requires:
+  - a matching `@bot @targetUserID` trigger,
+  - non-self and non-agent-generated message,
+  - a running active terminal tab,
+  - an explicit workspace/conversation binding.
+  Otherwise it leaves the request in pending review.
+- Auto Reply now requires:
+  - `autoReplyEnabled`,
+  - a running active tab in the active workspace,
+  - current conversation still active,
+  - current conversation linked to the active workspace,
+  - a structured `final_answer` event from `.agent/events.ndjson`.
+  It does not auto-send raw/screen fallback text.
+- Manual `Capture Final Answer` now accepts only structured sources
+  (`structured` or `structured_heuristic`). Raw terminal text and xterm screen
+  capture are no longer treated as final answers.
+- Structured Sidecar debug status was added:
+  - watch state,
+  - sidecar path explanation,
+  - last event type,
+  - last final_answer availability.
+- Runtime connector scaffolding was added under
+  `src/services/runtimeConnectors/`:
+  - `RuntimeSessionBinding`
+  - OpenCode server client/probe helpers
+  - session message parsing and assistant-message extraction.
+- Electron main now exposes conservative OpenCode IPC:
+  - `opencode:probeServer`
+  - `opencode:startServer`
+  - `opencode:stopServer`
+  - `opencode:getBinding`
+- OpenCode server start is localhost-only:
+  - command: `npx.cmd -y opencode-ai@1.17.9 serve --port 4096 --hostname 127.0.0.1`
+  - no `0.0.0.0` exposure.
+- OpenCode Same-Session Probe reports:
+  - `shared-server-session` + `bound` only when server/session/messages are
+    readable and an assistant message can be extracted,
+  - degraded/failed otherwise.
+- Agent Reply Card is shown only for a bound shared OpenCode session and only
+  inserts to the IM input; it does not auto-send.
+
+### OpenCode same-session probe result
+
+Status: partial.
+
+The app can now probe a localhost OpenCode server and present a binding result.
+If the probe fails or no shared session messages are readable, the current mode
+is `tui-only` or degraded and the UI explicitly says:
+
+`No structured final answer available from current TUI session. Use Terminal Selection as Reply.`
+
+Native OpenCode TUI is still not assumed to produce `.agent/events.ndjson` or to
+share a readable session. That must be proven per local OpenCode installation.
+
+### Not implemented
+
+- Auto Reply default enable.
+- Auto Inject default enable.
+- Guaranteed final_answer extraction from native OpenCode TUI.
+- Treating xterm screen capture as a final answer.
+- Making `opencode run --format json` the default Send to Agent path.
+- Codex connector.
+- Claude Code connector.
+- ACP client.
+
+### Validation
+
+- `npm.cmd run lint -- --quiet`: pass
+- `npx.cmd tsc --noEmit`: pass
+- `npm.cmd run build`: pass
+- Targeted E2E:
+  `$env:VITE_DEV_SERVER_URL=''; npx.cmd playwright test -c playwright.electron.config.ts e2e/electron/specs/terminal-dock.spec.ts e2e/electron/specs/bot-trigger.spec.ts`
+  Result: 20 passed
+- Full Electron E2E:
+  `$env:VITE_DEV_SERVER_URL=''; npx.cmd playwright test -c playwright.electron.config.ts`
+  Result: 33 passed
+
+---
+
 ## Latest Update - Phase 1/2 Stabilization Fixes Verified (2026-06-25)
 
 Current branch: `feature/p9-bot-trigger-detection`

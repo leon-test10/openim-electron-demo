@@ -133,8 +133,29 @@ const ChatContent = () => {
       });
 
       if (autoInjectEnabled) {
-        const triggerKey = `${conversationID}|${request.triggerMessageID}`;
         const terminalDockState = useTerminalDockStore.getState();
+        const activeWorkspaceID = terminalDockState.activeWorkspaceID;
+        const activeWorkspace = terminalDockState.workspaces.find(
+          (workspace) => workspace.id === activeWorkspaceID,
+        );
+        const activeTabID = activeWorkspaceID
+          ? terminalDockState.activeTabByWorkspace[activeWorkspaceID]
+          : undefined;
+        const activeTab = activeWorkspaceID
+          ? terminalDockState.tabsByWorkspace[activeWorkspaceID]?.find(
+              (tab) => tab.id === activeTabID,
+            )
+          : undefined;
+        const canAutoInject =
+          Boolean(activeWorkspace?.linkedConversationIDs.includes(conversationID)) &&
+          Boolean(activeTab && activeTab.status === "running");
+
+        if (!canAutoInject) {
+          addPendingAgentRequest(request);
+          return;
+        }
+
+        const triggerKey = `${conversationID}|${request.triggerMessageID}`;
         if (terminalDockState.hasHandledBotTrigger(triggerKey)) return;
 
         const existingRequest =
@@ -174,6 +195,24 @@ const ChatContent = () => {
   // and emit BOT_AGENT_REQUEST_ACTION for each.
   useEffect(() => {
     if (!autoInjectEnabled || !botDetectionEnabled || !conversationID) return;
+    const terminalDockState = useTerminalDockStore.getState();
+    const activeWorkspaceID = terminalDockState.activeWorkspaceID;
+    const activeWorkspace = terminalDockState.workspaces.find(
+      (workspace) => workspace.id === activeWorkspaceID,
+    );
+    const activeTabID = activeWorkspaceID
+      ? terminalDockState.activeTabByWorkspace[activeWorkspaceID]
+      : undefined;
+    const activeTab = activeWorkspaceID
+      ? terminalDockState.tabsByWorkspace[activeWorkspaceID]?.find(
+          (tab) => tab.id === activeTabID,
+        )
+      : undefined;
+    const canAutoInject =
+      Boolean(activeWorkspace?.linkedConversationIDs.includes(conversationID)) &&
+      Boolean(activeTab && activeTab.status === "running");
+
+    if (!canAutoInject) return;
 
     const pendingRequests =
       usePendingAgentRequestStore.getState().requestsByConversation[conversationID] ??

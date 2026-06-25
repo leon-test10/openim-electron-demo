@@ -17,6 +17,7 @@ import {
 } from "@/store";
 import {
   e2eConversation,
+  e2eConversationID,
   e2eGroupConversation,
   e2eGroupMessages,
   e2eMessages,
@@ -62,6 +63,7 @@ const installE2EElectronMock = () => {
       event: Record<string, unknown>,
     ) => void;
     __e2eGetActiveWorkspaceID?: () => string | undefined;
+    __e2eLinkActiveConversationToWorkspace?: () => void;
   };
   e2eWindow.__e2eTerminalWrites = [];
   e2eWindow.__e2eWorkspaceWrites = [];
@@ -86,6 +88,12 @@ const installE2EElectronMock = () => {
   };
   e2eWindow.__e2eGetActiveWorkspaceID = () =>
     useTerminalDockStore.getState().activeWorkspaceID;
+  e2eWindow.__e2eLinkActiveConversationToWorkspace = () => {
+    const state = useTerminalDockStore.getState();
+    if (state.activeWorkspaceID) {
+      state.linkConversationToWorkspace(state.activeWorkspaceID, e2eConversationID);
+    }
+  };
 
   const createMockFile = (filePath: string) => {
     const fileName = filePath.split(/[\\/]/).filter(Boolean).pop() ?? "mock-file.txt";
@@ -307,6 +315,63 @@ const installE2EElectronMock = () => {
         return Promise.resolve(result as T);
       }
 
+      if (channel === "opencode:probeServer") {
+        const params = args[0] as { workspaceID: string; mockMode?: string };
+        const state = useTerminalDockStore.getState();
+        const workspace = state.workspaces.find(
+          (item) => item.id === params.workspaceID,
+        );
+        const rootPath = workspace?.rootPath ?? `${workspaceRoot}\\mock`;
+        if (params.mockMode === "bound") {
+          result = {
+            runtime: "opencode",
+            serveCommandAvailable: true,
+            configuredServerReachable: true,
+            tuiAttachSupported: true,
+            sessionListAvailable: true,
+            sessionExportAvailable: true,
+            sameSessionEvidence:
+              "Server session messages include an assistant message.",
+            binding: {
+              runtime: "opencode",
+              workspaceRoot: rootPath,
+              serverBaseUrl: "http://127.0.0.1:4096",
+              sessionID: "e2e-session",
+              mode: "shared-server-session",
+              status: "bound",
+              reason: "OpenCode server/session messages are readable.",
+              lastCheckedAt: Date.now(),
+            },
+            lastAssistantMessage: "OpenCode shared-session reply from mock.",
+          };
+        } else {
+          result = {
+            runtime: "opencode",
+            serveCommandAvailable: false,
+            configuredServerReachable: false,
+            tuiAttachSupported: false,
+            sessionListAvailable: false,
+            sessionExportAvailable: false,
+            sameSessionEvidence: "OpenCode server unavailable.",
+            binding: {
+              runtime: "opencode",
+              workspaceRoot: rootPath,
+              serverBaseUrl: "http://127.0.0.1:4096",
+              mode: "tui-only",
+              status: "failed",
+              reason: "OpenCode server unavailable.",
+              lastCheckedAt: Date.now(),
+            },
+          };
+        }
+        return Promise.resolve(result as T);
+      }
+
+      if (channel === "opencode:startServer" || channel === "opencode:stopServer") {
+        result = { ok: true };
+        return Promise.resolve(result as T);
+      }
+
       if (channel === "terminal:openWorkspace") {
         result = "";
         return Promise.resolve(result as T);
@@ -476,8 +541,30 @@ const E2EHarness = () => {
       });
 
       if (autoInject) {
-        const triggerKey = `${activeConversationID}|${request.triggerMessageID}`;
         const terminalDockState = useTerminalDockStore.getState();
+        const activeWorkspaceID = terminalDockState.activeWorkspaceID;
+        const activeWorkspace = terminalDockState.workspaces.find(
+          (workspace) => workspace.id === activeWorkspaceID,
+        );
+        const activeTabID = activeWorkspaceID
+          ? terminalDockState.activeTabByWorkspace[activeWorkspaceID]
+          : undefined;
+        const activeTab = activeWorkspaceID
+          ? terminalDockState.tabsByWorkspace[activeWorkspaceID]?.find(
+              (tab) => tab.id === activeTabID,
+            )
+          : undefined;
+        const canAutoInject =
+          Boolean(
+            activeWorkspace?.linkedConversationIDs.includes(activeConversationID),
+          ) && Boolean(activeTab && activeTab.status === "running");
+
+        if (!canAutoInject) {
+          addPendingAgentRequest(request);
+          return;
+        }
+
+        const triggerKey = `${activeConversationID}|${request.triggerMessageID}`;
         if (terminalDockState.hasHandledBotTrigger(triggerKey)) return;
 
         const existingRequest =
@@ -510,6 +597,24 @@ const E2EHarness = () => {
   useEffect(() => {
     const autoInject = useTerminalDockStore.getState().autoInjectEnabled;
     if (!autoInject || !botDetectionEnabled) return;
+    const terminalDockState = useTerminalDockStore.getState();
+    const activeWorkspaceID = terminalDockState.activeWorkspaceID;
+    const activeWorkspace = terminalDockState.workspaces.find(
+      (workspace) => workspace.id === activeWorkspaceID,
+    );
+    const activeTabID = activeWorkspaceID
+      ? terminalDockState.activeTabByWorkspace[activeWorkspaceID]
+      : undefined;
+    const activeTab = activeWorkspaceID
+      ? terminalDockState.tabsByWorkspace[activeWorkspaceID]?.find(
+          (tab) => tab.id === activeTabID,
+        )
+      : undefined;
+    const canAutoInject =
+      Boolean(activeWorkspace?.linkedConversationIDs.includes(activeConversationID)) &&
+      Boolean(activeTab && activeTab.status === "running");
+
+    if (!canAutoInject) return;
 
     const pendingRequests =
       usePendingAgentRequestStore.getState().requestsByConversation[

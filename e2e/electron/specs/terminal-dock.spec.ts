@@ -14,11 +14,147 @@ test("terminal dock smoke is available without a real runtime", async ({
   await expect(appWindow.getByTestId("terminal-runtime-controls")).toBeVisible();
   await expect(appWindow.getByTestId("terminal-im-agent-group")).toBeVisible();
   await expect(appWindow.getByTestId("terminal-agent-im-group")).toBeVisible();
+  await expect(
+    appWindow.getByTestId("terminal-im-agent-group").getByTestId("terminal-auto-inject-toggle"),
+  ).toHaveCount(0);
+  await expect(
+    appWindow.getByTestId("terminal-agent-im-group").getByTestId("terminal-auto-reply-toggle"),
+  ).toHaveCount(0);
   await expect(appWindow.getByTestId("terminal-context-menu")).toHaveCount(0);
   await expect(appWindow.getByTestId("terminal-send-last-context")).toHaveCount(0);
   await expect(appWindow.getByTestId("terminal-reply-debug")).toBeVisible();
   // The debug button is enabled when at least one tab exists (even if stopped).
   // Tabs from previous test sessions may persist in localStorage.
+});
+
+test("unsafe automation defaults reset and stay in experimental debug UI", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+
+  await appWindow.evaluate(() => {
+    const raw = window.localStorage.getItem("openim_terminal_dock_state");
+    const parsed = raw ? JSON.parse(raw) : {};
+    window.localStorage.setItem(
+      "openim_terminal_dock_state",
+      JSON.stringify({
+        ...parsed,
+        autoReceiveEnabled: true,
+        autoSendEnabled: true,
+        autoInjectEnabled: true,
+        autoReplyEnabled: true,
+      }),
+    );
+    window.location.reload();
+  });
+
+  await expect(appWindow.getByTestId("terminal-dock")).toBeVisible();
+  await appWindow.getByTestId("terminal-reply-debug").click();
+  await expect(appWindow.getByTestId("terminal-experimental-automation")).toBeVisible();
+  await expect(appWindow.getByTestId("terminal-auto-inject-toggle")).not.toBeChecked();
+  await expect(appWindow.getByTestId("terminal-auto-reply-toggle")).not.toBeChecked();
+  await expect(appWindow.getByTestId("terminal-output-draft-toggle")).not.toBeChecked();
+  await expect(appWindow.getByTestId("terminal-draft-chat-toggle")).not.toBeChecked();
+});
+
+test("auto-inject enabled without binding still creates pending request only", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+  await appWindow.getByTestId("terminal-reply-debug").click();
+  await appWindow.getByTestId("terminal-auto-inject-toggle").click();
+  await appWindow.getByRole("button", { name: "Enable Auto Inject" }).click();
+  await appWindow
+    .getByRole("dialog", { name: "Reply Debug Tools" })
+    .getByLabel("Close", { exact: true })
+    .click();
+  await appWindow.getByTestId("terminal-bot-detection-toggle").click();
+
+  await expect(
+    appWindow
+      .getByTestId("pending-agent-request")
+      .filter({ hasText: "@bot @e2e_self summarize this conversation." }),
+  ).toContainText("@bot @e2e_self summarize this conversation.");
+  const writes = await appWindow.evaluate(
+    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+  );
+  expect(writes?.join("\n") ?? "").not.toContain("botTrigger");
+});
+
+test("auto-reply off ignores structured final_answer", async ({ appWindow }) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+
+  const workspaceID = await appWindow.evaluate(() =>
+    (
+      window as unknown as {
+        __e2eGetActiveWorkspaceID?: () => string | undefined;
+      }
+    ).__e2eGetActiveWorkspaceID?.(),
+  );
+  expect(workspaceID).toBeTruthy();
+  if (!workspaceID) return;
+
+  await appWindow.evaluate(
+    ({ wid }) => {
+      (
+        window as unknown as {
+          __e2eEmitStructuredEvent?: (
+            workspaceID: string,
+            event: Record<string, unknown>,
+          ) => void;
+        }
+      ).__e2eEmitStructuredEvent?.(wid, {
+        type: "final_answer",
+        text: "This should not auto-send.",
+        format: "text",
+      });
+    },
+    { wid: workspaceID },
+  );
+
+  await expect(appWindow.getByTestId("e2e-draft-preview")).not.toContainText(
+    "This should not auto-send.",
+  );
+  await expect(appWindow.getByTestId("e2e-sent-drafts")).not.toContainText(
+    "This should not auto-send.",
+  );
+});
+
+test("opencode probe degraded does not pretend to have final answer", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+  await appWindow.getByTestId("terminal-reply-debug").click();
+  await appWindow.getByTestId("terminal-opencode-probe").click();
+
+  await expect(appWindow.getByTestId("terminal-opencode-binding")).toContainText(
+    "Status: failed",
+  );
+  await expect(appWindow.getByTestId("agent-reply-degraded")).toContainText(
+    "No structured final answer available",
+  );
+  await expect(appWindow.getByTestId("agent-reply-card")).toHaveCount(0);
+});
+
+test("opencode bound probe shows agent reply card and inserts only draft", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+  await appWindow.evaluate(() => {
+    (window as unknown as { __e2eOpenCodeProbeMode?: string }).__e2eOpenCodeProbeMode =
+      "bound";
+  });
+  await appWindow.getByTestId("terminal-reply-debug").click();
+  await appWindow.getByTestId("terminal-opencode-probe").click();
+
+  await expect(appWindow.getByTestId("agent-reply-card")).toContainText(
+    "OpenCode shared-session reply from mock.",
+  );
+  await appWindow.getByTestId("agent-reply-insert").click();
+  await expect(appWindow.getByTestId("e2e-draft-preview")).toContainText(
+    "OpenCode shared-session reply from mock.",
+  );
+  await expect(appWindow.getByTestId("e2e-sent-drafts")).toBeEmpty();
 });
 
 test("terminal context history can copy and send prompt", async ({ appWindow }) => {

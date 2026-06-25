@@ -7,6 +7,7 @@ import { getStore } from "./storeManage";
 import { IpcMainToRender } from "../constants";
 import { logger } from ".";
 import { agentWatchManager } from "./agentWatchManage";
+import { opencodeManager } from "./opencodeManage";
 
 const store = getStore();
 
@@ -34,11 +35,13 @@ export const setAppListener = (startApp: () => void) => {
     if (isMac && !getIsForceQuit()) return;
 
     agentWatchManager.stopAll();
+    opencodeManager.stopAll();
     app.quit();
   });
 
   app.on("before-quit", () => {
     agentWatchManager.stopAll();
+    opencodeManager.stopAll();
   });
 
   powerMonitor.on("suspend", () => {
