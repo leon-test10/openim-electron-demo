@@ -1,5 +1,88 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Phase 1: Structured Agent Output Protocol Complete (2026-06-25)
+
+Current branch: `feature/p9-bot-trigger-detection`
+
+Phase 1 of the structured-output roadmap is implemented and verified.
+
+### Completed
+
+**1.1 Typed AgentOutputEvent definitions** (`src/services/agentOutput/types.ts`):
+- `AgentProgressEvent` — progress during agent execution (stage, message, percent)
+- `AgentFinalAnswerEvent` — final answer (text, format, sessionID)
+- `AgentArtifactEvent` — file artifact (path, mime, size, label)
+- `AgentErrorEvent` — error (message, code)
+- `AgentSessionEvent` — session lifecycle (id, status, summary)
+- `isAgentOutputEvent()` type guard
+- `StructuredEventBuffer` type + `createStructuredEventBuffer()` factory
+
+**1.2 NDJSON file protocol + Electron Main watcher** (`electron/main/agentWatchManage.ts`):
+- Convention: agent writes events to `$WORKSPACE/.agent/events.ndjson` (one JSON object per line)
+- `agentWatchManager.start(webContents, workspaceID)` — creates `.agent/` dir, starts `fs.watch` on events file
+- `agentWatchManager.stop(workspaceID)` — tears down watcher
+- `agentWatchManager.stopAll()` — cleanup on app quit
+- New IPC channels: `agent:structuredOutput` (main→render push), `agent:startWatch`/`agent:stopWatch` (render→main invoke)
+
+**1.3 Preload** — no changes needed; existing generic `subscribe()`/`ipcInvoke()` cover the new channels.
+
+**1.4 Refactored AgentOutputResolver** (`src/services/agentOutput/AgentOutputResolver.ts`):
+- Tier 1: `resolveFromStructuredEvents()` — consumes structured AgentOutputEvent[] from IPC (reliable)
+- Tier 2: `resolveStructuredOutput()` — heuristic JSON scanning of raw PTY output (was "structured", now "structured_heuristic")
+- Tier 3: raw terminal text
+- Tier 4: visible xterm viewport text (last resort)
+- Updated `AgentOutputSource` type: `"structured" | "structured_heuristic" | "raw" | "screen"`
+
+**1.5 TerminalDock wiring** (`src/components/TerminalDock/index.tsx`):
+- Subscribes to `agent:structuredOutput` IPC and adds events to store
+- Starts `agent:startWatch` when a terminal tab starts running
+- Stops `agent:stopWatch` on tab stop/cleanup
+- `getResolvedFinalAnswer()` passes `structuredEvents` to the resolver
+
+**1.6 Store** (`src/store/terminalDock.ts`, `src/store/type.d.ts`):
+- `structuredEventsByWorkspace: Record<string, AgentOutputEvent[]>` (not persisted)
+- `addStructuredEvent(workspaceID, event)` action
+- `clearStructuredEvents(workspaceID)` action
+
+**1.7 E2E tests** (`e2e/electron/specs/structured-output.spec.ts`):
+- Harness active when terminal starts
+- `agent:startWatch` invoked on terminal start
+- Structured `final_answer` resolves as Tier 1 (overrides raw terminal garbage)
+- Progress events do not resolve as final answer; error + final_answer resolves correctly
+- Full E2E suite: **23 passed, 0 failed**
+
+### Files changed
+
+- `src/services/agentOutput/types.ts` (new)
+- `src/services/agentOutput/AgentOutputResolver.ts` (refactored)
+- `src/services/agentOutput/index.ts`
+- `electron/main/agentWatchManage.ts` (new)
+- `electron/main/ipcHandlerManage.ts`
+- `electron/main/appManage.ts`
+- `electron/constants/index.ts`
+- `src/store/type.d.ts`
+- `src/store/terminalDock.ts`
+- `src/components/TerminalDock/index.tsx`
+- `src/pages/e2e/E2EHarness.tsx`
+- `e2e/electron/specs/structured-output.spec.ts` (new)
+- `e2e/electron/specs/terminal-dock.spec.ts`
+
+### Validation
+
+- `npx.cmd tsc --noEmit`: pass
+- `npm.cmd run lint -- --quiet`: pass
+- `npm.cmd run build`: pass
+- `npx.cmd playwright test -c playwright.electron.config.ts`: 23 passed
+
+### Next: Phase 2 — @bot Auto-Inject to Terminal
+
+Phase 1 provides the reliable structured data channel. Phase 2 can now:
+1. Add `BotRoutingPolicy` ("off" | "manual" | "auto")
+2. Auto-route `@bot`-triggered messages to terminal (skip `PendingAgentRequests` review when policy = "auto")
+3. Create `BotSession` records to track lifecycle
+
+---
+
 ## Latest Update - Structured Output & Auto-Feed Analysis (2026-06-25)
 
 Current branch: `feature/p9-bot-trigger-detection`
