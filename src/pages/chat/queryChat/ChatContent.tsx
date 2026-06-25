@@ -133,6 +133,19 @@ const ChatContent = () => {
       });
 
       if (autoInjectEnabled) {
+        const triggerKey = `${conversationID}|${request.triggerMessageID}`;
+        const terminalDockState = useTerminalDockStore.getState();
+        if (terminalDockState.hasHandledBotTrigger(triggerKey)) return;
+
+        const existingRequest =
+          usePendingAgentRequestStore
+            .getState()
+            .requestsByConversation[conversationID]?.some(
+              (item) => item.triggerMessageID === request.triggerMessageID,
+            ) ?? false;
+        if (existingRequest) return;
+
+        terminalDockState.markBotTriggerHandled(triggerKey);
         // Auto-inject: mark as sent immediately and notify TerminalDock.
         addPendingAgentRequest({
           ...request,
@@ -176,6 +189,9 @@ const ChatContent = () => {
     promoteToAutoInject(conversationID);
 
     for (const request of pendingForSelf) {
+      useTerminalDockStore
+        .getState()
+        .markBotTriggerHandled(`${conversationID}|${request.triggerMessageID}`);
       emitter.emit("BOT_AGENT_REQUEST_ACTION", {
         request,
         action: "send",

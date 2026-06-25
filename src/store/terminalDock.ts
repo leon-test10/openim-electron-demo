@@ -345,6 +345,7 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
   outputByTab: {},
   lastCapturedTextByTab: {},
   structuredEventsByWorkspace: {},
+  handledBotTriggerKeys: {},
   togglePanel: () => {
     set((state) => {
       const panelOpen = !state.panelOpen;
@@ -717,6 +718,15 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
       delete structuredEventsByWorkspace[workspaceID];
       return { structuredEventsByWorkspace };
     });
+  },
+  hasHandledBotTrigger: (key) => Boolean(get().handledBotTriggerKeys[key]),
+  markBotTriggerHandled: (key) => {
+    set((state) => ({
+      handledBotTriggerKeys: {
+        ...state.handledBotTriggerKeys,
+        [key]: true,
+      },
+    }));
   },
 }));
 

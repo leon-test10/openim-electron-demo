@@ -291,6 +291,7 @@ const TerminalDock = () => {
   const lastDraftHashByTabRef = useRef<Map<string, string>>(new Map());
   const lastSentHashByTabRef = useRef<Map<string, string>>(new Map());
   const lastSentAtByTabRef = useRef<Map<string, number>>(new Map());
+  const handledBotRequestKeysRef = useRef<Set<string>>(new Set());
   const conversationID = currentConversation?.conversationID ?? routeConversationID;
   const selectedMessages = useMemo(
     () =>
@@ -502,33 +503,31 @@ const TerminalDock = () => {
     const events = structuredEventsByWorkspace[activeWorkspaceID];
     if (!events || events.length === 0) return;
 
-    // Find the last final_answer event
-    let lastFinalAnswer:
-      | import("@/services/agentOutput").AgentFinalAnswerEvent
-      | undefined;
-    for (let index = events.length - 1; index >= 0; index -= 1) {
-      const event = events[index];
-      if (event.type === "final_answer") {
-        lastFinalAnswer = event;
-        break;
-      }
+    const finalAnswers = events.filter(
+      (event): event is import("@/services/agentOutput").AgentFinalAnswerEvent =>
+        event.type === "final_answer" && Boolean(event.text),
+    );
+
+    for (const finalAnswer of finalAnswers) {
+      const textHash = hashText(finalAnswer.text);
+      const replyKey = [
+        activeWorkspaceID,
+        conversationID,
+        finalAnswer.sessionID || textHash,
+        textHash,
+      ].join("|");
+      if (autoRepliedHashesRef.current.has(replyKey)) continue;
+
+      autoRepliedHashesRef.current.add(replyKey);
+      emit("SEND_CHAT_INPUT", finalAnswer.text);
+      message.success("Structured answer auto-sent to chat");
     }
 
-    if (!lastFinalAnswer?.text) return;
-
-    const textHash = hashText(lastFinalAnswer.text);
-    if (autoRepliedHashesRef.current.has(textHash)) return;
-
-    autoRepliedHashesRef.current.add(textHash);
-    // Keep the set bounded
     if (autoRepliedHashesRef.current.size > 20) {
       autoRepliedHashesRef.current = new Set(
         [...autoRepliedHashesRef.current].slice(-10),
       );
     }
-
-    emit("SEND_CHAT_INPUT", lastFinalAnswer.text);
-    message.success("Structured answer auto-sent to chat");
   }, [
     autoReplyEnabled,
     activeWorkspaceID,
@@ -894,14 +893,24 @@ const TerminalDock = () => {
       return;
     }
 
+    const requestKey = `${request.conversationID}|${request.triggerMessageID}`;
+    if (action === "send" && handledBotRequestKeysRef.current.has(requestKey)) {
+      return;
+    }
+    if (action === "send") {
+      handledBotRequestKeysRef.current.add(requestKey);
+    }
+
     const bundle = buildBotTriggerContextBundle(request);
     if (!bundle) {
+      handledBotRequestKeysRef.current.delete(requestKey);
       message.warning("No bot trigger context available");
       return;
     }
 
     const result = await persistContextBundle(bundle);
     if (!result) {
+      handledBotRequestKeysRef.current.delete(requestKey);
       message.warning("No active workspace");
       return;
     }
@@ -913,6 +922,8 @@ const TerminalDock = () => {
     const succeeded = await applyContextActionResult(result, action);
     if (action === "send" && succeeded) {
       markPendingRequestSent(request.conversationID, request.id);
+    } else if (action === "send") {
+      handledBotRequestKeysRef.current.delete(requestKey);
     }
   };
 

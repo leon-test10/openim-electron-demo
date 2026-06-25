@@ -81,6 +81,49 @@ test("agent:startWatch is called when terminal starts", async ({
   expect(events.length).toBe(0);
 });
 
+test("agent watcher survives missing events file and forwards later final_answer", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+
+  const workspaceID = await getActiveWorkspaceID(appWindow);
+  expect(workspaceID).toBeTruthy();
+  if (!workspaceID) return;
+
+  const watchResult = await appWindow.evaluate((wid) => {
+    return window.electronAPI?.ipcInvoke<{
+      ok: boolean;
+      workspaceID: string;
+      filePath: string;
+    }>("agent:startWatch", wid);
+  }, workspaceID);
+  expect(watchResult?.ok).toBe(true);
+
+  await appWindow.evaluate((wid) => {
+    return window.electronAPI?.ipcInvoke("workspace:writeWorkspaceFile", {
+      workspaceID: wid,
+      relativePath: ".agent/events.ndjson",
+      content:
+        '{"type":"final_answer","text":"Watched NDJSON answer","format":"text","sessionID":"watch-test"}\n',
+    });
+  }, workspaceID);
+
+  await appWindow.getByTestId("terminal-reply-debug").click();
+  await expect(
+    appWindow.getByTestId("terminal-reply-debug-modal"),
+  ).toBeVisible();
+
+  await expect
+    .poll(
+      async () => {
+        await appWindow.getByTestId("terminal-capture-final-answer").click();
+        return appWindow.getByTestId("e2e-draft-preview").textContent();
+      },
+      { timeout: 5000 },
+    )
+    .toContain("Watched NDJSON answer");
+});
+
 test("structured final_answer event resolves as Tier 1", async ({
   appWindow,
 }) => {

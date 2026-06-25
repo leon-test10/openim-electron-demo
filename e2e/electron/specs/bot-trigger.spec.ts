@@ -161,6 +161,47 @@ test("auto-inject skips pending review and sends directly to terminal", async ({
   );
 });
 
+test("auto-inject does not duplicate the same trigger on repeated scans", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+  await enableAutoInject(appWindow);
+  await enableBotDetection(appWindow);
+
+  await expect
+    .poll(
+      () =>
+        appWindow.evaluate(
+          () =>
+            (
+              window as unknown as { __e2eTerminalWrites?: string[] }
+            ).__e2eTerminalWrites?.join("\n") ?? "",
+        ),
+      { timeout: 5000 },
+    )
+    .toContain("botTrigger");
+
+  const beforeWritesText = await appWindow.evaluate(
+    () =>
+      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites
+        ?.join("\n") ?? "",
+  );
+  const beforeOccurrences =
+    beforeWritesText.match(/Context source: botTrigger/g)?.length ?? 0;
+  expect(beforeOccurrences).toBeGreaterThan(0);
+
+  await appWindow.getByTestId("terminal-auto-inject-toggle").click();
+  await appWindow.getByTestId("terminal-auto-inject-toggle").click();
+
+  const writesText = await appWindow.evaluate(
+    () =>
+      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites
+        ?.join("\n") ?? "",
+  );
+  const occurrences = writesText.match(/Context source: botTrigger/g)?.length ?? 0;
+  expect(occurrences).toBe(beforeOccurrences);
+});
+
 test("auto-reply sends structured final_answer to IM", async ({
   appWindow,
 }) => {
@@ -203,4 +244,60 @@ test("auto-reply sends structured final_answer to IM", async ({
     "Auto-reply test: the answer is 42.",
     { timeout: 5000 },
   );
+});
+
+test("auto-reply dedupes per session but allows same text from a new session", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+  await appWindow.getByTestId("terminal-auto-reply-toggle").click();
+
+  const workspaceID = await appWindow.evaluate(() =>
+    (
+      window as unknown as {
+        __e2eGetActiveWorkspaceID?: () => string | undefined;
+      }
+    ).__e2eGetActiveWorkspaceID?.(),
+  );
+  expect(workspaceID).toBeTruthy();
+  if (!workspaceID) return;
+
+  const emitFinal = async (sessionID: string) => {
+    await appWindow.evaluate(
+      ({ wid, sid }) => {
+        (
+          window as unknown as {
+            __e2eEmitStructuredEvent?: (
+              workspaceID: string,
+              event: Record<string, unknown>,
+            ) => void;
+          }
+        ).__e2eEmitStructuredEvent?.(wid, {
+          type: "final_answer",
+          text: "Same text from distinct sessions.",
+          format: "text",
+          sessionID: sid,
+        });
+      },
+      { wid: workspaceID, sid: sessionID },
+    );
+  };
+
+  await emitFinal("session-a");
+  await emitFinal("session-a");
+  await emitFinal("session-b");
+
+  await expect
+    .poll(
+      () =>
+        appWindow
+          .getByTestId("e2e-sent-drafts")
+          .textContent()
+          .then(
+            (text) =>
+              text?.match(/Same text from distinct sessions\./g)?.length ?? 0,
+          ),
+      { timeout: 5000 },
+    )
+    .toBe(2);
 });

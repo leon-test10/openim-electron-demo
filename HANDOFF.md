@@ -1,5 +1,53 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - Phase 1/2 Stabilization Fixes Verified (2026-06-25)
+
+Current branch: `feature/p9-bot-trigger-detection`
+
+This pass audited and hardened the Phase 1 structured-output channel and Phase 2
+`@bot @user` automation work.
+
+### Fixed
+
+- Hardened `electron/main/agentWatchManage.ts`:
+  - `agent:startWatch` now succeeds even when `.agent/events.ndjson` does not
+    exist yet.
+  - Watches the `.agent` directory and attaches the file watcher when the
+    NDJSON file appears later.
+  - Handles file truncation/rewrite by resetting the read offset.
+  - Keeps malformed/partial lines from crashing the watcher.
+- Added non-persisted auto-inject dedupe state in `TerminalDockStore`:
+  - Tracks handled `conversationID|triggerMessageID` keys for the current app
+    run.
+  - Prevents repeated message scans/toggle cycles from injecting the same bot
+    trigger again.
+- Improved auto-reply dedupe:
+  - Processes all structured `final_answer` events in a batch, not just the last
+    one.
+  - Dedupes by workspace + conversation + session/text key so identical text
+    from a new session can still be sent once.
+- Updated E2E harness coverage so mock workspace file writes to
+  `.agent/events.ndjson` exercise the same structured-event path.
+
+### Validation
+
+- `git diff --check`: pass
+- `npm.cmd run lint -- --quiet`: pass
+- `npx.cmd tsc --noEmit`: pass
+- `npm.cmd run build`: pass
+- `$env:VITE_DEV_SERVER_URL=''; npx.cmd playwright test -c playwright.electron.config.ts`: pass, **28 passed**
+
+### Current limits
+
+- The reliable `final_answer` path requires a runtime or adapter to write
+  structured NDJSON events to `.agent/events.ndjson`.
+- Plain opencode TUI text is still only a fallback screen/raw capture source
+  unless wrapped by a structured adapter.
+- Auto Inject and Auto Reply remain opt-in toggles and safety-reset to off on
+  reload.
+
+---
+
 ## Latest Update - Phase 2: @bot @user Auto-Inject & Auto-Reply Complete (2026-06-25)
 
 Current branch: `feature/p9-bot-trigger-detection`

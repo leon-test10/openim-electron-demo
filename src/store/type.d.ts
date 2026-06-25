@@ -248,6 +248,7 @@ export interface TerminalDockStore {
   captureSource: TerminalCaptureSource;
   lastCapturedTextByTab: Record<string, string | undefined>;
   structuredEventsByWorkspace: Record<string, AgentOutputEvent[]>;
+  handledBotTriggerKeys: Record<string, true>;
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
   createWorkspace: (title?: string) => Promise<string | undefined>;
@@ -287,6 +288,8 @@ export interface TerminalDockStore {
   setLastCapturedText: (tabID: string, text: string) => void;
   addStructuredEvent: (workspaceID: string, event: AgentOutputEvent) => void;
   clearStructuredEvents: (workspaceID: string) => void;
+  hasHandledBotTrigger: (key: string) => boolean;
+  markBotTriggerHandled: (key: string) => void;
 }
 
 export type { TerminalEvent, TerminalInstance };

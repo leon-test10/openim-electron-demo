@@ -34,6 +34,7 @@ const installE2EElectronMock = () => {
   if (typeof window === "undefined" || window.electronAPI) return;
 
   const subscribers = new Map<string, Set<(...args: unknown[]) => void>>();
+  const watchedAgentWorkspaces = new Set<string>();
   const workspaceRoot = "C:\\OpenIM-E2E\\workspaces";
   const e2eWindow = window as unknown as {
     __e2eTerminalWrites?: string[];
@@ -83,20 +84,6 @@ const installE2EElectronMock = () => {
       timestamp: Date.now(),
     });
   };
-  e2eWindow.__e2eEmitStructuredEvent = (
-    workspaceID: string,
-    event: Record<string, unknown>,
-  ) => {
-    const payload = { workspaceID, event, timestamp: Date.now() };
-    e2eWindow.__e2eStructuredEvents?.push(payload);
-    emitToSubscribers("agent:structuredOutput", payload);
-    useTerminalDockStore
-      .getState()
-      .addStructuredEvent(
-        workspaceID,
-        event as unknown as import("@/services/agentOutput").AgentOutputEvent,
-      );
-  };
   e2eWindow.__e2eGetActiveWorkspaceID = () =>
     useTerminalDockStore.getState().activeWorkspaceID;
 
@@ -125,6 +112,20 @@ const installE2EElectronMock = () => {
     const callbacks = subscribers.get(channel);
     callbacks?.forEach((callback) => callback(...args));
   };
+
+  const emitStructuredEvent = (workspaceID: string, event: Record<string, unknown>) => {
+    const payload = { workspaceID, event, timestamp: Date.now() };
+    e2eWindow.__e2eStructuredEvents?.push(payload);
+    emitToSubscribers("agent:structuredOutput", payload);
+    useTerminalDockStore
+      .getState()
+      .addStructuredEvent(
+        workspaceID,
+        event as unknown as import("@/services/agentOutput").AgentOutputEvent,
+      );
+  };
+
+  e2eWindow.__e2eEmitStructuredEvent = emitStructuredEvent;
 
   const emitTerminalEvent = (
     event: Parameters<
@@ -207,8 +208,35 @@ const installE2EElectronMock = () => {
       }
 
       if (channel === "workspace:writeWorkspaceFile") {
-        const params = args[0] as { relativePath?: string; content?: string };
+        const params = args[0] as {
+          workspaceID?: string;
+          relativePath?: string;
+          content?: string;
+        };
         e2eWindow.__e2eWorkspaceWrites?.push(params);
+        if (
+          params.workspaceID &&
+          params.relativePath === ".agent/events.ndjson" &&
+          watchedAgentWorkspaces.has(params.workspaceID)
+        ) {
+          window.setTimeout(() => {
+            params.content?.split("\n").forEach((line) => {
+              const trimmed = line.trim();
+              if (!trimmed) return;
+              try {
+                const parsed = JSON.parse(trimmed) as unknown;
+                if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                  emitStructuredEvent(
+                    params.workspaceID!,
+                    parsed as Record<string, unknown>,
+                  );
+                }
+              } catch {
+                // Ignore malformed E2E NDJSON lines.
+              }
+            });
+          }, 0);
+        }
         result = { ok: true };
         return Promise.resolve(result as T);
       }
@@ -264,6 +292,7 @@ const installE2EElectronMock = () => {
       }
 
       if (channel === "agent:startWatch") {
+        watchedAgentWorkspaces.add(args[0] as string);
         result = {
           ok: true,
           workspaceID: args[0],
@@ -273,6 +302,7 @@ const installE2EElectronMock = () => {
       }
 
       if (channel === "agent:stopWatch") {
+        watchedAgentWorkspaces.delete(args[0] as string);
         result = { ok: true, workspaceID: args[0] };
         return Promise.resolve(result as T);
       }
@@ -446,6 +476,19 @@ const E2EHarness = () => {
       });
 
       if (autoInject) {
+        const triggerKey = `${activeConversationID}|${request.triggerMessageID}`;
+        const terminalDockState = useTerminalDockStore.getState();
+        if (terminalDockState.hasHandledBotTrigger(triggerKey)) return;
+
+        const existingRequest =
+          usePendingAgentRequestStore
+            .getState()
+            .requestsByConversation[activeConversationID]?.some(
+              (item) => item.triggerMessageID === request.triggerMessageID,
+            ) ?? false;
+        if (existingRequest) return;
+
+        terminalDockState.markBotTriggerHandled(triggerKey);
         addPendingAgentRequest({ ...request, status: "sent" });
         emitter.emit("BOT_AGENT_REQUEST_ACTION", {
           request,
@@ -483,6 +526,9 @@ const E2EHarness = () => {
     usePendingAgentRequestStore.getState().promoteToAutoInject(activeConversationID);
 
     for (const request of pendingForSelf) {
+      useTerminalDockStore
+        .getState()
+        .markBotTriggerHandled(`${activeConversationID}|${request.triggerMessageID}`);
       emitter.emit("BOT_AGENT_REQUEST_ACTION", {
         request,
         action: "send",
