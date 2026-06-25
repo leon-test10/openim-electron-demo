@@ -10,7 +10,6 @@ import {
   PauseCircleOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
-  SendOutlined,
   SettingOutlined,
   StopOutlined,
 } from "@ant-design/icons";
@@ -66,10 +65,10 @@ type WorkspaceAttachmentExportResponse = {
   sha256?: string;
 };
 
-type TerminalSelectionFallbackState = {
+type SelectionReplyReviewState = {
   open: boolean;
   text: string;
-  source: "screen" | "recent";
+  source: "selection" | "screen" | "recent";
 };
 
 type ContextActionMode = "preview" | "copy" | "send";
@@ -196,9 +195,6 @@ const TerminalDock = () => {
     (state) => state.requestsByConversation,
   );
   const markPendingRequestSent = usePendingAgentRequestStore((state) => state.markSent);
-  const markPendingRequestIgnored = usePendingAgentRequestStore(
-    (state) => state.markIgnored,
-  );
   const panelOpen = useTerminalDockStore((state) => state.panelOpen);
   const setPanelOpen = useTerminalDockStore((state) => state.setPanelOpen);
   const workspaces = useTerminalDockStore((state) => state.workspaces);
@@ -268,23 +264,24 @@ const TerminalDock = () => {
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [commandModalOpen, setCommandModalOpen] = useState(false);
   const [contextModalOpen, setContextModalOpen] = useState(false);
+  const [replyDebugModalOpen, setReplyDebugModalOpen] = useState(false);
   const [workspaceAttachmentCandidate, setWorkspaceAttachmentCandidate] =
     useState<WorkspaceAttachmentCandidate>();
   const [contextMessageLimit, setContextMessageLimit] = useState("50");
   const [contextPreviewBundle, setContextPreviewBundle] = useState<ContextBundle>();
   const [workspaceFileInput, setWorkspaceFileInput] = useState("");
   const [workspaceTitle, setWorkspaceTitle] = useState("");
-  const [selectionFallback, setSelectionFallback] =
-    useState<TerminalSelectionFallbackState>({
+  const [selectionReplyReview, setSelectionReplyReview] =
+    useState<SelectionReplyReviewState>({
       open: false,
       text: "",
-      source: "screen",
+      source: "selection",
     });
   const terminalApisRef = useRef<Map<string, TerminalSurfaceApi>>(new Map());
   const recentTerminalSelectionsRef = useRef<
     Map<string, { text: string; updatedAt: number }>
   >(new Map());
-  const selectionFallbackHostRef = useRef<HTMLDivElement>(null);
+  const selectionReplyReviewHostRef = useRef<HTMLDivElement>(null);
   const lastDraftHashByTabRef = useRef<Map<string, string>>(new Map());
   const lastSentHashByTabRef = useRef<Map<string, string>>(new Map());
   const lastSentAtByTabRef = useRef<Map<string, number>>(new Map());
@@ -381,7 +378,7 @@ const TerminalDock = () => {
       setLastCapturedText(activeTab.id, normalizedText);
       emit("REPLACE_CHAT_INPUT", normalizedText);
       if (mode === "manual") {
-        message.success("Terminal output captured to chat draft");
+        message.success("Reply draft replaced with captured terminal output");
       }
     },
     [activeTab, getCapturedTerminalText, lastCapturedTextByTab, setLastCapturedText],
@@ -819,9 +816,8 @@ const TerminalDock = () => {
   const runBotAgentRequestAction = async (params: BotAgentRequestActionParams) => {
     const { request, action } = params;
 
-    if (action === "ignore") {
-      markPendingRequestIgnored(request.conversationID, request.id);
-      message.success("Pending agent request ignored");
+    if (action === "ignore" || action === "copy") {
+      message.warning("Bot requests support review and manual send only.");
       return;
     }
 
@@ -873,18 +869,18 @@ const TerminalDock = () => {
     };
   }, [runBotAgentRequestAction, runSelectedContextAction]);
 
-  const copyContextPrompt = async () => {
+  const copyLastContextPrompt = async () => {
     if (!lastContextPrompt) {
-      await runRecentContextAction("copy");
+      message.warning("No last context prompt");
       return;
     }
     await navigator.clipboard.writeText(lastContextPrompt);
-    message.success("Context prompt copied");
+    message.success("Last context prompt copied");
   };
 
-  const sendContextPrompt = async () => {
+  const sendLastContextPrompt = async () => {
     if (!lastContextPrompt) {
-      message.warning("Preview a context first");
+      message.warning("No last context prompt");
       return;
     }
     await sendPromptToTerminal(lastContextPrompt);
@@ -953,7 +949,7 @@ const TerminalDock = () => {
         return;
       }
 
-      setSelectionFallback({
+      setSelectionReplyReview({
         open: true,
         text: fallbackText,
         source: visibleText.trim().length >= 12 ? "screen" : "recent",
@@ -961,16 +957,22 @@ const TerminalDock = () => {
       return;
     }
 
-    emit("APPEND_CHAT_INPUT", selection.trim());
-    message.success("Selection added to draft");
+    setSelectionReplyReview({
+      open: true,
+      text: selection.trim(),
+      source: "selection",
+    });
   };
 
-  const appendSelectionFallbackToIM = () => {
-    const textarea = selectionFallbackHostRef.current?.querySelector("textarea");
+  const confirmSelectionReply = () => {
+    const textarea = selectionReplyReviewHostRef.current?.querySelector("textarea");
     const selectedText =
       textarea && textarea.selectionStart !== textarea.selectionEnd
-        ? selectionFallback.text.slice(textarea.selectionStart, textarea.selectionEnd)
-        : selectionFallback.text;
+        ? selectionReplyReview.text.slice(
+            textarea.selectionStart,
+            textarea.selectionEnd,
+          )
+        : selectionReplyReview.text;
     const normalizedText = selectedText.trim();
 
     if (!normalizedText) {
@@ -979,12 +981,12 @@ const TerminalDock = () => {
     }
 
     emit("APPEND_CHAT_INPUT", normalizedText);
-    setSelectionFallback({
+    setSelectionReplyReview({
       open: false,
       text: "",
-      source: "screen",
+      source: "selection",
     });
-    message.success("Selection added to draft");
+    message.success("Reply draft updated from selection");
   };
 
   const handleAutoSendChange = (enabled: boolean) => {
@@ -1027,35 +1029,6 @@ const TerminalDock = () => {
     },
   ];
 
-  const contextMenuItems = [
-    {
-      key: "preview-recent",
-      label: "Preview Recent Context",
-    },
-    {
-      key: "preview-selected",
-      label: `Preview Selected Context${
-        selectedMessages.length > 0 ? ` (${selectedMessages.length})` : ""
-      }`,
-      disabled: selectedMessages.length === 0,
-    },
-    {
-      key: "copy-prompt",
-      label: "Copy Last Context Prompt",
-      disabled: !activeWorkspace || !conversationID,
-    },
-    {
-      key: "send-prompt",
-      label: "Send Last Context",
-      disabled: !activeTab || !lastContextPrompt,
-    },
-    {
-      key: "preview",
-      label: "Open Context Library",
-      disabled: !contextPreviewBundle,
-    },
-  ];
-
   const onRunMenuClick = ({ key }: { key: string }) => {
     if (key.startsWith("template:")) {
       void onRunCommandTemplate(key.replace("template:", ""));
@@ -1069,30 +1042,6 @@ const TerminalDock = () => {
 
     if (key === "templates") {
       setCommandModalOpen(true);
-    }
-  };
-
-  const onContextMenuClick = ({ key }: { key: string }) => {
-    if (key === "preview-recent") {
-      setContextModalOpen(true);
-      void runRecentContextAction("preview");
-      return;
-    }
-    if (key === "preview-selected") {
-      setContextModalOpen(true);
-      void runSelectedContextAction("preview");
-      return;
-    }
-    if (key === "copy-prompt") {
-      void copyContextPrompt();
-      return;
-    }
-    if (key === "send-prompt") {
-      void sendContextPrompt();
-      return;
-    }
-    if (key === "preview" && contextPreviewBundle) {
-      setContextModalOpen(true);
     }
   };
 
@@ -1240,36 +1189,17 @@ const TerminalDock = () => {
               Pending: {pendingRequestCount}
             </span>
           )}
-          <Dropdown
-            menu={{
-              items: contextMenuItems,
-              onClick: onContextMenuClick,
-            }}
-            trigger={["click"]}
-            disabled={!activeWorkspace || !conversationID}
-          >
+          <Tooltip title="Advanced / Debug Context Files">
             <Button
               size="small"
-              type="default"
-              className="terminal-dock-command-button"
+              type="text"
+              className="terminal-dock-icon-button"
               disabled={!activeWorkspace || !conversationID}
               icon={<FileTextOutlined rev={undefined} />}
-              data-testid="terminal-context-menu"
+              onClick={() => setContextModalOpen(true)}
+              data-testid="terminal-context-advanced"
             >
-              Context Library <DownOutlined rev={undefined} />
-            </Button>
-          </Dropdown>
-          <Tooltip title="Send the latest context prompt to the active terminal and press Enter">
-            <Button
-              size="small"
-              type="default"
-              className="terminal-dock-command-button"
-              disabled={!activeTab || !lastContextPrompt}
-              icon={<SendOutlined rev={undefined} />}
-              onClick={() => void sendContextPrompt()}
-              data-testid="terminal-send-last-context"
-            >
-              Send Last Context
+              Advanced
             </Button>
           </Tooltip>
         </div>
@@ -1279,7 +1209,7 @@ const TerminalDock = () => {
           data-testid="terminal-agent-im-group"
         >
           <span className="terminal-dock-toolbar-label">Agent -&gt; IM</span>
-          <Tooltip title="Append selected terminal text to the current chat draft. If a TUI blocks terminal selection, this opens a selectable screen snapshot.">
+          <Tooltip title="Review selected terminal text before inserting it into the current reply draft. If a TUI blocks terminal selection, this opens a selectable screen snapshot.">
             <Button
               size="small"
               type="default"
@@ -1287,22 +1217,9 @@ const TerminalDock = () => {
               disabled={!activeTab}
               icon={<CopyOutlined rev={undefined} />}
               onClick={selectionToIM}
-              data-testid="terminal-selection-draft"
+              data-testid="terminal-use-selection-reply"
             >
-              Selection -&gt; Draft
-            </Button>
-          </Tooltip>
-          <Tooltip title="Replace the current chat draft with the latest terminal output snapshot">
-            <Button
-              size="small"
-              type="default"
-              className="terminal-dock-command-button"
-              disabled={!activeTab}
-              icon={<CopyOutlined rev={undefined} />}
-              onClick={() => captureTerminalOutput("manual")}
-              data-testid="terminal-capture-output"
-            >
-              Capture Output -&gt; Draft
+              Use Selection as Reply
             </Button>
           </Tooltip>
           <Tooltip title="Attach a file from the active workspace to the current conversation after confirmation">
@@ -1318,30 +1235,18 @@ const TerminalDock = () => {
               Attach Workspace File
             </Button>
           </Tooltip>
-          <div className="terminal-dock-toggle">
-            <span>Auto Capture Output -&gt; Draft</span>
-            <Switch
+          <Tooltip title="Debug reply handoff tools">
+            <Button
               size="small"
-              checked={autoReceiveEnabled}
+              type="text"
+              className="terminal-dock-icon-button"
               disabled={!activeTab}
-              onChange={setAutoReceiveEnabled}
-              data-testid="terminal-output-draft-toggle"
-            />
-          </div>
-          <div className="terminal-dock-toggle">
-            <Tooltip title={AUTO_SEND_WARNING}>
-              <span className="terminal-dock-toggle-label is-experimental">
-                Draft -&gt; Chat (experimental)
-              </span>
-            </Tooltip>
-            <Switch
-              size="small"
-              checked={autoSendEnabled}
-              disabled={!activeTab || !autoReceiveEnabled}
-              onChange={handleAutoSendChange}
-              data-testid="terminal-draft-chat-toggle"
-            />
-          </div>
+              onClick={() => setReplyDebugModalOpen(true)}
+              data-testid="terminal-reply-debug"
+            >
+              Debug
+            </Button>
+          </Tooltip>
         </div>
       </div>
 
@@ -1517,7 +1422,7 @@ const TerminalDock = () => {
       </Modal>
 
       <Modal
-        title="Context Library"
+        title="Advanced / Debug Context Files"
         open={contextModalOpen}
         width={820}
         onCancel={() => setContextModalOpen(false)}
@@ -1545,6 +1450,22 @@ const TerminalDock = () => {
           </Button>,
           <Button
             key="copy"
+            disabled={!lastContextPrompt}
+            onClick={() => void copyLastContextPrompt()}
+            data-testid="terminal-context-copy-last-prompt"
+          >
+            Copy Last Prompt
+          </Button>,
+          <Button
+            key="send-last"
+            disabled={!lastContextPrompt || !activeTab}
+            onClick={() => void sendLastContextPrompt()}
+            data-testid="terminal-context-send-last-prompt"
+          >
+            Send Last Prompt
+          </Button>,
+          <Button
+            key="copy-preview"
             disabled={!contextPreviewBundle}
             onClick={() => void copyPreviewedContext()}
             data-testid="terminal-context-copy-prompt"
@@ -1552,7 +1473,7 @@ const TerminalDock = () => {
             Copy Previewed Context
           </Button>,
           <Button
-            key="send"
+            key="send-preview"
             type="primary"
             disabled={!contextPreviewBundle || !activeTab}
             onClick={() => void sendPreviewedContext()}
@@ -1570,8 +1491,8 @@ const TerminalDock = () => {
             <div>
               <div className="text-xs text-[#cccccc]">Preview Source</div>
               <div className="text-[11px] text-[#8c8c8c]">
-                Choose recent messages or the current selection, then preview that
-                specific bundle before copying or sending it.
+                Advanced preview and file export for recent messages or the current{" "}
+                selection. Use this to inspect, reuse, or debug generated context files.
               </div>
             </div>
             <Input
@@ -1618,7 +1539,8 @@ const TerminalDock = () => {
             </>
           ) : (
             <div className="terminal-dock-context-empty">
-              Build a preview to write context files into the active workspace.
+              Build a preview to inspect or write context files into the active
+              workspace.
             </div>
           )}
           <div className="terminal-dock-context-history">
@@ -1677,10 +1599,10 @@ const TerminalDock = () => {
           >
             <div className="terminal-dock-context-history-header">
               <div>
-                <div className="text-xs text-[#cccccc]">Context Library</div>
+                <div className="text-xs text-[#cccccc]">Context File History</div>
                 <div className="text-[11px] text-[#8c8c8c]">
-                  Latest workspace bundles. Files stay on disk; this list stores prompt
-                  metadata only.
+                  Advanced / debug history for generated workspace bundles. Files stay
+                  on disk; this list stores prompt metadata only.
                 </div>
               </div>
               <Button
@@ -1794,6 +1716,75 @@ const TerminalDock = () => {
       </Modal>
 
       <Modal
+        title="Reply Debug Tools"
+        open={replyDebugModalOpen}
+        onCancel={() => setReplyDebugModalOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setReplyDebugModalOpen(false)}>
+            Close
+          </Button>,
+        ]}
+      >
+        <div
+          className="terminal-dock-template-list"
+          data-testid="terminal-reply-debug-modal"
+        >
+          <div className="text-xs text-[#8c8c8c]">
+            Debug-only terminal-to-reply helpers. Manual capture is safer; automatic
+            capture and automatic send remain off by default.
+          </div>
+          <div className="terminal-dock-debug-row">
+            <div>
+              <div className="text-xs text-[#262626]">Capture Output</div>
+              <div className="text-[11px] text-[#8c8c8c]">
+                Replace the current reply draft with the latest terminal output
+                snapshot.
+              </div>
+            </div>
+            <Button
+              size="small"
+              disabled={!activeTab}
+              icon={<CopyOutlined rev={undefined} />}
+              onClick={() => captureTerminalOutput("manual")}
+              data-testid="terminal-capture-output"
+            >
+              Capture to Draft
+            </Button>
+          </div>
+          <div className="terminal-dock-debug-row">
+            <div>
+              <div className="text-xs text-[#262626]">Auto Capture Output</div>
+              <div className="text-[11px] text-[#8c8c8c]">
+                Keep the latest terminal snapshot in the reply draft. Off by default.
+              </div>
+            </div>
+            <Switch
+              size="small"
+              checked={autoReceiveEnabled}
+              disabled={!activeTab}
+              onChange={setAutoReceiveEnabled}
+              data-testid="terminal-output-draft-toggle"
+            />
+          </div>
+          <div className="terminal-dock-debug-row">
+            <div>
+              <div className="text-xs text-[#262626]">Draft -&gt; Chat</div>
+              <div className="text-[11px] text-[#8c8c8c]">
+                Experimental auto-send. Requires Auto Capture and explicit confirmation.
+              </div>
+            </div>
+            <Switch
+              size="small"
+              checked={autoSendEnabled}
+              disabled={!activeTab || !autoReceiveEnabled}
+              onChange={handleAutoSendChange}
+              data-testid="terminal-draft-chat-toggle"
+            />
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
         title="Confirm Workspace Attachment"
         open={Boolean(workspaceAttachmentCandidate)}
         okText="Attach"
@@ -1826,31 +1817,40 @@ const TerminalDock = () => {
       </Modal>
 
       <Modal
-        title="Selection -> Draft (TUI Fallback)"
-        open={selectionFallback.open}
+        title="Use Selection as Reply"
+        open={selectionReplyReview.open}
         width={760}
-        okText="Append to Draft"
+        okText="Use as Reply"
         cancelText="Cancel"
+        okButtonProps={{
+          "data-testid": "terminal-selection-reply-confirm",
+        }}
         onCancel={() =>
-          setSelectionFallback({
+          setSelectionReplyReview({
             open: false,
             text: "",
-            source: "screen",
+            source: "selection",
           })
         }
-        onOk={appendSelectionFallbackToIM}
+        onOk={confirmSelectionReply}
       >
-        <div className="terminal-dock-template-list" ref={selectionFallbackHostRef}>
+        <div
+          className="terminal-dock-template-list"
+          ref={selectionReplyReviewHostRef}
+          data-testid="terminal-selection-reply-review"
+        >
           <div className="text-xs text-[#8c8c8c]">
-            {selectionFallback.source === "screen"
-              ? "The active TUI did not expose a live terminal selection. Review the current visible screen snapshot below, highlight a portion if needed, then append it to the draft."
-              : "The active TUI did not expose a live terminal selection. Review the recent terminal output snapshot below, highlight a portion if needed, then append it to the draft."}
+            {selectionReplyReview.source === "selection"
+              ? "Review the selected terminal text before using it as the current reply draft."
+              : selectionReplyReview.source === "screen"
+              ? "The active TUI did not expose a live terminal selection. Review the current visible screen snapshot below, highlight a portion if needed, then use it as the reply draft."
+              : "The active TUI did not expose a live terminal selection. Review the recent terminal output snapshot below, highlight a portion if needed, then use it as the reply draft."}
           </div>
           <Input.TextArea
             autoSize={{ minRows: 16, maxRows: 24 }}
-            value={selectionFallback.text}
+            value={selectionReplyReview.text}
             onChange={(event) =>
-              setSelectionFallback((prev) => ({
+              setSelectionReplyReview((prev) => ({
                 ...prev,
                 text: event.target.value,
               }))

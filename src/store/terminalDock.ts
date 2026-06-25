@@ -242,12 +242,9 @@ const readStoredState = (): StoredTerminalDockState => {
         parsed.contextBundlesByWorkspace,
       ),
       commandTemplates: normalizeCommandTemplates(parsed.commandTemplates),
-      autoReceiveEnabled:
-        typeof parsed.autoReceiveEnabled === "boolean"
-          ? parsed.autoReceiveEnabled
-          : false,
-      autoSendEnabled:
-        typeof parsed.autoSendEnabled === "boolean" ? parsed.autoSendEnabled : false,
+      // Safety reset: debug handoff features should always come back disabled after reload.
+      autoReceiveEnabled: false,
+      autoSendEnabled: false,
       captureSource:
         parsed.captureSource === "screen" ||
         parsed.captureSource === "raw" ||

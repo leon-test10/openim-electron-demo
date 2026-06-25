@@ -214,6 +214,16 @@
   gap: 10px;
 }
 
+.terminal-dock-debug-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  padding: 12px;
+}
+
 .terminal-dock-context-builder {
   display: flex;
   flex-direction: column;

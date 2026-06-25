@@ -73,7 +73,7 @@ const WorkspaceBar = ({
           onClick={onCopyPath}
         />
       </Tooltip>
-      <Tooltip title="Export IM Context">
+      <Tooltip title="Advanced / Debug Context Files">
         <Button
           size="small"
           type="text"

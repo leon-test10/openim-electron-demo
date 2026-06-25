@@ -14,11 +14,10 @@ test("terminal dock smoke is available without a real runtime", async ({
   await expect(appWindow.getByTestId("terminal-runtime-controls")).toBeVisible();
   await expect(appWindow.getByTestId("terminal-im-agent-group")).toBeVisible();
   await expect(appWindow.getByTestId("terminal-agent-im-group")).toBeVisible();
-  await expect(appWindow.getByTestId("terminal-output-draft-toggle")).toBeVisible();
-  await expect(appWindow.getByTestId("terminal-draft-chat-toggle")).toHaveAttribute(
-    "aria-checked",
-    "false",
-  );
+  await expect(appWindow.getByTestId("terminal-context-menu")).toHaveCount(0);
+  await expect(appWindow.getByTestId("terminal-send-last-context")).toHaveCount(0);
+  await expect(appWindow.getByTestId("terminal-reply-debug")).toBeVisible();
+  await expect(appWindow.getByTestId("terminal-reply-debug")).toBeDisabled();
 });
 
 test("terminal context history can copy and send prompt", async ({ appWindow }) => {
@@ -26,11 +25,12 @@ test("terminal context history can copy and send prompt", async ({ appWindow }) 
 
   await appWindow.locator(messageActionTrigger(e2eMessageIDs[0])).click();
   await appWindow.getByTestId("message-action-select").click();
+  await appWindow.getByTestId("message-selection-more").click();
+  await appWindow.getByTestId("message-selection-advanced-menu").click();
   await appWindow.getByTestId("message-selection-copy-prompt").click();
 
   await expect(appWindow.getByTestId("terminal-context-modal")).toHaveCount(0);
-  await appWindow.getByTestId("terminal-context-menu").click();
-  await appWindow.getByText("Open Context Library").click();
+  await appWindow.getByTestId("terminal-context-advanced").click();
   await expect(appWindow.getByTestId("terminal-context-modal")).toBeVisible();
   await expect(appWindow.getByTestId("terminal-context-history")).toContainText(
     "selectedMessages",
@@ -50,6 +50,8 @@ test("selected image attachment creates exported context paths", async ({
 
   await appWindow.locator(messageActionTrigger(e2eAttachmentMessageIDs.image)).click();
   await appWindow.getByTestId("message-action-select").click();
+  await appWindow.getByTestId("message-selection-more").click();
+  await appWindow.getByTestId("message-selection-advanced-menu").click();
   await appWindow.getByTestId("message-selection-preview").click();
 
   await expect(appWindow.getByTestId("terminal-context-modal")).toBeVisible();
@@ -104,8 +106,7 @@ test("failed attachment export keeps bundle and terminal prompt", async ({
   await appWindow.getByTestId("message-selection-send").click();
 
   await expect(appWindow.getByTestId("terminal-context-modal")).toHaveCount(0);
-  await appWindow.getByTestId("terminal-context-menu").click();
-  await appWindow.getByText("Open Context Library").click();
+  await appWindow.getByTestId("terminal-context-advanced").click();
   await expect(appWindow.getByTestId("terminal-context-modal")).toBeVisible();
   await expect(appWindow.getByTestId("terminal-context-markdown-preview")).toHaveValue(
     /status: failed/,
@@ -134,7 +135,9 @@ test("failed attachment export keeps bundle and terminal prompt", async ({
 
   expect(writes?.join("\n")).toContain("context/");
   expect(writes?.join("\n")).toContain("manifest");
-  expect(writes?.join("\n")).toContain("Check manifest status, error, and source fields");
+  expect(writes?.join("\n")).toContain(
+    "Check manifest status, error, and source fields",
+  );
   expect(manifestWrite?.content).toContain('"attachments"');
   expect(manifestWrite?.content).toContain('"attachmentExportState": "degraded"');
   expect(manifestWrite?.content).toContain('"status": "failed"');
@@ -150,7 +153,9 @@ test("selection and captured output only update draft", async ({ appWindow }) =>
     selection?.removeAllRanges();
     selection?.addRange(range);
   });
-  await appWindow.getByTestId("terminal-selection-draft").click();
+  await appWindow.getByTestId("terminal-use-selection-reply").click();
+  await expect(appWindow.getByTestId("terminal-selection-reply-review")).toBeVisible();
+  await appWindow.getByTestId("terminal-selection-reply-confirm").click();
   await expect(appWindow.getByTestId("e2e-draft-preview")).toContainText(
     "reply from e2e peer",
   );
@@ -164,6 +169,7 @@ test("selection and captured output only update draft", async ({ appWindow }) =>
       "Windows PowerShell\nPS C:\\OpenIM-E2E\\workspaces> Write-Host READY\nREADY\n",
     );
   });
+  await appWindow.getByTestId("terminal-reply-debug").click();
   await appWindow.getByTestId("terminal-capture-output").click();
   await expect(appWindow.getByTestId("e2e-draft-preview")).toContainText(
     "Windows PowerShell",
@@ -180,6 +186,8 @@ test("dangerous attachment is skipped by export policy without blocking bundle",
     .locator(messageActionTrigger(e2eAttachmentMessageIDs.dangerousFile))
     .click();
   await appWindow.getByTestId("message-action-select").click();
+  await appWindow.getByTestId("message-selection-more").click();
+  await appWindow.getByTestId("message-selection-advanced-menu").click();
   await appWindow.getByTestId("message-selection-preview").click();
 
   await expect(appWindow.getByTestId("terminal-context-modal")).toBeVisible();
@@ -205,7 +213,10 @@ test("dangerous attachment is skipped by export policy without blocking bundle",
     () =>
       (
         window as unknown as {
-          __e2eAttachmentExportCalls?: Array<{ channel: string; relativePath?: string }>;
+          __e2eAttachmentExportCalls?: Array<{
+            channel: string;
+            relativePath?: string;
+          }>;
         }
       ).__e2eAttachmentExportCalls,
   );
@@ -226,6 +237,8 @@ test("context library can attach a generated workspace file as pending draft att
 
   await appWindow.locator(messageActionTrigger(e2eMessageIDs[0])).click();
   await appWindow.getByTestId("message-action-select").click();
+  await appWindow.getByTestId("message-selection-more").click();
+  await appWindow.getByTestId("message-selection-advanced-menu").click();
   await appWindow.getByTestId("message-selection-preview").click();
 
   await expect(appWindow.getByTestId("terminal-context-modal")).toBeVisible();
@@ -237,9 +250,7 @@ test("context library can attach a generated workspace file as pending draft att
     appWindow.getByTestId("terminal-workspace-file-confirmation"),
   ).toContainText("File name:");
   await appWindow.getByTestId("terminal-workspace-file-confirm").click();
-  await expect(appWindow.getByTestId("e2e-pending-attachments")).toContainText(
-    /\.md/,
-  );
+  await expect(appWindow.getByTestId("e2e-pending-attachments")).toContainText(/\.md/);
   await expect(appWindow.getByTestId("e2e-pending-attachments")).toContainText(
     "context/",
   );

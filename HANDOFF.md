@@ -27,10 +27,8 @@ Scope completed:
   - non-text messages.
 - Pending requests are deduplicated by conversation and trigger message ID.
 - Added `PendingAgentRequests` review cards in chat with explicit actions:
-  - `Preview Context`;
-  - `Copy Prompt`;
-  - `Send to Terminal`;
-  - `Ignore`.
+  - `Review`;
+  - `Send to Agent`.
 - Context bundle creation remains lazy: no markdown/manifest/prompt bundle is
   generated at detection time.
 - Added `ContextSource.kind = "botTrigger"` and prompt/manifest/markdown source
@@ -93,6 +91,80 @@ Recommended next implementation slice:
    policy.
 3. Keep any Auto Inject or Auto Reply behavior behind a separate explicit
    safety plan and off by default.
+
+## Latest Update - P9.1 IM-Agent Product UX Cleanup
+
+Current branch: `feature/p9-bot-trigger-detection`
+
+Spec source: `.trae/specs/simplify-im-agent-ux/spec.md`
+
+Scope completed:
+
+**IM-native UX cleanup:**
+- Multi-select toolbar now shows only `Copy`, `Forward`, `Send to Agent`, `More`, `Clear` as primary actions. No `Preview Selected Context`, `Copy Selected Prompt`, or `Copy Manifest` in the main row.
+- `Send to Agent` directly writes selected-message context to the active terminal without opening the Context Library.
+- All debug actions (`Preview Selected Context`, `Copy Selected Prompt`, `Export MD`, `Copy Manifest`, `Copy Full Path`) moved to `More -> Advanced / Debug`.
+- Message right-click menu reordered with IM-native actions first: `Reply`, `Copy`, `Forward`, `Favorite`, `Multi-select`, `Translate`.
+- `Send to Agent` in the right-click menu delegated to `More`. `Agent Prompt` / `Agent Context` / `Manifest` actions relegated to `More -> Advanced / Debug`.
+- Image/file message menus show `View`, `Download`, `Forward`, `Favorite`, `Multi-select` as primary IM-native actions.
+
+**Terminal UX simplification:**
+- Terminal main toolbar reduced to `Run / Stop`, `Clear`, `Bot Requests`, `More`.
+- `Send Last Context` and `Context Library` removed from primary toolbar.
+- `Context Library` renamed to `Advanced / Debug Context Files` and accessible only from `More -> Advanced`.
+- Context history records now show summary info (source kind, time, counts, status, paths) plus `Open` / `More`. `Send Again`, `Copy Prompt`, `Copy MD`, `Copy Manifest`, `Attach Manifest` moved into `More`.
+
+**Agent -> IM safety:**
+- `Selection -> Draft` renamed to `Use Selection as Reply`, now requires user confirmation before inserting into input box, and never auto-sends.
+- `Capture Output -> Draft`, `Auto Capture Output -> Draft`, `Draft -> Chat experimental` demoted to debug tools under `More -> Advanced -> Reply Debug Tools`.
+- `Auto Capture Output -> Draft` forced to off by default. localStorage migration resets it on startup if previously on.
+- `Draft -> Chat experimental` kept off by default.
+- Capture Output labeled as screen/output capture, not final answer.
+
+**Bot Requests:**
+- `Bot Requests` remains pending-only: `Review` and `Send to Agent` are the only visible actions.
+- `@bot` / `/bot` detection only creates pending requests. No auto-send, no auto-reply.
+- Group-chat requests continue to show review warning.
+
+**E2E coverage:**
+- Send to Agent directly writes to terminal without opening Context Library.
+- Primary UI surfaces do not expose `Copy Prompt`, `Preview Context`, `Copy Manifest`, `Send Last Context`, or `Context Library`.
+- Auto Capture and Draft -> Chat default off, terminal output does not auto-populate input box.
+- Use Selection as Reply confirmed, inserted, not auto-sent.
+- Advanced / Debug Context Files show record summaries and More menu actions.
+- Bot-trigger pending request flow with manual Send to Agent.
+
+Files changed in this pass:
+
+- `src/pages/chat/queryChat/MessageSelectionToolbar.tsx`
+- `src/pages/chat/queryChat/MessageItem/MessageActionMenu.tsx`
+- `src/pages/chat/queryChat/PendingAgentRequests.tsx`
+- `src/components/TerminalDock/index.tsx`
+- `src/components/TerminalDock/WorkspaceBar.tsx`
+- `src/components/TerminalDock/terminalDock.css`
+- `src/store/terminalDock.ts`
+- `e2e/electron/specs/message-selection.spec.ts`
+- `e2e/electron/specs/terminal-dock.spec.ts`
+- `e2e/electron/specs/bot-trigger.spec.ts`
+- `HANDOFF.md`
+
+Validation run:
+
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd run build`: pass (existing AntD `"use client"` and chunk-size warnings).
+- `npm.cmd run test:e2e`: 18 passed, 1 flaky (bot-trigger Electron startup timeout, not a logic regression).
+
+Not implemented (explicitly excluded from P9.1):
+
+- Auto Inject.
+- Auto Reply.
+- True background bot.
+- Terminal final answer parser.
+- Runtime event adapter.
+- Automatic terminal output to IM sending.
+- Full Forward / Favorite / Translate / Delete / Recall implementations (entries exist as disabled placeholders for IM-native menu shape).
+- Multi-conversation context selector.
+- Bot alias configuration.
 
 ## Latest Update - P7/P8 Stabilized Manual IM-Agent Handoff
 

@@ -24,6 +24,13 @@ test("single chat @bot creates pending request and sends only after user action"
   );
   expect(writes?.join("\n") ?? "").not.toContain("botTrigger");
 
+  await mentionRequest.getByTestId("pending-agent-review").click();
+  await expect(mentionRequest).toHaveCount(1);
+  writes = await appWindow.evaluate(
+    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+  );
+  expect(writes?.join("\n") ?? "").not.toContain("botTrigger");
+
   await mentionRequest.getByTestId("pending-agent-send").click();
 
   await expect
@@ -48,7 +55,7 @@ test("single chat @bot creates pending request and sends only after user action"
   await expect(mentionRequest).toHaveCount(0);
 });
 
-test("/bot creates pending request and ignore does not write terminal", async ({
+test("/bot creates pending request and stays pending until manual send", async ({
   appWindow,
 }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
@@ -58,8 +65,10 @@ test("/bot creates pending request and ignore does not write terminal", async ({
     .getByTestId("pending-agent-request")
     .filter({ hasText: "/bot explain the previous error." });
   await expect(slashRequest).toContainText("/bot explain the previous error.");
-  await slashRequest.getByTestId("pending-agent-ignore").click();
-  await expect(slashRequest).toHaveCount(0);
+  await expect(slashRequest.getByTestId("pending-agent-review")).toBeVisible();
+  await expect(slashRequest.getByTestId("pending-agent-send")).toBeVisible();
+  await expect(slashRequest.getByTestId("pending-agent-copy")).toHaveCount(0);
+  await expect(slashRequest.getByTestId("pending-agent-ignore")).toHaveCount(0);
 
   const writes = await appWindow.evaluate(
     () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,

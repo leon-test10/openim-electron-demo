@@ -13,7 +13,6 @@ const PendingAgentRequests: FC<PendingAgentRequestsProps> = ({ conversationID })
   const requests = usePendingAgentRequestStore((state) =>
     conversationID ? state.requestsByConversation[conversationID] ?? [] : [],
   );
-  const markIgnored = usePendingAgentRequestStore((state) => state.markIgnored);
   const setPanelOpen = useTerminalDockStore((state) => state.setPanelOpen);
   const visibleRequests = requests.filter((request) => request.status === "pending");
 
@@ -21,13 +20,8 @@ const PendingAgentRequests: FC<PendingAgentRequestsProps> = ({ conversationID })
 
   const runRequestAction = (
     request: PendingAgentRequest,
-    action: ContextAction | "ignore",
+    action: Extract<ContextAction, "preview" | "send">,
   ) => {
-    if (action === "ignore") {
-      markIgnored(request.conversationID, request.id);
-      return;
-    }
-
     setPanelOpen(true);
     window.setTimeout(() => {
       emitter.emit("BOT_AGENT_REQUEST_ACTION", {
@@ -59,23 +53,16 @@ const PendingAgentRequests: FC<PendingAgentRequestsProps> = ({ conversationID })
               className="mt-1 text-[#9a3412]"
               data-testid="pending-agent-group-warning"
             >
-              This request came from a group chat. Review before sending to terminal.
+              This request came from a group chat. Review before sending to agent.
             </div>
           )}
           <div className="mt-2 flex flex-wrap gap-2">
             <Button
               size="small"
               onClick={() => runRequestAction(request, "preview")}
-              data-testid="pending-agent-preview"
+              data-testid="pending-agent-review"
             >
-              Preview Context
-            </Button>
-            <Button
-              size="small"
-              onClick={() => runRequestAction(request, "copy")}
-              data-testid="pending-agent-copy"
-            >
-              Copy Prompt
+              Review
             </Button>
             <Button
               size="small"
@@ -83,15 +70,7 @@ const PendingAgentRequests: FC<PendingAgentRequestsProps> = ({ conversationID })
               onClick={() => runRequestAction(request, "send")}
               data-testid="pending-agent-send"
             >
-              Send to Terminal
-            </Button>
-            <Button
-              size="small"
-              danger
-              onClick={() => runRequestAction(request, "ignore")}
-              data-testid="pending-agent-ignore"
-            >
-              Ignore
+              Send to Agent
             </Button>
           </div>
         </div>

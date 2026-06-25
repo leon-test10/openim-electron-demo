@@ -1,6 +1,6 @@
 import { MoreOutlined } from "@ant-design/icons";
 import { MessageItem as MessageItemType, MessageType } from "@openim/wasm-client-sdk";
-import { Button, Dropdown, message as antdMessage } from "antd";
+import { Button, Dropdown, MenuProps, message as antdMessage } from "antd";
 import { FC, PropsWithChildren } from "react";
 
 import { useMessageSelectionStore, useTerminalDockStore } from "@/store";
@@ -26,15 +26,21 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
   conversationID,
   children,
 }) => {
-  const setSelectionMode = useMessageSelectionStore((state) => state.setSelectionMode);
-  const addMessageSelection = useMessageSelectionStore(
-    (state) => state.addMessageSelection,
-  );
   const selectOnlyMessage = useMessageSelectionStore(
     (state) => state.selectOnlyMessage,
   );
   const setTerminalPanelOpen = useTerminalDockStore((state) => state.setPanelOpen);
-  const canCopyText = message.contentType === MessageType.TextMessage;
+  const isTextMessage = message.contentType === MessageType.TextMessage;
+  const isPictureMessage = message.contentType === MessageType.PictureMessage;
+  const canCopyText = isTextMessage;
+  const previewUrl =
+    message.pictureElem?.sourcePicture?.url ??
+    message.pictureElem?.bigPicture?.url ??
+    message.pictureElem?.snapshotPicture?.url ??
+    message.fileElem?.sourceUrl;
+  const downloadFileName =
+    message.fileElem?.fileName ??
+    `${message.clientMsgID}${isPictureMessage ? ".png" : ""}`;
 
   const runSingleMessageContextAction = (action: "preview" | "copy" | "send") => {
     if (!conversationID) return;
@@ -51,76 +57,112 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
     });
   };
 
-  const menuItems = [
-    {
+  const menuItems: MenuProps["items"] = [];
+
+  if (isTextMessage) {
+    menuItems.push({
+      key: "reply",
+      label: menuLabel("message-action-reply", "Reply"),
+    });
+    menuItems.push({
       key: "copy",
       label: menuLabel("message-action-copy", "Copy"),
       disabled: !canCopyText,
-    },
-    {
-      key: "quote",
-      label: menuLabel("message-action-quote", "Quote"),
-    },
+    });
+  }
+
+  if (previewUrl) {
+    menuItems.push({
+      key: "view",
+      label: menuLabel("message-action-view", "View"),
+    });
+    menuItems.push({
+      key: "download",
+      label: menuLabel("message-action-download", "Download"),
+    });
+  }
+
+  menuItems.push(
     {
       key: "forward",
       label: menuLabel("message-action-forward", "Forward"),
       disabled: true,
     },
     {
+      key: "favorite",
+      label: menuLabel("message-action-favorite", "Favorite"),
+      disabled: true,
+    },
+    {
       key: "select",
-      label: menuLabel("message-action-select", "Select"),
+      label: menuLabel("message-action-select", "Multi-select"),
       disabled: !conversationID,
     },
+  );
+
+  if (isTextMessage) {
+    menuItems.push({
+      key: "translate",
+      label: menuLabel("message-action-translate", "Translate"),
+      disabled: true,
+    });
+  }
+
+  menuItems.push(
     {
-      key: "add-selection",
-      label: menuLabel("message-action-add-selection", "Add to Selection"),
-      disabled: !conversationID,
-    },
-    {
-      type: "divider" as const,
+      type: "divider",
     },
     {
       key: "delete",
       label: menuLabel("message-action-delete", "Delete"),
       disabled: true,
     },
-    {
+  );
+
+  if (isTextMessage) {
+    menuItems.push({
       key: "recall",
       label: menuLabel("message-action-recall", "Recall"),
       disabled: true,
+    });
+  }
+
+  menuItems.push(
+    {
+      type: "divider",
     },
     {
-      type: "divider" as const,
-    },
-    {
-      key: "agent",
-      label: menuLabel("message-action-agent-menu", "Context"),
+      key: "more",
+      label: menuLabel("message-action-more-menu", "More"),
       disabled: !conversationID,
       children: [
         {
-          key: "agent:create-context",
-          label: menuLabel(
-            "message-action-agent-create-context",
-            "Preview Selected Context",
-          ),
+          key: "agent:send",
+          label: menuLabel("message-action-send-to-agent", "Send to Agent"),
         },
         {
-          key: "agent:copy-prompt",
-          label: menuLabel("message-action-agent-copy-prompt", "Copy Selected Prompt"),
-        },
-        {
-          key: "agent:send-terminal",
-          label: menuLabel(
-            "message-action-agent-send-terminal",
-            "Send Selected to Terminal",
-          ),
+          key: "agent:advanced",
+          label: menuLabel("message-action-advanced-menu", "Advanced / Debug"),
+          children: [
+            {
+              key: "agent:preview",
+              label: menuLabel(
+                "message-action-preview-context",
+                "Preview Selected Context",
+              ),
+            },
+            {
+              key: "agent:copy-prompt",
+              label: menuLabel("message-action-copy-prompt", "Copy Selected Prompt"),
+            },
+          ],
         },
       ],
     },
-  ];
+  );
 
   const onMenuClick = async ({ key }: { key: string }) => {
-    if (!conversationID && key !== "copy") return;
+    if (!conversationID && !["copy", "view", "download"].includes(key)) return;
 
     if (key === "copy") {
       await navigator.clipboard.writeText(getPlainMessageContent(message));
@@ -128,9 +170,25 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
       return;
     }
 
-    if (key === "quote") {
+    if (key === "reply") {
       emitter.emit("APPEND_CHAT_INPUT", formatMessageAsQuoteText(message));
-      antdMessage.success("Quote added to draft");
+      antdMessage.success("Reply added to draft");
+      return;
+    }
+
+    if (key === "view") {
+      if (previewUrl) {
+        window.open(previewUrl, "_blank", "noopener,noreferrer");
+      }
+      return;
+    }
+
+    if (key === "download") {
+      if (!previewUrl) return;
+      const link = document.createElement("a");
+      link.href = previewUrl;
+      link.download = downloadFileName;
+      link.click();
       return;
     }
 
@@ -141,19 +199,17 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
       return;
     }
 
-    if (key === "add-selection") {
-      setSelectionMode(conversationID, true);
-      addMessageSelection(conversationID, message);
+    if (key === "agent:preview") {
+      runSingleMessageContextAction("preview");
       return;
     }
 
-    if (key === "agent:create-context") {
-      runSingleMessageContextAction("preview");
-    }
     if (key === "agent:copy-prompt") {
       runSingleMessageContextAction("copy");
+      return;
     }
-    if (key === "agent:send-terminal") {
+
+    if (key === "agent:send") {
       runSingleMessageContextAction("send");
     }
   };
@@ -165,6 +221,7 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
         onClick: (info) => {
           void onMenuClick(info);
         },
+        triggerSubMenuAction: "click",
       }}
       trigger={["contextMenu"]}
     >
@@ -179,6 +236,7 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
             onClick: (info) => {
               void onMenuClick(info);
             },
+            triggerSubMenuAction: "click",
           }}
           trigger={["click"]}
         >
