@@ -19,6 +19,7 @@ type EmitterEvents = {
   APPEND_CHAT_INPUT: string;
   REPLACE_CHAT_INPUT: string;
   SEND_CHAT_INPUT: string;
+  REMOVE_MESSAGES: RemoveMessagesParams;
   ADD_PENDING_CHAT_ATTACHMENT: PendingChatAttachmentParams;
   BOT_AGENT_REQUEST_ACTION: BotAgentRequestActionParams;
   IM_CONTEXT_ACTION: IMContextActionParams;
@@ -51,6 +52,11 @@ export type PendingChatAttachmentParams = {
   fileType: string;
   fileSize: number;
   sendKind: "image" | "file";
+};
+
+export type RemoveMessagesParams = {
+  conversationID: string;
+  clientMsgIDs: string[];
 };
 
 export type BotAgentRequestActionParams = {

@@ -411,6 +411,11 @@
     "noSelection": "终端里没有选中内容",
     "selectionAdded": "已复制并回填到输入框"
   },
+  "messageSelection": {
+    "mergeForwardTitle": "转发聊天记录（{{count}}条）",
+    "forwardSuccess": "已转发 {{count}} 条",
+    "forwardFailed": "转发失败"
+  },
   "empty": {
     "noMoments": "暂无动态",
     "noMoreMessage": "没有更多消息了",

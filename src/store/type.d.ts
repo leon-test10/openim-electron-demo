@@ -1,5 +1,4 @@
 import {
-  AtTextElem,
   BlackUserItem,
   ConversationItem,
   FriendApplicationItem,
@@ -21,6 +20,8 @@ import {
   TerminalInstance,
   TerminalStatus,
 } from "@/types/globalExpose";
+
+import { MessageForwardMode } from "./messageForward";
 
 export type IMConnectState = "success" | "loading" | "failed";
 
@@ -109,6 +110,18 @@ export interface ContactStore {
   updateUnHandleFriendApplicationCount: (num: number) => void;
   updateUnHandleGroupApplicationCount: (num: number) => void;
   clearContactStore: () => void;
+}
+
+export interface MessageForwardRequest {
+  conversationID: string;
+  messages: MessageItem[];
+  mode: MessageForwardMode;
+}
+
+export interface MessageForwardStore {
+  pendingRequest?: MessageForwardRequest;
+  setPendingRequest: (request: MessageForwardRequest) => void;
+  clearPendingRequest: () => void;
 }
 
 export type RuntimeAttachmentStatus = RuntimeInstanceStatus;

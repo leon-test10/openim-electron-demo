@@ -25,9 +25,11 @@ import GroupCardModal from "@/pages/common/GroupCardModal";
 import RtcCallModal from "@/pages/common/RtcCallModal";
 import { InviteData } from "@/pages/common/RtcCallModal/data";
 import UserCardModal, { CardInfo } from "@/pages/common/UserCardModal";
+import { consumePendingForwardSelection } from "@/services/messageForward";
 import {
   useContactStore,
   useConversationStore,
+  useMessageForwardStore,
   useTerminalDockStore,
   useUserStore,
 } from "@/store";
@@ -115,6 +117,16 @@ const TopSearchBar = () => {
       setChooseModalState({ ...params });
       chooseModalRef.current?.openOverlay();
     };
+    const selectUserHandler = async ({
+      choosedList,
+    }: {
+      choosedList: Parameters<typeof consumePendingForwardSelection>[0];
+    }) => {
+      const consumed = await consumePendingForwardSelection(choosedList);
+      if (consumed) {
+        useMessageForwardStore.getState().clearPendingRequest();
+      }
+    };
     const callRtcHandler = (inviteData: InviteData) => {
       if (rtcRef.current?.isOverlayOpen) return;
       setInviteData(inviteData);
@@ -153,12 +165,14 @@ const TopSearchBar = () => {
     emitter.on("OPEN_USER_CARD", userCardHandler);
     emitter.on("OPEN_GROUP_CARD", openGroupCardWithData);
     emitter.on("OPEN_CHOOSE_MODAL", chooseModalHandler);
+    emitter.on("SELECT_USER", selectUserHandler);
     emitter.on("OPEN_RTC_MODAL", callRtcHandler);
     IMSDK.on(CbEvents.OnRecvNewMessages, newMessageHandler);
     return () => {
       emitter.off("OPEN_USER_CARD", userCardHandler);
       emitter.off("OPEN_GROUP_CARD", openGroupCardWithData);
       emitter.off("OPEN_CHOOSE_MODAL", chooseModalHandler);
+      emitter.off("SELECT_USER", selectUserHandler);
       emitter.off("OPEN_RTC_MODAL", callRtcHandler);
       IMSDK.off(CbEvents.OnRecvNewMessages, newMessageHandler);
     };

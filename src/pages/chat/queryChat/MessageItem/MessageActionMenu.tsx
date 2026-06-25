@@ -3,6 +3,7 @@ import { MessageItem as MessageItemType, MessageType } from "@openim/wasm-client
 import { Button, Dropdown, MenuProps, message as antdMessage } from "antd";
 import { FC, PropsWithChildren } from "react";
 
+import { openMessageForwardChooser } from "@/services/messageForward";
 import { useMessageSelectionStore, useTerminalDockStore } from "@/store";
 import emitter from "@/utils/events";
 import {
@@ -86,7 +87,6 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
     {
       key: "forward",
       label: menuLabel("message-action-forward", "Forward"),
-      disabled: true,
     },
     {
       key: "favorite",
@@ -193,6 +193,11 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
     }
 
     if (!conversationID) return;
+
+    if (key === "forward") {
+      openMessageForwardChooser(conversationID, [message], "single");
+      return;
+    }
 
     if (key === "select") {
       selectOnlyMessage(conversationID, message);

@@ -21,14 +21,14 @@ export const Chat = () => {
 
   return (
     <PanelGroup direction="horizontal" className="h-full">
-      <Panel defaultSize={72} minSize={55}>
+      <Panel defaultSize={68} minSize={40}>
         <Layout className="h-full flex-row">
           <ConversationSider />
           <Outlet />
         </Layout>
       </Panel>
       <PanelResizeHandle className="w-1 bg-[var(--gap-text)] transition-colors hover:bg-[var(--primary)]" />
-      <Panel defaultSize={28} minSize={22} maxSize={45}>
+      <Panel defaultSize={32} minSize={22} maxSize={60}>
         <TerminalDock />
       </Panel>
     </PanelGroup>

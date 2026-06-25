@@ -1,5 +1,6 @@
 export * from "./contact";
 export * from "./conversation";
+export * from "./messageForward";
 export * from "./messageSelection";
 export * from "./pendingAgentRequests";
 export * from "./runtimeDock";

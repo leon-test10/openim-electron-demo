@@ -36,6 +36,7 @@ export type ChooseModalType =
 export interface SelectUserExtraData {
   notConversation: boolean;
   list: CheckListItem[];
+  includeGroups?: boolean;
 }
 
 export interface ChooseModalState {
@@ -283,6 +284,10 @@ export const ChooseContact: FC<ChooseContactProps> = ({
           className="!h-[60vh]"
           ref={chooseBoxRef}
           isCheckInGroup={isCheckInGroup}
+          includeGroups={
+            type === "SELECT_USER" &&
+            Boolean((extraData as SelectUserExtraData | undefined)?.includeGroups)
+          }
           showGroupMember={onlyMemberTypes.includes(type)}
           chooseOneOnly={onlyOneTypes.includes(type)}
           checkMemberRole={type === "KICK_FORM_GROUP"}

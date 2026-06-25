@@ -60,13 +60,31 @@ export function useHistoryMessageList() {
         };
       });
     };
+    const removeMessages = ({
+      conversationID: targetConversationID,
+      clientMsgIDs,
+    }: {
+      conversationID: string;
+      clientMsgIDs: string[];
+    }) => {
+      if (targetConversationID !== conversationID) return;
+
+      setLoadState((preState) => ({
+        ...preState,
+        messageList: preState.messageList.filter(
+          (message) => !clientMsgIDs.includes(message.clientMsgID),
+        ),
+      }));
+    };
     emitter.on("PUSH_NEW_MSG", pushNewMessage);
     emitter.on("UPDATE_ONE_MSG", updateOneMessage);
+    emitter.on("REMOVE_MESSAGES", removeMessages);
     return () => {
       emitter.off("PUSH_NEW_MSG", pushNewMessage);
       emitter.off("UPDATE_ONE_MSG", updateOneMessage);
+      emitter.off("REMOVE_MESSAGES", removeMessages);
     };
-  }, []);
+  }, [conversationID]);
 
   const loadHistoryMessages = () => getMoreOldMessages(false);
 

@@ -413,6 +413,11 @@
   "terminalDock": {
     "title": "Terminal"
   },
+  "messageSelection": {
+    "mergeForwardTitle": "Forwarded chat history ({{count}} messages)",
+    "forwardSuccess": "Forwarded {{count}} item(s)",
+    "forwardFailed": "Forward failed"
+  },
   "empty": {
     "noMoments": "No moments available",
     "noMoreMessage": "No more messages",

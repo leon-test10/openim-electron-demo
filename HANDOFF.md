@@ -1,5 +1,84 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P9.1 Selection Toolbar and Forwarding Hardening
+
+Current branch: `feature/p9-bot-trigger-detection`
+
+Reason:
+
+- Real usage still showed the selected-message toolbar behaving like a cramped
+  temporary pill rather than a DingTalk-like multi-select action bar.
+- `Forward` was still a visual placeholder with no real send path.
+- The chat/terminal split and conversation sider both had hard minimum widths,
+  making the left chat area feel artificially locked.
+
+Scope completed:
+
+- Rebuilt `MessageSelectionToolbar` into a wider bottom floating action bar with
+  no internal horizontal scrollbar.
+- Primary selected-message actions are now:
+  - `Forward`;
+  - `Merge Forward`;
+  - `Copy`;
+  - `Delete`;
+  - `Send to Agent`;
+  - `More`;
+  - `Clear`.
+- Added real single-message and multi-message forward flow:
+  - message action menu `Forward` is enabled;
+  - selected-message `Forward` opens the existing choose-target modal;
+  - selected-message `Merge Forward` sends a merger message built from the
+    selected messages.
+- Added a neutral forwarding state path with:
+  - `src/store/messageForward.ts`;
+  - `src/services/messageForward/index.ts`.
+- `SELECT_USER` target selection now also works for forwarding, including group
+  targets through `ChooseBox includeGroups`.
+- Added local selected-message delete behavior:
+  - OpenIM local message delete is called per selected message;
+  - current chat history list removes the deleted rows immediately through the
+    new `REMOVE_MESSAGES` event.
+- Relaxed width constraints:
+  - chat-vs-terminal outer split minimum reduced;
+  - `FlexibleSider` minimum width reduced from `240px` to `180px`.
+
+Files changed in this pass:
+
+- `src/store/messageForward.ts`
+- `src/store/index.ts`
+- `src/store/type.d.ts`
+- `src/services/messageForward/index.ts`
+- `src/utils/events.ts`
+- `src/pages/chat/queryChat/MessageSelectionToolbar.tsx`
+- `src/pages/chat/queryChat/MessageItem/MessageActionMenu.tsx`
+- `src/pages/chat/queryChat/useHistoryMessageList.tsx`
+- `src/pages/common/ChooseModal/index.tsx`
+- `src/pages/common/ChooseModal/ChooseBox/index.tsx`
+- `src/pages/chat/index.tsx`
+- `src/components/FlexibleSider/flexible-sider.module.scss`
+- `src/i18n/resources/en.json`
+- `src/i18n/resources/zh.json`
+- `e2e/electron/specs/message-selection.spec.ts`
+
+Validation run:
+
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd run lint -- --quiet`: pass.
+- `npm.cmd run build`: pass. Existing Vite/AntD/chunk-size warnings remain.
+- `npm.cmd run test:e2e -- message-selection.spec.ts`: pass. Result: 5 passed.
+- `npm.cmd run test:e2e`: pass. Result: 19 passed.
+
+Important semantics and limits:
+
+- Current `Delete` is implemented as local deletion from OpenIM local storage,
+  not a server/global recall semantic.
+- Generic opencode TUI output is still not treated as a reliable structured
+  `final_answer` channel.
+- For opencode specifically, a future runtime-specific adapter should prefer
+  supported structured surfaces such as `opencode run --format json`,
+  `opencode serve`, `opencode export`, or `opencode acp` instead of scraping the
+  visible terminal screen.
+
 ## Latest Update - P9 Bot Trigger Detection and Pending Agent Requests
 
 Current branch: `feature/p9-bot-trigger-detection`

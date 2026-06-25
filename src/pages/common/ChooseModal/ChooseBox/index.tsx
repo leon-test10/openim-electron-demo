@@ -5,7 +5,7 @@ import { useDebounceFn, useLatest } from "ahooks";
 import { Breadcrumb, Input, Spin } from "antd";
 import { BreadcrumbItemType } from "antd/es/breadcrumb/Breadcrumb";
 import clsx from "clsx";
-import i18n, { t } from "i18next";
+import { t } from "i18next";
 import {
   ChangeEvent,
   FC,
@@ -22,7 +22,6 @@ import { Virtuoso } from "react-virtuoso";
 
 import friend from "@/assets/images/chooseModal/friend.png";
 import group from "@/assets/images/chooseModal/group.png";
-import recently from "@/assets/images/chooseModal/recently.png";
 import { useCurrentMemberRole } from "@/hooks/useCurrentMemberRole";
 import useGroupMembers from "@/hooks/useGroupMembers";
 import { IMSDK } from "@/layout/MainContentWrap";
@@ -33,23 +32,32 @@ import { feedbackToast } from "@/utils/common";
 import CheckItem, { CheckListItem } from "./CheckItem";
 import MenuItem from "./MenuItem";
 
-const menuList = [
-  {
-    idx: 0,
-    title: t("placeholder.myFriend"),
-    icon: friend,
-  },
-];
+const buildMenuList = (includeGroups: boolean) => {
+  const items = [
+    {
+      idx: 0,
+      title: t("placeholder.myFriend"),
+      icon: friend,
+    },
+  ];
 
-i18n.on("languageChanged", () => {
-  menuList[0].title = t("placeholder.myFriend");
-});
+  if (includeGroups) {
+    items.push({
+      idx: 1,
+      title: t("placeholder.myGroup"),
+      icon: group,
+    });
+  }
 
-export type ChooseMenuItem = (typeof menuList)[0];
+  return items;
+};
+
+export type ChooseMenuItem = ReturnType<typeof buildMenuList>[number];
 
 interface IChooseBoxProps {
   className?: string;
   isCheckInGroup?: boolean;
+  includeGroups?: boolean;
   showGroupMember?: boolean;
   chooseOneOnly?: boolean;
   checkMemberRole?: boolean;
@@ -65,8 +73,14 @@ const ChooseBox: ForwardRefRenderFunction<ChooseBoxHandle, IChooseBoxProps> = (
   props,
   ref,
 ) => {
-  const { className, isCheckInGroup, showGroupMember, chooseOneOnly, checkMemberRole } =
-    props;
+  const {
+    className,
+    isCheckInGroup,
+    includeGroups,
+    showGroupMember,
+    chooseOneOnly,
+    checkMemberRole,
+  } = props;
 
   const [checkedList, setCheckedList] = useState<CheckListItem[]>([]);
   const latestCheckedList = useLatest(checkedList);
@@ -142,6 +156,7 @@ const ChooseBox: ForwardRefRenderFunction<ChooseBoxHandle, IChooseBoxProps> = (
         ) : (
           <ForwardCommonLeft
             isCheckInGroup={isCheckInGroup!}
+            includeGroups={Boolean(includeGroups)}
             isChecked={isChecked}
             checkClick={checkClick}
           />
@@ -170,17 +185,20 @@ export default memo(forwardRef(ChooseBox));
 
 interface ICommonLeftProps {
   isCheckInGroup: boolean;
+  includeGroups: boolean;
   checkClick: (data: CheckListItem) => void;
   isChecked: (data: CheckListItem) => boolean;
 }
 
 const CommonLeft: FC<ICommonLeftProps> = ({
   isCheckInGroup,
+  includeGroups,
   checkClick,
   isChecked,
 }) => {
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItemType[]>([]);
   const [checkList, setCheckList] = useState<CheckListItem[]>([]);
+  const menuList = buildMenuList(includeGroups);
 
   const breadcrumbClick = (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
     e.preventDefault();

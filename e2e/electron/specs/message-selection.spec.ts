@@ -54,7 +54,13 @@ test("selected toolbar keeps IM-native actions in the primary row", async ({
   await appWindow.getByTestId("message-action-select").click();
 
   await expect(appWindow.getByTestId("message-selection-copy")).toBeVisible();
-  await expect(appWindow.getByTestId("message-selection-forward")).toBeVisible();
+  await expect(
+    appWindow.getByTestId("message-selection-forward-single"),
+  ).toBeVisible();
+  await expect(
+    appWindow.getByTestId("message-selection-forward-merged"),
+  ).toBeVisible();
+  await expect(appWindow.getByTestId("message-selection-delete")).toBeVisible();
   await expect(appWindow.getByTestId("message-selection-send")).toBeVisible();
   await expect(appWindow.getByTestId("message-selection-more")).toBeVisible();
   await expect(appWindow.getByTestId("message-selection-clear")).toBeVisible();
