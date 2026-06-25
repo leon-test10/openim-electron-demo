@@ -51,11 +51,22 @@ const installE2EElectronMock = () => {
       contentType?: number;
     }>;
     __e2eEmitTerminalOutput?: (text: string) => void;
+    __e2eStructuredEvents?: Array<{
+      workspaceID: string;
+      event: Record<string, unknown>;
+      timestamp: number;
+    }>;
+    __e2eEmitStructuredEvent?: (
+      workspaceID: string,
+      event: Record<string, unknown>,
+    ) => void;
+    __e2eGetActiveWorkspaceID?: () => string | undefined;
   };
   e2eWindow.__e2eTerminalWrites = [];
   e2eWindow.__e2eWorkspaceWrites = [];
   e2eWindow.__e2eAttachmentExportCalls = [];
   e2eWindow.__e2eSentMessages = [];
+  e2eWindow.__e2eStructuredEvents = [];
   e2eWindow.__e2eEmitTerminalOutput = (text: string) => {
     const state = useTerminalDockStore.getState();
     const workspaceID = state.activeWorkspaceID;
@@ -72,6 +83,22 @@ const installE2EElectronMock = () => {
       timestamp: Date.now(),
     });
   };
+  e2eWindow.__e2eEmitStructuredEvent = (
+    workspaceID: string,
+    event: Record<string, unknown>,
+  ) => {
+    const payload = { workspaceID, event, timestamp: Date.now() };
+    e2eWindow.__e2eStructuredEvents?.push(payload);
+    emitToSubscribers("agent:structuredOutput", payload);
+    useTerminalDockStore
+      .getState()
+      .addStructuredEvent(
+        workspaceID,
+        event as unknown as import("@/services/agentOutput").AgentOutputEvent,
+      );
+  };
+  e2eWindow.__e2eGetActiveWorkspaceID = () =>
+    useTerminalDockStore.getState().activeWorkspaceID;
 
   const createMockFile = (filePath: string) => {
     const fileName = filePath.split(/[\\/]/).filter(Boolean).pop() ?? "mock-file.txt";
@@ -236,6 +263,20 @@ const installE2EElectronMock = () => {
         return Promise.resolve(undefined as T);
       }
 
+      if (channel === "agent:startWatch") {
+        result = {
+          ok: true,
+          workspaceID: args[0],
+          filePath: `${workspaceRoot}\\${args[0]}\\.agent\\events.ndjson`,
+        };
+        return Promise.resolve(result as T);
+      }
+
+      if (channel === "agent:stopWatch") {
+        result = { ok: true, workspaceID: args[0] };
+        return Promise.resolve(result as T);
+      }
+
       if (channel === "terminal:openWorkspace") {
         result = "";
         return Promise.resolve(result as T);
@@ -248,6 +289,16 @@ const installE2EElectronMock = () => {
     getFileByPath: (filePath: string) => Promise.resolve(createMockFile(filePath)),
   };
 };
+
+// Install E2E introspection helper before component mounts (works in both
+// browser-mock and real-Electron modes).
+if (typeof window !== "undefined") {
+  const e2eGlobal = window as unknown as {
+    __e2eGetActiveWorkspaceID?: () => string | undefined;
+  };
+  e2eGlobal.__e2eGetActiveWorkspaceID = () =>
+    useTerminalDockStore.getState().activeWorkspaceID;
+}
 
 const E2EHarness = () => {
   const [historyOpen, setHistoryOpen] = useState(false);

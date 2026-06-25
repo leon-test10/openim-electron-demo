@@ -1,10 +1,20 @@
+import type { AgentOutputEvent } from "./types";
+
 const ANSI_ESCAPE = String.fromCharCode(27);
 const ANSI_CONTROL_PATTERN = new RegExp(
   `${ANSI_ESCAPE}(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\x07]*(?:\\x07|${ANSI_ESCAPE}\\\\)|[@-Z\\\\-_])`,
   "g",
 );
 
-export type AgentOutputSource = "structured" | "raw" | "screen";
+export type AgentOutputSource =
+  /** Reliable structured event from agent:structuredOutput IPC (Tier 1). */
+  | "structured"
+  /** Heuristic JSON scanning of raw PTY output (Tier 2). */
+  | "structured_heuristic"
+  /** Raw terminal output text (Tier 3). */
+  | "raw"
+  /** Visible xterm viewport text (Tier 4). */
+  | "screen";
 
 export interface AgentOutputResolution {
   text?: string;
@@ -16,6 +26,8 @@ interface ResolveAgentOutputParams {
   visibleText?: string;
   recentOutputText?: string;
   storedOutputText?: string;
+  /** Structured events received via the agent:structuredOutput IPC channel (Tier 1). */
+  structuredEvents?: AgentOutputEvent[];
 }
 
 const cleanText = (value: string) =>
@@ -142,8 +154,39 @@ const resolveStructuredOutput = (
     if (text) {
       return {
         text,
-        source: "structured",
+        source: "structured_heuristic",
         sessionID,
+      };
+    }
+  }
+
+  return undefined;
+};
+
+/**
+ * Tier 1: Resolve final answer from structured AgentOutputEvents received
+ * via the agent:structuredOutput IPC channel.
+ */
+const resolveFromStructuredEvents = (
+  events: AgentOutputEvent[],
+): AgentOutputResolution | undefined => {
+  let sessionID: string | undefined;
+
+  // Collect session ID from session events
+  for (const event of events) {
+    if (event.type === "session" && event.id) {
+      sessionID = event.id;
+    }
+  }
+
+  // Find the last final_answer event (iterating backwards)
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.type === "final_answer" && event.text) {
+      return {
+        text: event.text,
+        source: "structured",
+        sessionID: event.sessionID ?? sessionID,
       };
     }
   }
@@ -155,29 +198,39 @@ export const resolveAgentFinalAnswer = ({
   visibleText,
   recentOutputText,
   storedOutputText,
+  structuredEvents,
 }: ResolveAgentOutputParams): AgentOutputResolution | undefined => {
+  // Tier 1: reliable structured events from IPC
+  if (structuredEvents && structuredEvents.length > 0) {
+    const fromEvents = resolveFromStructuredEvents(structuredEvents);
+    if (fromEvents?.text) return fromEvents;
+  }
+
+  // Tier 2: heuristic JSON scanning of PTY output
   const rawText = [storedOutputText, recentOutputText]
     .filter((item): item is string => Boolean(item))
     .join("\n");
 
-  const structured = rawText ? resolveStructuredOutput(rawText) : undefined;
-  if (structured?.text) return structured;
+  const heuristic = rawText ? resolveStructuredOutput(rawText) : undefined;
+  if (heuristic?.text) return heuristic;
 
+  // Tier 3: raw terminal text
   const normalizedRaw = recentOutputText?.trim() || storedOutputText?.trim();
   if (normalizedRaw) {
     return {
       text: normalizedRaw,
       source: "raw",
-      sessionID: structured?.sessionID,
+      sessionID: heuristic?.sessionID,
     };
   }
 
+  // Tier 4: visible xterm viewport text (last resort)
   const normalizedScreen = visibleText?.trim();
   if (normalizedScreen) {
     return {
       text: normalizedScreen,
       source: "screen",
-      sessionID: structured?.sessionID,
+      sessionID: heuristic?.sessionID,
     };
   }
 

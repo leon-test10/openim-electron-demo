@@ -2,6 +2,7 @@ export const IpcMainToRender = {
   appResume: "appResume",
   runtimeEvent: "runtime:event",
   terminalEvent: "terminal:event",
+  agentStructuredOutput: "agent:structuredOutput",
 };
 
 export const IpcRenderToMain = {
@@ -30,6 +31,9 @@ export const IpcRenderToMain = {
   terminalResize: "terminal:resize",
   terminalGetWorkspaceDir: "terminal:getWorkspaceDir",
   terminalOpenWorkspace: "terminal:openWorkspace",
+
+  agentStartWatch: "agent:startWatch",
+  agentStopWatch: "agent:stopWatch",
 
   workspaceGetConversationDir: "workspace:getConversationDir",
   workspaceWriteFile: "workspace:writeFile",

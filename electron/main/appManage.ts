@@ -6,6 +6,7 @@ import { isMac, isProd, isWin } from "../utils";
 import { getStore } from "./storeManage";
 import { IpcMainToRender } from "../constants";
 import { logger } from ".";
+import { agentWatchManager } from "./agentWatchManage";
 
 const store = getStore();
 
@@ -32,7 +33,12 @@ export const setAppListener = (startApp: () => void) => {
   app.on("window-all-closed", () => {
     if (isMac && !getIsForceQuit()) return;
 
+    agentWatchManager.stopAll();
     app.quit();
+  });
+
+  app.on("before-quit", () => {
+    agentWatchManager.stopAll();
   });
 
   powerMonitor.on("suspend", () => {

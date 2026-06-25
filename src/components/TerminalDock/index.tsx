@@ -210,6 +210,13 @@ const TerminalDock = () => {
   const lastCapturedTextByTab = useTerminalDockStore(
     (state) => state.lastCapturedTextByTab,
   );
+  const structuredEventsByWorkspace = useTerminalDockStore(
+    (state) => state.structuredEventsByWorkspace,
+  );
+  const addStructuredEvent = useTerminalDockStore((state) => state.addStructuredEvent);
+  const clearStructuredEvents = useTerminalDockStore(
+    (state) => state.clearStructuredEvents,
+  );
   const createWorkspace = useTerminalDockStore((state) => state.createWorkspace);
   const setActiveWorkspace = useTerminalDockStore((state) => state.setActiveWorkspace);
   const linkConversationToWorkspace = useTerminalDockStore(
@@ -313,13 +320,15 @@ const TerminalDock = () => {
 
   const getResolvedFinalAnswer = useCallback((tab: TerminalTab) => {
     const api = terminalApisRef.current.get(tab.id);
-    const latestOutputByTab = useTerminalDockStore.getState().outputByTab;
-    const storedOutputText = getStoredOutputFallback(latestOutputByTab, tab.id);
+    const latestState = useTerminalDockStore.getState();
+    const storedOutputText = getStoredOutputFallback(latestState.outputByTab, tab.id);
+    const structuredEvents = latestState.structuredEventsByWorkspace[tab.workspaceID];
 
     return resolveAgentFinalAnswer({
       visibleText: api?.getVisibleText(),
       recentOutputText: api?.getRecentOutputText(),
       storedOutputText,
+      structuredEvents,
     });
   }, []);
 
@@ -353,7 +362,8 @@ const TerminalDock = () => {
       emit("REPLACE_CHAT_INPUT", normalizedText);
       if (mode === "manual") {
         message.success(
-          resolution?.source === "structured"
+          resolution?.source === "structured" ||
+            resolution?.source === "structured_heuristic"
             ? "Structured final answer captured"
             : "Final answer captured from terminal fallback",
         );
@@ -366,6 +376,46 @@ const TerminalDock = () => {
     if (!window.electronAPI) return undefined;
     return window.electronAPI.subscribe("terminal:event", handleTerminalEvent);
   }, [handleTerminalEvent]);
+
+  // Subscribe to structured agent output events from Electron Main.
+  useEffect(() => {
+    if (!window.electronAPI) return undefined;
+
+    return window.electronAPI.subscribe(
+      "agent:structuredOutput",
+      (payload: { workspaceID: string; event: unknown; timestamp: number }) => {
+        if (payload?.workspaceID && payload?.event) {
+          addStructuredEvent(
+            payload.workspaceID,
+            payload.event as import("@/services/agentOutput").AgentOutputEvent,
+          );
+        }
+      },
+    );
+  }, [addStructuredEvent]);
+
+  // Start/stop agent event file watching when a terminal tab is running.
+  useEffect(() => {
+    if (!window.electronAPI || !activeTab || !activeWorkspace) return;
+
+    const isRunning = activeTab.status === "running";
+    const workspaceID = activeWorkspace.id;
+
+    if (isRunning) {
+      // Non-critical: watcher start failure is silent
+      window.electronAPI
+        .ipcInvoke("agent:startWatch", workspaceID)
+        .catch(() => undefined);
+    }
+
+    return () => {
+      if (isRunning) {
+        window
+          .electronAPI!.ipcInvoke("agent:stopWatch", workspaceID)
+          .catch(() => undefined);
+      }
+    };
+  }, [activeTab?.id, activeTab?.status, activeWorkspace?.id]);
 
   useEffect(() => {
     if (!activeWorkspaceID || activeTabID || tabs.length === 0) return;

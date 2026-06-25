@@ -10,6 +10,7 @@ import {
 } from "@openim/wasm-client-sdk/lib/types/entity";
 
 import { BusinessUserInfo } from "@/api/login";
+import { AgentOutputEvent } from "@/services/agentOutput";
 import { ContextSourceKind } from "@/services/imContext";
 import {
   RuntimeEvent,
@@ -244,6 +245,7 @@ export interface TerminalDockStore {
   autoSendEnabled: boolean;
   captureSource: TerminalCaptureSource;
   lastCapturedTextByTab: Record<string, string | undefined>;
+  structuredEventsByWorkspace: Record<string, AgentOutputEvent[]>;
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
   createWorkspace: (title?: string) => Promise<string | undefined>;
@@ -279,6 +281,8 @@ export interface TerminalDockStore {
   setAutoSendEnabled: (enabled: boolean) => void;
   setCaptureSource: (source: TerminalCaptureSource) => void;
   setLastCapturedText: (tabID: string, text: string) => void;
+  addStructuredEvent: (workspaceID: string, event: AgentOutputEvent) => void;
+  clearStructuredEvents: (workspaceID: string) => void;
 }
 
 export type { TerminalEvent, TerminalInstance };

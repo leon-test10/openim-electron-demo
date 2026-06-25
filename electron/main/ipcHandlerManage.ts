@@ -13,6 +13,7 @@ import { getStore } from "./storeManage";
 import { changeLanguage } from "../i18n";
 import { runtimeManager } from "./runtimeManage";
 import { terminalManager } from "./terminalManage";
+import { agentWatchManager } from "./agentWatchManage";
 import {
   copyFileToTerminalWorkspace,
   downloadFileToTerminalWorkspace,
@@ -135,6 +136,13 @@ export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.terminalOpenWorkspace, async (_, workspaceID) => {
     const workspaceDir = await getTerminalWorkspaceDir(workspaceID);
     return shell.openPath(workspaceDir);
+  });
+
+  ipcMain.handle(IpcRenderToMain.agentStartWatch, (event, workspaceID) => {
+    return agentWatchManager.start(event.sender, workspaceID);
+  });
+  ipcMain.handle(IpcRenderToMain.agentStopWatch, (_, workspaceID) => {
+    return agentWatchManager.stop(workspaceID);
   });
 
   ipcMain.handle(IpcRenderToMain.workspaceGetConversationDir, (_, conversationID) => {

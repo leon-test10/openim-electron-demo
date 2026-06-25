@@ -336,6 +336,7 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
   ...readStoredState(),
   outputByTab: {},
   lastCapturedTextByTab: {},
+  structuredEventsByWorkspace: {},
   togglePanel: () => {
     set((state) => {
       const panelOpen = !state.panelOpen;
@@ -682,6 +683,26 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
         [tabID]: text,
       },
     }));
+  },
+  addStructuredEvent: (workspaceID, event) => {
+    set((state) => ({
+      structuredEventsByWorkspace: {
+        ...state.structuredEventsByWorkspace,
+        [workspaceID]: [
+          ...(state.structuredEventsByWorkspace[workspaceID] ?? []),
+          event,
+        ],
+      },
+    }));
+  },
+  clearStructuredEvents: (workspaceID) => {
+    set((state) => {
+      const structuredEventsByWorkspace = {
+        ...state.structuredEventsByWorkspace,
+      };
+      delete structuredEventsByWorkspace[workspaceID];
+      return { structuredEventsByWorkspace };
+    });
   },
 }));
 
