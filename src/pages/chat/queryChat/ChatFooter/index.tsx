@@ -65,11 +65,17 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   );
   const autoInjectEnabled = useTerminalDockStore((state) => state.autoInjectEnabled);
   const autoReplyEnabled = useTerminalDockStore((state) => state.autoReplyEnabled);
+  const botContextMessageLimit = useTerminalDockStore(
+    (state) => state.botContextMessageLimit,
+  );
   const setAutoInjectEnabled = useTerminalDockStore(
     (state) => state.setAutoInjectEnabled,
   );
   const setAutoReplyEnabled = useTerminalDockStore(
     (state) => state.setAutoReplyEnabled,
+  );
+  const setBotContextMessageLimit = useTerminalDockStore(
+    (state) => state.setBotContextMessageLimit,
   );
   const activeWorkspaceID = useTerminalDockStore((state) => state.activeWorkspaceID);
   const workspaces = useTerminalDockStore((state) => state.workspaces);
@@ -364,6 +370,26 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
                   checked={autoReplyEnabled}
                   onChange={onAutoReplyChange}
                   data-testid="terminal-auto-reply-toggle"
+                />
+              </label>
+            </Tooltip>
+            <Tooltip title="Number of recent messages to include as context alongside each @bot trigger.">
+              <label className="flex items-center gap-1">
+                <span>Context msgs</span>
+                <input
+                  type="number"
+                  className="w-14 rounded border border-[#d0d5dd] px-1 py-0.5 text-xs text-[#344054]"
+                  min={1}
+                  max={200}
+                  step={1}
+                  value={botContextMessageLimit}
+                  onChange={(e) => {
+                    const value = Number.parseInt(e.target.value, 10);
+                    if (value >= 1 && value <= 200) {
+                      setBotContextMessageLimit(value);
+                    }
+                  }}
+                  data-testid="chat-agent-context-limit"
                 />
               </label>
             </Tooltip>

@@ -580,10 +580,11 @@ const E2EHarness = () => {
     if (!botDetectionEnabled) return;
 
     const selfUserID = "e2e_self";
-    const recentLimit = 20;
+    const terminalDockState = useTerminalDockStore.getState();
+    const recentLimit = terminalDockState.botContextMessageLimit;
     const conversationType =
       activeConversation.conversationType === SessionType.Group ? "group" : "single";
-    const autoInject = useTerminalDockStore.getState().autoInjectEnabled;
+    const autoInject = terminalDockState.autoInjectEnabled;
     const rawTargetCandidates: Array<BotTargetCandidate | undefined> = [
       {
         userID: selfUserID,
@@ -600,8 +601,10 @@ const E2EHarness = () => {
       (candidate): candidate is BotTargetCandidate => Boolean(candidate?.userID),
     );
 
-    activeMessages.forEach((message, index) => {
-      if (isAgentGeneratedMessage(message)) return;
+    // Scan backwards to find the latest unhandled trigger.
+    for (let index = activeMessages.length - 1; index >= 0; index -= 1) {
+      const message = activeMessages[index];
+      if (isAgentGeneratedMessage(message)) continue;
 
       const text = extractTextMessageContent(message);
       const trigger = detectBotTrigger({
@@ -611,10 +614,13 @@ const E2EHarness = () => {
         targetCandidates,
       });
 
-      if (!trigger) return;
+      if (!trigger) continue;
 
       // Only process triggers explicitly targeting this user.
-      if (trigger.targetUserID && trigger.targetUserID !== selfUserID) return;
+      if (trigger.targetUserID && trigger.targetUserID !== selfUserID) continue;
+
+      const triggerKey = `${activeConversationID}|${message.clientMsgID}`;
+      if (terminalDockState.hasHandledBotTrigger(triggerKey)) continue;
 
       const contextMessages = activeMessages.slice(
         Math.max(0, index - recentLimit + 1),
@@ -631,7 +637,6 @@ const E2EHarness = () => {
       });
 
       if (autoInject) {
-        const terminalDockState = useTerminalDockStore.getState();
         const activeWorkspaceID = terminalDockState.activeWorkspaceID;
         const activeWorkspace = terminalDockState.workspaces.find(
           (workspace) => workspace.id === activeWorkspaceID,
@@ -645,36 +650,26 @@ const E2EHarness = () => {
             )
           : undefined;
         const canAutoInject =
-          Boolean(
-            activeWorkspace?.linkedConversationIDs.includes(activeConversationID),
-          ) && Boolean(activeTab && activeTab.status === "running");
+          Boolean(activeWorkspace?.linkedConversationIDs.includes(activeConversationID)) &&
+          Boolean(activeTab && activeTab.status === "running");
 
         if (!canAutoInject) {
+          terminalDockState.markBotTriggerHandled(triggerKey);
           addPendingAgentRequest(request);
-          return;
+          break;
         }
-
-        const triggerKey = `${activeConversationID}|${request.triggerMessageID}`;
-        if (terminalDockState.hasHandledBotTrigger(triggerKey)) return;
-
-        const existingRequest =
-          usePendingAgentRequestStore
-            .getState()
-            .requestsByConversation[activeConversationID]?.some(
-              (item) => item.triggerMessageID === request.triggerMessageID,
-            ) ?? false;
-        if (existingRequest) return;
 
         terminalDockState.markBotTriggerHandled(triggerKey);
         addPendingAgentRequest({ ...request, status: "sent" });
-        emitter.emit("BOT_AGENT_REQUEST_ACTION", {
-          request,
-          action: "send",
-        });
+        emitter.emit("BOT_AGENT_REQUEST_ACTION", { request, action: "send" });
       } else {
+        terminalDockState.markBotTriggerHandled(triggerKey);
         addPendingAgentRequest(request);
       }
-    });
+
+      // Only process the latest unhandled trigger per scan.
+      break;
+    }
   }, [
     activeConversation.conversationType,
     activeConversationID,

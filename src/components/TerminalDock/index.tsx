@@ -580,22 +580,48 @@ const TerminalDock = () => {
   // Auto-reply: when autoReplyEnabled and a new structured final_answer arrives,
   // send it directly to the IM conversation.
   const autoRepliedHashesRef = useRef<Set<string>>(new Set());
+  const prevAutoReplyEnabledRef = useRef(autoReplyEnabled);
   useEffect(() => {
-    if (!autoReplyEnabled || !activeWorkspaceID || !conversationID) return;
+    if (!autoReplyEnabled || !activeWorkspaceID || !conversationID) {
+      prevAutoReplyEnabledRef.current = autoReplyEnabled;
+      return;
+    }
     if (!activeTab || activeTab.status !== "running") {
+      prevAutoReplyEnabledRef.current = autoReplyEnabled;
       console.warn("[terminalDock] auto-reply skipped: no running active tab");
       return;
     }
     if (activeTab.workspaceID !== activeWorkspaceID) {
+      prevAutoReplyEnabledRef.current = autoReplyEnabled;
       console.warn("[terminalDock] auto-reply skipped: active tab/workspace mismatch");
       return;
     }
     if (!activeConversationBound) {
+      prevAutoReplyEnabledRef.current = autoReplyEnabled;
       console.warn(
         "[terminalDock] auto-reply skipped: conversation is not linked to workspace",
       );
       return;
     }
+
+    // When auto-reply was just toggled ON, seed the dedup set with all existing
+    // events so only future events are auto-sent.
+    if (!prevAutoReplyEnabledRef.current) {
+      const allEvents = structuredEventsByWorkspace[activeWorkspaceID] ?? [];
+      for (const event of allEvents) {
+        if (event.type !== "final_answer" || !event.text) continue;
+        const textHash = hashText(event.text);
+        const replyKey = [
+          activeWorkspaceID,
+          conversationID,
+          event.runID ?? "",
+          event.sessionID ?? textHash,
+          textHash,
+        ].join("|");
+        autoRepliedHashesRef.current.add(replyKey);
+      }
+    }
+    prevAutoReplyEnabledRef.current = autoReplyEnabled;
 
     const events = structuredEventsByWorkspace[activeWorkspaceID];
     if (!events || events.length === 0) return;

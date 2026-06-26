@@ -45,8 +45,10 @@ type StoredTerminalDockState = Pick<
   | "autoSendEnabled"
   | "autoInjectEnabled"
   | "autoReplyEnabled"
+  | "botContextMessageLimit"
   | "captureSource"
   | "activeAgentRunByWorkspace"
+  | "handledBotTriggerKeys"
 >;
 
 const defaultState: StoredTerminalDockState = {
@@ -64,7 +66,9 @@ const defaultState: StoredTerminalDockState = {
   captureSource: "auto",
   autoInjectEnabled: false,
   autoReplyEnabled: false,
+  botContextMessageLimit: 20,
   activeAgentRunByWorkspace: {},
+  handledBotTriggerKeys: {},
 };
 
 const canUseLocalStorage = () => typeof window !== "undefined" && window.localStorage;
@@ -270,6 +274,12 @@ const readStoredState = (): StoredTerminalDockState => {
       autoSendEnabled: false,
       autoInjectEnabled: false,
       autoReplyEnabled: false,
+      botContextMessageLimit:
+        typeof parsed.botContextMessageLimit === "number" &&
+        parsed.botContextMessageLimit >= 1 &&
+        parsed.botContextMessageLimit <= 200
+          ? parsed.botContextMessageLimit
+          : 20,
       captureSource:
         parsed.captureSource === "screen" ||
         parsed.captureSource === "raw" ||
@@ -280,6 +290,10 @@ const readStoredState = (): StoredTerminalDockState => {
         parsed.activeAgentRunByWorkspace &&
         typeof parsed.activeAgentRunByWorkspace === "object"
           ? parsed.activeAgentRunByWorkspace
+          : {},
+      handledBotTriggerKeys:
+        parsed.handledBotTriggerKeys && typeof parsed.handledBotTriggerKeys === "object"
+          ? parsed.handledBotTriggerKeys
           : {},
     };
   } catch {
@@ -307,8 +321,10 @@ const toStoredState = (state: TerminalDockStore): StoredTerminalDockState => ({
   autoSendEnabled: state.autoSendEnabled,
   autoInjectEnabled: state.autoInjectEnabled,
   autoReplyEnabled: state.autoReplyEnabled,
+  botContextMessageLimit: state.botContextMessageLimit,
   captureSource: state.captureSource,
   activeAgentRunByWorkspace: state.activeAgentRunByWorkspace,
+  handledBotTriggerKeys: state.handledBotTriggerKeys,
 });
 
 const save = (state: TerminalDockStore, patch: Partial<TerminalDockStore>) => {
@@ -372,7 +388,7 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
   lastCapturedTextByTab: {},
   structuredEventsByWorkspace: {},
   activeAgentRunByWorkspace: readStoredState().activeAgentRunByWorkspace,
-  handledBotTriggerKeys: {},
+  handledBotTriggerKeys: readStoredState().handledBotTriggerKeys,
   togglePanel: () => {
     set((state) => {
       const panelOpen = !state.panelOpen;
@@ -724,6 +740,9 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
   },
   setAutoReplyEnabled: (autoReplyEnabled) => {
     set((state) => save(state, { autoReplyEnabled }));
+  },
+  setBotContextMessageLimit: (botContextMessageLimit) => {
+    set((state) => save(state, { botContextMessageLimit }));
   },
   setCaptureSource: (captureSource: TerminalCaptureSource) => {
     set((state) => save(state, { captureSource }));

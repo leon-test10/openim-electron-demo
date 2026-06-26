@@ -247,6 +247,7 @@ export interface TerminalDockStore {
   autoSendEnabled: boolean;
   autoInjectEnabled: boolean;
   autoReplyEnabled: boolean;
+  botContextMessageLimit: number;
   captureSource: TerminalCaptureSource;
   lastCapturedTextByTab: Record<string, string | undefined>;
   structuredEventsByWorkspace: Record<string, AgentOutputEvent[]>;
@@ -289,6 +290,7 @@ export interface TerminalDockStore {
   setAutoSendEnabled: (enabled: boolean) => void;
   setAutoInjectEnabled: (enabled: boolean) => void;
   setAutoReplyEnabled: (enabled: boolean) => void;
+  setBotContextMessageLimit: (limit: number) => void;
   setCaptureSource: (source: TerminalCaptureSource) => void;
   setLastCapturedText: (tabID: string, text: string) => void;
   addStructuredEvent: (workspaceID: string, event: AgentOutputEvent) => void;
