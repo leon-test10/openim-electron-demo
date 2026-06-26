@@ -30,6 +30,7 @@ import { useHistoryMessageList } from "./useHistoryMessageList";
 
 const ChatContent = () => {
   const virtuoso = useRef<VirtuosoHandle>(null);
+  const sessionStartTimeRef = useRef(Date.now());
   const selfUserID = useUserStore((state) => state.selfInfo.userID);
   const selfNickname = useUserStore((state) => state.selfInfo.nickname);
   const currentConversation = useConversationStore(
@@ -146,8 +147,10 @@ const ChatContent = () => {
       currentConversation?.conversationType === SessionType.Group ? "group" : "single";
 
     // Scan backwards to find the latest unhandled trigger.
+    // Only process messages that arrived after this session started.
     for (let index = loadState.messageList.length - 1; index >= 0; index -= 1) {
       const message = loadState.messageList[index];
+      if (message.sendTime < sessionStartTimeRef.current) continue;
       if (isAgentGeneratedMessage(message)) continue;
 
       const text = extractTextMessageContent(message);

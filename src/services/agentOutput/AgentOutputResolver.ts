@@ -25,6 +25,8 @@ export interface AgentOutputResolution {
   source: AgentOutputSource;
   sessionID?: string;
   runID?: string;
+  /** Workspace-relative file paths extracted from ## Output Files section. */
+  outputFiles?: string[];
 }
 
 interface ResolveAgentOutputParams {
@@ -37,6 +39,27 @@ interface ResolveAgentOutputParams {
 
 const isPathInsideRun = (runDir: string, path: string) =>
   path === runDir || path.startsWith(`${runDir}/`);
+
+/** Extract workspace-relative file paths from ## Output Files section. */
+const parseOutputFiles = (text: string): string[] | undefined => {
+  const sectionMatch = text.match(
+    /## Output Files\s*\n((?:[\s\S]*?))(?:\n## |\n---|\n```|$)/,
+  );
+  if (!sectionMatch) return undefined;
+
+  const lines = sectionMatch[1].split("\n");
+  const paths: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    // Match markdown list items: "- path/to/file" or "* path/to/file"
+    const match = trimmed.match(/^[-*]\s+(\S.+)$/);
+    if (match?.[1]) {
+      paths.push(match[1].trim());
+    }
+  }
+  return paths.length > 0 ? paths : undefined;
+};
 
 export const resolveFromAgentRunContract = (
   contract: AgentRunContract | undefined,
@@ -57,6 +80,7 @@ export const resolveFromAgentRunContract = (
     text,
     source: "run_file",
     runID: contract.runID,
+    outputFiles: parseOutputFiles(finalAnswerText ?? ""),
   };
 };
 

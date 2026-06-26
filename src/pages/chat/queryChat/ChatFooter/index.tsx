@@ -52,6 +52,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const [pendingAttachments, setPendingAttachments] = useState<
     PendingChatAttachmentParams[]
   >([]);
+  const pendingAttachmentsRef = useRef<PendingChatAttachmentParams[]>([]);
   const latestHtml = useLatest(html);
   const currentConversation = useConversationStore(
     (state) => state.currentConversation,
@@ -262,12 +263,33 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     const onSend = async (text: string) => {
       const cleanText = text.trim();
       if (!cleanText) return;
+
+      // Drain pending attachments (sync via ref to avoid React batching).
+      const attachmentsToSend = [...pendingAttachmentsRef.current];
+      if (attachmentsToSend.length > 0) {
+        pendingAttachmentsRef.current = [];
+        setPendingAttachments([]);
+      }
+
       const message = (await IMSDK.createTextMessage(cleanText)).data;
       setHtml("");
-      sendMessage({ message });
+      await sendMessage({ message });
+
+      for (const attachment of attachmentsToSend) {
+        try {
+          await sendPendingAttachment(attachment);
+        } catch {
+          pendingAttachmentsRef.current = [
+            ...pendingAttachmentsRef.current,
+            attachment,
+          ];
+          setPendingAttachments(pendingAttachmentsRef.current);
+        }
+      }
     };
     const onPendingAttachment = (attachment: PendingChatAttachmentParams) => {
-      setPendingAttachments((current) => [...current, attachment]);
+      pendingAttachmentsRef.current = [...pendingAttachmentsRef.current, attachment];
+      setPendingAttachments(pendingAttachmentsRef.current);
     };
 
     emitter.on("APPEND_CHAT_INPUT", onAppend);
@@ -283,9 +305,10 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   }, [sendMessage]);
 
   const removePendingAttachment = (index: number) => {
-    setPendingAttachments((current) =>
-      current.filter((_, currentIndex) => currentIndex !== index),
+    pendingAttachmentsRef.current = pendingAttachmentsRef.current.filter(
+      (_, currentIndex) => currentIndex !== index,
     );
+    setPendingAttachments(pendingAttachmentsRef.current);
   };
 
   const sendPendingAttachment = async (attachment: PendingChatAttachmentParams) => {
@@ -307,11 +330,12 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
 
   const enterToSend = async () => {
     const cleanText = getCleanText(latestHtml.current ?? "");
-    const attachmentsToSend = [...pendingAttachments];
+    const attachmentsToSend = [...pendingAttachmentsRef.current];
 
     if (!cleanText && attachmentsToSend.length === 0) return;
 
     setHtml("");
+    pendingAttachmentsRef.current = [];
     setPendingAttachments([]);
 
     if (cleanText) {
@@ -323,7 +347,8 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       try {
         await sendPendingAttachment(attachment);
       } catch (error) {
-        setPendingAttachments((current) => [...current, attachment]);
+        pendingAttachmentsRef.current = [...pendingAttachmentsRef.current, attachment];
+        setPendingAttachments(pendingAttachmentsRef.current);
         const errorMessage = error instanceof Error ? error.message : String(error);
         antdMessage.error(errorMessage || "Failed to send workspace file");
       }

@@ -691,6 +691,24 @@ const TerminalDock = () => {
         if (autoRepliedHashesRef.current.has(replyKey)) return;
 
         autoRepliedHashesRef.current.add(replyKey);
+
+        // Queue any output files first, then send text + attachments together.
+        const outputFiles = resolution.outputFiles ?? [];
+        if (outputFiles.length > 0 && activeWorkspace) {
+          for (const relativePath of outputFiles) {
+            const inferredKind = inferWorkspaceAttachmentKind(relativePath);
+            emit("ADD_PENDING_CHAT_ATTACHMENT", {
+              source: "workspace" as const,
+              fileName: relativePath.split("/").pop() || relativePath,
+              filePath: joinWorkspacePath(activeWorkspace.rootPath, relativePath),
+              relativePath,
+              fileType: inferredKind === "image" ? "image" : "file",
+              fileSize: 0,
+              sendKind: inferredKind,
+            });
+          }
+        }
+
         emit("SEND_CHAT_INPUT", text);
         message.success("Run final answer auto-sent to chat");
       })();

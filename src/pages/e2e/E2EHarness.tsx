@@ -558,6 +558,8 @@ const E2EHarness = () => {
     const handleSendDraft = (value: string) => {
       setDraftText(value);
       setSentDrafts((current) => [...current, value]);
+      // Drain pending attachments
+      setPendingAttachments([]);
     };
     const handlePendingAttachment = (attachment: PendingChatAttachmentParams) => {
       setPendingAttachments((current) => [...current, attachment]);
@@ -650,8 +652,9 @@ const E2EHarness = () => {
             )
           : undefined;
         const canAutoInject =
-          Boolean(activeWorkspace?.linkedConversationIDs.includes(activeConversationID)) &&
-          Boolean(activeTab && activeTab.status === "running");
+          Boolean(
+            activeWorkspace?.linkedConversationIDs.includes(activeConversationID),
+          ) && Boolean(activeTab && activeTab.status === "running");
 
         if (!canAutoInject) {
           terminalDockState.markBotTriggerHandled(triggerKey);
