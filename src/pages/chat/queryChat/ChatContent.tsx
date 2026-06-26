@@ -5,6 +5,7 @@ import { memo, useEffect, useMemo, useRef } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
 import { SystemMessageTypes } from "@/constants/im";
+import useGroupMembers from "@/hooks/useGroupMembers";
 import {
   BotTargetCandidate,
   createPendingAgentRequest,
@@ -51,6 +52,7 @@ const ChatContent = () => {
   const activeSelectionConversationID = useMessageSelectionStore(
     (state) => state.activeConversationID,
   );
+  const { fetchState: groupMemberState } = useGroupMembers();
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -87,18 +89,28 @@ const ChatContent = () => {
     );
   }, [loadState.messageList, selectionActive, selectionAnchorMessageID]);
   const botTargetCandidates = useMemo<BotTargetCandidate[]>(() => {
-    const candidates: Array<BotTargetCandidate | undefined> = [
+    const candidates: BotTargetCandidate[] = [
       {
         userID: selfUserID,
         nickname: currentMemberInGroup?.nickname || selfNickname,
       },
-      currentConversation?.conversationType === SessionType.Single
-        ? {
-            userID: currentConversation.userID,
-            nickname: currentConversation.showName,
-          }
-        : undefined,
     ];
+
+    if (currentConversation?.conversationType === SessionType.Single) {
+      candidates.push({
+        userID: currentConversation.userID,
+        nickname: currentConversation.showName,
+      });
+    } else {
+      for (const member of groupMemberState.groupMemberList) {
+        if (member.userID === selfUserID) continue;
+        if (candidates.some((c) => c.userID === member.userID)) continue;
+        candidates.push({
+          userID: member.userID,
+          nickname: member.nickname,
+        });
+      }
+    }
 
     return candidates.filter((candidate): candidate is BotTargetCandidate =>
       Boolean(candidate?.userID),
@@ -108,6 +120,7 @@ const ChatContent = () => {
     currentConversation?.showName,
     currentConversation?.userID,
     currentMemberInGroup?.nickname,
+    groupMemberState.groupMemberList,
     selfNickname,
     selfUserID,
   ]);

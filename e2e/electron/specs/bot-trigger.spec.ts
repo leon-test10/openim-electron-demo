@@ -169,6 +169,39 @@ test("chat input exposes a self-targeting bot mention helper", async ({
   );
 });
 
+test("@mention autocomplete popup filters candidates and selects via click", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow);
+
+  // Type @bot @E (partial) in the CKEditor — the autocomplete should appear
+  await appWindow.locator(".ck-content").click();
+  await appWindow.keyboard.type("@bot @E2");
+
+  // Autocomplete popover should be visible with filtered candidates
+  await expect(
+    appWindow.getByTestId("bot-mention-autocomplete"),
+  ).toBeVisible();
+  await expect(appWindow.getByTestId("bot-mention-autocomplete")).toContainText(
+    "E2E Self",
+  );
+
+  // Click the first candidate
+  await appWindow
+    .getByTestId("bot-mention-autocomplete")
+    .locator("li")
+    .first()
+    .click();
+
+  // Popover should close and CKEditor should contain the full mention
+  await expect(
+    appWindow.getByTestId("bot-mention-autocomplete"),
+  ).not.toBeVisible();
+  await expect(appWindow.getByTestId("e2e-draft-preview")).toContainText(
+    "@bot @E2E Self",
+  );
+});
+
 test("self-sent @bot targeted at own nickname can inject own agent", async ({
   appWindow,
 }) => {

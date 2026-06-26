@@ -1,4 +1,5 @@
 import { CloseOutlined } from "@ant-design/icons";
+import { SessionType } from "@openim/wasm-client-sdk";
 import { useLatest } from "ahooks";
 import { Button, message as antdMessage, Modal, Switch, Tooltip } from "antd";
 import { t } from "i18next";
@@ -8,13 +9,16 @@ import {
   memo,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 import CKEditor from "@/components/CKEditor";
 import { getCleanText } from "@/components/CKEditor/utils";
+import useGroupMembers from "@/hooks/useGroupMembers";
 import i18n from "@/i18n";
 import { IMSDK } from "@/layout/MainContentWrap";
+import { BotTargetCandidate } from "@/services/botTrigger";
 import {
   useConversationStore,
   usePendingAgentRequestStore,
@@ -23,6 +27,7 @@ import {
 } from "@/store";
 import emitter, { PendingChatAttachmentParams } from "@/utils/events";
 
+import BotMentionAutocomplete from "./BotMentionAutocomplete";
 import SendActionBar from "./SendActionBar";
 import { useFileMessage } from "./SendActionBar/useFileMessage";
 import { useSendMessage } from "./useSendMessage";
@@ -75,6 +80,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const activeAgentRunByWorkspace = useTerminalDockStore(
     (state) => state.activeAgentRunByWorkspace,
   );
+  const { fetchState: groupMemberState } = useGroupMembers();
 
   const { getFileMessage, getImageMessage } = useFileMessage();
   const { sendMessage } = useSendMessage();
@@ -116,6 +122,74 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     ? "needs linked running terminal"
     : "off";
 
+  const botTargetCandidates = useMemo<BotTargetCandidate[]>(() => {
+    const candidates: BotTargetCandidate[] = [
+      { userID: selfInfo.userID, nickname: selfInfo.nickname },
+    ];
+
+    if (currentConversation?.conversationType === SessionType.Single) {
+      candidates.push({
+        userID: currentConversation.userID,
+        nickname: currentConversation.showName,
+      });
+    } else {
+      for (const member of groupMemberState.groupMemberList) {
+        if (member.userID === selfInfo.userID) continue;
+        if (candidates.some((c) => c.userID === member.userID)) continue;
+        candidates.push({
+          userID: member.userID,
+          nickname: member.nickname,
+        });
+      }
+    }
+
+    return candidates.filter((c) => Boolean(c.userID));
+  }, [
+    currentConversation,
+    groupMemberState.groupMemberList,
+    selfInfo.nickname,
+    selfInfo.userID,
+  ]);
+
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionVisible, setMentionVisible] = useState(false);
+  const mentionStateRef = useRef<{ prefixHTML: string; prefixText: string }>({
+    prefixHTML: "",
+    prefixText: "",
+  });
+
+  const detectBotMention = (html: string) => {
+    const clean = getCleanText(html);
+    const botAtMatch = clean.match(/@bot\s*@(\S*)$/);
+    if (botAtMatch) {
+      const partial = botAtMatch[1];
+      const mentionStart = clean.indexOf(botAtMatch[0]);
+      const prefixClean = clean.slice(0, mentionStart);
+      setMentionQuery(partial);
+      setMentionVisible(true);
+      mentionStateRef.current = {
+        prefixText: prefixClean,
+        prefixHTML: "",
+      };
+    } else {
+      setMentionQuery("");
+      setMentionVisible(false);
+    }
+  };
+
+  const handleMentionSelect = (candidate: BotTargetCandidate) => {
+    const displayName = candidate.nickname || candidate.userID;
+    const mention = `@bot @${displayName} `;
+    const prefix = mentionStateRef.current.prefixText;
+    const newText = prefix ? `${prefix}${mention}` : mention;
+
+    // Convert plain text to CKEditor HTML (paragraph-wrapped)
+    const escaped = escapeHtml(newText);
+    setHtml(`<p>${escaped}</p>`);
+    setMentionVisible(false);
+    setMentionQuery("");
+  };
+
   const insertSelfBotMention = () => {
     setHtml((prev) => `${prev}${escapeHtml(`${selfMentionTemplate} `)}`);
   };
@@ -155,6 +229,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
 
   const onChange = (value: string) => {
     setHtml(value);
+    detectBotMention(value);
   };
 
   const escapeHtml = (text: string) =>
@@ -324,7 +399,16 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
               ))}
             </div>
           )}
-          <CKEditor value={html} onEnter={enterToSend} onChange={onChange} />
+          <div className="relative">
+            <BotMentionAutocomplete
+              candidates={botTargetCandidates}
+              query={mentionQuery}
+              visible={mentionVisible}
+              onSelect={handleMentionSelect}
+              onClose={() => setMentionVisible(false)}
+            />
+            <CKEditor value={html} onEnter={enterToSend} onChange={onChange} />
+          </div>
           <div className="flex items-center justify-end py-2 pr-3">
             <Button className="w-fit px-6 py-1" type="primary" onClick={enterToSend}>
               {t("placeholder.send")}

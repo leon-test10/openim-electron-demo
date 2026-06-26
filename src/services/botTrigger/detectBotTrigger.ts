@@ -2,9 +2,6 @@ import { BotConversationType, BotTargetCandidate, BotTriggerResult } from "./typ
 
 const DEFAULT_BOT_ALIASES = ["@bot", "/bot"];
 
-/** Matches a @userID mention in plain text. */
-const USER_MENTION_RE = /@(\S+?)(?:\s|$)/;
-
 const escapeRegExp = (value: string) => value.replace(/[.*+?^{}()|[\]\\]/g, "\\$&");
 
 /**
@@ -16,25 +13,6 @@ const stripLeadingLocalMention = (text: string, currentUserID?: string) => {
   if (!currentUserID) return text;
   const mentionPattern = new RegExp(`^@${escapeRegExp(currentUserID)}\\b\\s*`, "i");
   return text.replace(mentionPattern, "");
-};
-
-/**
- * Extract a @userID mention from the start of `text`.
- * Returns the userID and the remaining text after the mention.
- */
-const extractUserMention = (
-  text: string,
-): { userID: string; remaining: string } | undefined => {
-  const match = text.match(USER_MENTION_RE);
-  if (!match) return undefined;
-
-  const userID = match[1];
-  if (!userID) return undefined;
-
-  return {
-    userID,
-    remaining: text.slice(match[0].length),
-  };
 };
 
 const normalize = (value: string) => value.trim().toLocaleLowerCase();
@@ -119,9 +97,7 @@ export function detectBotTrigger(args: {
     // accident, especially with Auto Inject enabled.
     if (!afterAlias.startsWith("@")) return null;
 
-    const mention =
-      resolveCandidateMention(afterAlias, args.targetCandidates) ??
-      extractUserMention(afterAlias);
+    const mention = resolveCandidateMention(afterAlias, args.targetCandidates);
     const targetUserID = mention?.userID;
     if (!targetUserID) return null;
 

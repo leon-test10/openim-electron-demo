@@ -1,0 +1,45 @@
+.popover {
+  position: absolute;
+  bottom: 100%;
+  left: 16px;
+  right: 16px;
+  margin-bottom: 4px;
+  z-index: 1050;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.list {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+
+  &:hover,
+  &.highlighted {
+    background: #f0f5ff;
+  }
+}
+
+.nickname {
+  font-weight: 500;
+  color: #1d2939;
+}
+
+.userID {
+  font-size: 12px;
+  color: #98a2b3;
+}
