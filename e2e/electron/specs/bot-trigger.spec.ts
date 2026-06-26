@@ -19,17 +19,13 @@ const linkActiveConversationToWorkspace = async (appWindow: Page) => {
 };
 
 const enableAutoInject = async (appWindow: Page) => {
-  await appWindow.getByTestId("terminal-reply-debug").click();
   await appWindow.getByTestId("terminal-auto-inject-toggle").click();
   await appWindow.getByRole("button", { name: "Enable Auto Inject" }).click();
-  await appWindow.getByRole("dialog", { name: "Reply Debug Tools" }).getByLabel("Close", { exact: true }).click();
 };
 
 const enableAutoReply = async (appWindow: Page) => {
-  await appWindow.getByTestId("terminal-reply-debug").click();
   await appWindow.getByTestId("terminal-auto-reply-toggle").click();
   await appWindow.getByRole("button", { name: "Enable Auto Reply" }).click();
-  await appWindow.getByRole("dialog", { name: "Reply Debug Tools" }).getByLabel("Close", { exact: true }).click();
 };
 
 test("single chat @bot @e2e_self creates pending request and sends only after user action", async ({
@@ -46,15 +42,13 @@ test("single chat @bot @e2e_self creates pending request and sends only after us
   );
 
   let writes = await appWindow.evaluate(
-    () =>
-      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
   );
   expect(writes?.join("\n") ?? "").not.toContain("botTrigger");
 
   await mentionRequest.getByTestId("pending-agent-review").click();
   writes = await appWindow.evaluate(
-    () =>
-      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
   );
   expect(writes?.join("\n") ?? "").not.toContain("botTrigger");
 
@@ -73,8 +67,7 @@ test("single chat @bot @e2e_self creates pending request and sends only after us
     )
     .toContain("botTrigger");
   writes = await appWindow.evaluate(
-    () =>
-      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
   );
   const terminalWritesText = writes?.join("\n") ?? "";
   expect(terminalWritesText).toContain("@bot @e2e_self summarize this conversation.");
@@ -100,8 +93,7 @@ test("/bot @e2e_self creates pending request and stays pending until manual send
   await expect(slashRequest.getByTestId("pending-agent-send")).toBeVisible();
 
   const writes = await appWindow.evaluate(
-    () =>
-      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
   );
   expect(writes?.join("\n") ?? "").not.toContain(
     "/bot @e2e_self explain the previous error.",
@@ -172,8 +164,7 @@ test("auto-inject skips pending review and sends directly to terminal", async ({
 
   // Verify the auto-injected content
   const writes = await appWindow.evaluate(
-    () =>
-      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
   );
   const terminalWritesText = writes?.join("\n") ?? "";
   expect(terminalWritesText).toContain("@bot @e2e_self summarize this conversation.");
@@ -205,31 +196,29 @@ test("auto-inject does not duplicate the same trigger on repeated scans", async 
 
   const beforeWritesText = await appWindow.evaluate(
     () =>
-      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites
-        ?.join("\n") ?? "",
+      (
+        window as unknown as { __e2eTerminalWrites?: string[] }
+      ).__e2eTerminalWrites?.join("\n") ?? "",
   );
   const beforeOccurrences =
     beforeWritesText.match(/Context source: botTrigger/g)?.length ?? 0;
   expect(beforeOccurrences).toBeGreaterThan(0);
 
-  await appWindow.getByTestId("terminal-reply-debug").click();
   await appWindow.getByTestId("terminal-auto-inject-toggle").click();
   await appWindow.getByTestId("terminal-auto-inject-toggle").click();
   await appWindow.getByRole("button", { name: "Enable Auto Inject" }).click();
-  await appWindow.getByRole("dialog", { name: "Reply Debug Tools" }).getByLabel("Close", { exact: true }).click();
 
   const writesText = await appWindow.evaluate(
     () =>
-      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites
-        ?.join("\n") ?? "",
+      (
+        window as unknown as { __e2eTerminalWrites?: string[] }
+      ).__e2eTerminalWrites?.join("\n") ?? "",
   );
   const occurrences = writesText.match(/Context source: botTrigger/g)?.length ?? 0;
   expect(occurrences).toBe(beforeOccurrences);
 });
 
-test("auto-reply sends structured final_answer to IM", async ({
-  appWindow,
-}) => {
+test("auto-reply sends structured final_answer to IM", async ({ appWindow }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
   await linkActiveConversationToWorkspace(appWindow);
 
@@ -321,8 +310,7 @@ test("auto-reply dedupes per session but allows same text from a new session", a
           .getByTestId("e2e-sent-drafts")
           .textContent()
           .then(
-            (text) =>
-              text?.match(/Same text from distinct sessions\./g)?.length ?? 0,
+            (text) => text?.match(/Same text from distinct sessions\./g)?.length ?? 0,
           ),
       { timeout: 5000 },
     )

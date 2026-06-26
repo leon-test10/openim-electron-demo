@@ -95,10 +95,6 @@ const AUTO_SEND_MIN_LENGTH = 8;
 const AUTO_SEND_MIN_INTERVAL = 5000;
 const AUTO_SEND_WARNING =
   "Terminal output may include logs, local paths, command output, or sensitive data. Auto-sending terminal output is experimental.";
-const AUTO_INJECT_WARNING =
-  "Auto Inject is experimental. Remote IM messages may trigger prompts to be injected into your local terminal. Only enable this in trusted conversations.";
-const AUTO_REPLY_WARNING =
-  "Auto Reply is experimental. Structured final_answer events may be sent back to the current IM conversation automatically. Only enable this when you trust the runtime and the conversation.";
 
 const joinWorkspacePath = (rootPath: string, relativePath: string) => {
   if (!rootPath) return relativePath;
@@ -217,7 +213,6 @@ const TerminalDock = () => {
   const commandTemplates = useTerminalDockStore((state) => state.commandTemplates);
   const autoReceiveEnabled = useTerminalDockStore((state) => state.autoReceiveEnabled);
   const autoSendEnabled = useTerminalDockStore((state) => state.autoSendEnabled);
-  const autoInjectEnabled = useTerminalDockStore((state) => state.autoInjectEnabled);
   const autoReplyEnabled = useTerminalDockStore((state) => state.autoReplyEnabled);
   const lastCapturedTextByTab = useTerminalDockStore(
     (state) => state.lastCapturedTextByTab,
@@ -269,12 +264,6 @@ const TerminalDock = () => {
     (state) => state.setAutoReceiveEnabled,
   );
   const setAutoSendEnabled = useTerminalDockStore((state) => state.setAutoSendEnabled);
-  const setAutoInjectEnabled = useTerminalDockStore(
-    (state) => state.setAutoInjectEnabled,
-  );
-  const setAutoReplyEnabled = useTerminalDockStore(
-    (state) => state.setAutoReplyEnabled,
-  );
   const setLastCapturedText = useTerminalDockStore(
     (state) => state.setLastCapturedText,
   );
@@ -1144,38 +1133,6 @@ const TerminalDock = () => {
     });
   };
 
-  const handleAutoInjectChange = (enabled: boolean) => {
-    if (!enabled) {
-      setAutoInjectEnabled(false);
-      return;
-    }
-
-    Modal.confirm({
-      title: "Enable Auto Inject (experimental)?",
-      content: AUTO_INJECT_WARNING,
-      okText: "Enable Auto Inject",
-      cancelText: "Cancel",
-      onOk: () => setAutoInjectEnabled(true),
-      onCancel: () => setAutoInjectEnabled(false),
-    });
-  };
-
-  const handleAutoReplyChange = (enabled: boolean) => {
-    if (!enabled) {
-      setAutoReplyEnabled(false);
-      return;
-    }
-
-    Modal.confirm({
-      title: "Enable Auto Reply (experimental)?",
-      content: AUTO_REPLY_WARNING,
-      okText: "Enable Auto Reply",
-      cancelText: "Cancel",
-      onOk: () => setAutoReplyEnabled(true),
-      onCancel: () => setAutoReplyEnabled(false),
-    });
-  };
-
   const runOpenCodeProbe = async () => {
     if (!activeWorkspace || !window.electronAPI) return;
     setOpencodeProbeLoading(true);
@@ -1946,7 +1903,7 @@ const TerminalDock = () => {
       </Modal>
 
       <Modal
-        title="Reply Debug Tools"
+        title="Reply Tools"
         open={replyDebugModalOpen}
         onCancel={() => setReplyDebugModalOpen(false)}
         footer={[
@@ -1960,184 +1917,15 @@ const TerminalDock = () => {
           data-testid="terminal-reply-debug-modal"
         >
           <div className="text-xs text-[#8c8c8c]">
-            Debug-only terminal-to-reply helpers. Manual capture is safer; automatic
-            capture and automatic send remain off by default.
+            Terminal reply helpers. Auto Inject and Auto Reply are controlled above the
+            IM input box.
           </div>
-          <div
-            className="terminal-dock-debug-row"
-            data-testid="terminal-experimental-automation"
-          >
-            <div>
-              <div className="text-xs font-medium text-[#262626]">
-                Experimental Bot Automation
-              </div>
-              <div className="text-[11px] text-[#8c8c8c]">
-                These features are off after reload and require explicit confirmation.
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <div className="terminal-dock-toggle">
-                <span>Auto Inject @bot requests into terminal</span>
-                <Switch
-                  size="small"
-                  checked={autoInjectEnabled}
-                  onChange={handleAutoInjectChange}
-                  data-testid="terminal-auto-inject-toggle"
-                />
-              </div>
-              <div className="terminal-dock-toggle">
-                <span>Auto Reply final_answer to IM</span>
-                <Switch
-                  size="small"
-                  checked={autoReplyEnabled}
-                  disabled={!activeTab}
-                  onChange={handleAutoReplyChange}
-                  data-testid="terminal-auto-reply-toggle"
-                />
-              </div>
-            </div>
-          </div>
-          <div
-            className="terminal-dock-debug-row"
-            data-testid="terminal-sidecar-status"
-          >
-            <div>
-              <div className="text-xs font-medium text-[#262626]">
-                Structured Sidecar
-              </div>
-              <div className="text-[11px] text-[#8c8c8c]">
-                Custom protocol: runtimes or wrappers must write .agent/events.ndjson.
-                Native OpenCode TUI does not automatically produce it.
-              </div>
-            </div>
-            <div className="text-right text-[11px] text-[#595959]">
-              <div>
-                Watch: {activeTab?.status === "running" ? "watching" : "stopped"}
-              </div>
-              <div>Last event: {lastStructuredEvent?.type ?? "none"}</div>
-              <div>
-                Last final_answer: {lastStructuredFinalAnswer ? "available" : "none"}
-              </div>
-            </div>
-          </div>
-          <div
-            className="terminal-dock-debug-row"
-            data-testid="terminal-opencode-binding"
-          >
-            <div>
-              <div className="text-xs font-medium text-[#262626]">OpenCode Binding</div>
-              <div className="text-[11px] text-[#8c8c8c]">
-                Probes whether a local OpenCode server exposes the same session as the
-                visible TUI.
-              </div>
-              <div className="mt-1 text-[11px] text-[#595959]">
-                <div>Mode: {opencodeProbeReport?.binding.mode ?? "tui-only"}</div>
-                <div>Status: {opencodeProbeReport?.binding.status ?? "idle"}</div>
-                <div>
-                  Server:{" "}
-                  {opencodeProbeReport?.binding.serverBaseUrl ??
-                    "http://127.0.0.1:4096"}
-                </div>
-                <div>Session: {opencodeProbeReport?.binding.sessionID ?? "none"}</div>
-                <div>
-                  Reason:{" "}
-                  {opencodeProbeReport?.binding.reason ??
-                    "OpenCode same-session probe has not run."}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Button
-                size="small"
-                disabled={!activeWorkspace}
-                onClick={() => void startOpenCodeServer()}
-                data-testid="terminal-opencode-start-server"
-              >
-                Start Server
-              </Button>
-              <Button
-                size="small"
-                disabled={!activeWorkspace}
-                loading={opencodeProbeLoading}
-                onClick={() => void runOpenCodeProbe()}
-                data-testid="terminal-opencode-probe"
-              >
-                OpenCode Same-Session Probe
-              </Button>
-              <Button
-                size="small"
-                disabled={!activeWorkspace}
-                onClick={() => void stopOpenCodeServer()}
-                data-testid="terminal-opencode-stop-server"
-              >
-                Stop Server
-              </Button>
-            </div>
-          </div>
-          {opencodeProbeReport?.binding.status === "bound" &&
-            opencodeProbeReport.lastAssistantMessage && (
-              <div className="terminal-dock-debug-row" data-testid="agent-reply-card">
-                <div className="min-w-0">
-                  <div className="text-xs font-medium text-[#262626]">Agent Reply</div>
-                  <div className="text-[11px] text-[#8c8c8c]">
-                    Source: OpenCode shared session | Session:{" "}
-                    {opencodeProbeReport.binding.sessionID} | Confidence: high
-                  </div>
-                  <Input.TextArea
-                    className="mt-2"
-                    value={opencodeProbeReport.lastAssistantMessage}
-                    readOnly
-                    autoSize={{ minRows: 3, maxRows: 8 }}
-                    data-testid="agent-reply-preview"
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Button
-                    size="small"
-                    type="primary"
-                    onClick={insertAgentReply}
-                    data-testid="agent-reply-insert"
-                  >
-                    Insert to Input
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={() =>
-                      navigator.clipboard.writeText(
-                        opencodeProbeReport.lastAssistantMessage ?? "",
-                      )
-                    }
-                  >
-                    Copy
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={() => setOpencodeProbeReport(undefined)}
-                  >
-                    Discard
-                  </Button>
-                  <Button
-                    size="small"
-                    loading={opencodeProbeLoading}
-                    onClick={() => void runOpenCodeProbe()}
-                  >
-                    Refresh
-                  </Button>
-                </div>
-              </div>
-            )}
-          {opencodeProbeReport && opencodeProbeReport.binding.status !== "bound" && (
-            <div className="text-xs text-[#a15c00]" data-testid="agent-reply-degraded">
-              No structured final answer available from current TUI session. Use
-              Terminal Selection as Reply.
-            </div>
-          )}
           <div className="terminal-dock-debug-row">
             <div>
               <div className="text-xs text-[#262626]">Capture Final Answer</div>
               <div className="text-[11px] text-[#8c8c8c]">
-                Prefer runtime structured output when available, then fall back to
-                terminal text.
+                Uses structured final_answer events only. Native TUI screen text is
+                available through Use Selection as Reply.
               </div>
             </div>
             <Button
@@ -2181,6 +1969,163 @@ const TerminalDock = () => {
               data-testid="terminal-draft-chat-toggle"
             />
           </div>
+          <details className="rounded border border-[#d9d9d9] p-3">
+            <summary className="cursor-pointer text-xs font-medium text-[#262626]">
+              Developer diagnostics
+            </summary>
+            <div className="mt-3 flex flex-col gap-3">
+              <div
+                className="terminal-dock-debug-row"
+                data-testid="terminal-sidecar-status"
+              >
+                <div>
+                  <div className="text-xs font-medium text-[#262626]">
+                    Structured Sidecar
+                  </div>
+                  <div className="text-[11px] text-[#8c8c8c]">
+                    Custom protocol: runtimes or wrappers must write
+                    .agent/events.ndjson. Native OpenCode TUI does not automatically
+                    produce it.
+                  </div>
+                </div>
+                <div className="text-right text-[11px] text-[#595959]">
+                  <div>
+                    Watch: {activeTab?.status === "running" ? "watching" : "stopped"}
+                  </div>
+                  <div>Last event: {lastStructuredEvent?.type ?? "none"}</div>
+                  <div>
+                    Last final_answer:{" "}
+                    {lastStructuredFinalAnswer ? "available" : "none"}
+                  </div>
+                </div>
+              </div>
+              <div
+                className="terminal-dock-debug-row"
+                data-testid="terminal-opencode-binding"
+              >
+                <div>
+                  <div className="text-xs font-medium text-[#262626]">
+                    OpenCode Binding Probe
+                  </div>
+                  <div className="text-[11px] text-[#8c8c8c]">
+                    Optional diagnostic for whether a local OpenCode server exposes the
+                    same session as the visible TUI.
+                  </div>
+                  <div className="mt-1 text-[11px] text-[#595959]">
+                    <div>Mode: {opencodeProbeReport?.binding.mode ?? "tui-only"}</div>
+                    <div>Status: {opencodeProbeReport?.binding.status ?? "idle"}</div>
+                    <div>
+                      Server:{" "}
+                      {opencodeProbeReport?.binding.serverBaseUrl ??
+                        "http://127.0.0.1:4096"}
+                    </div>
+                    <div>
+                      Session: {opencodeProbeReport?.binding.sessionID ?? "none"}
+                    </div>
+                    <div>
+                      Reason:{" "}
+                      {opencodeProbeReport?.binding.reason ??
+                        "OpenCode same-session probe has not run."}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    size="small"
+                    disabled={!activeWorkspace}
+                    onClick={() => void startOpenCodeServer()}
+                    data-testid="terminal-opencode-start-server"
+                  >
+                    Start Server
+                  </Button>
+                  <Button
+                    size="small"
+                    disabled={!activeWorkspace}
+                    loading={opencodeProbeLoading}
+                    onClick={() => void runOpenCodeProbe()}
+                    data-testid="terminal-opencode-probe"
+                  >
+                    Probe
+                  </Button>
+                  <Button
+                    size="small"
+                    disabled={!activeWorkspace}
+                    onClick={() => void stopOpenCodeServer()}
+                    data-testid="terminal-opencode-stop-server"
+                  >
+                    Stop Server
+                  </Button>
+                </div>
+              </div>
+              {opencodeProbeReport?.binding.status === "bound" &&
+                opencodeProbeReport.lastAssistantMessage && (
+                  <div
+                    className="terminal-dock-debug-row"
+                    data-testid="agent-reply-card"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-[#262626]">
+                        Agent Reply
+                      </div>
+                      <div className="text-[11px] text-[#8c8c8c]">
+                        Source: OpenCode shared session | Session:{" "}
+                        {opencodeProbeReport.binding.sessionID} | Confidence: high
+                      </div>
+                      <Input.TextArea
+                        className="mt-2"
+                        value={opencodeProbeReport.lastAssistantMessage}
+                        readOnly
+                        autoSize={{ minRows: 3, maxRows: 8 }}
+                        data-testid="agent-reply-preview"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        size="small"
+                        type="primary"
+                        onClick={insertAgentReply}
+                        data-testid="agent-reply-insert"
+                      >
+                        Insert to Input
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() =>
+                          navigator.clipboard.writeText(
+                            opencodeProbeReport.lastAssistantMessage ?? "",
+                          )
+                        }
+                      >
+                        Copy
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => setOpencodeProbeReport(undefined)}
+                      >
+                        Discard
+                      </Button>
+                      <Button
+                        size="small"
+                        loading={opencodeProbeLoading}
+                        onClick={() => void runOpenCodeProbe()}
+                      >
+                        Refresh
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              {opencodeProbeReport &&
+                opencodeProbeReport.binding.status !== "bound" && (
+                  <div
+                    className="text-xs text-[#a15c00]"
+                    data-testid="agent-reply-degraded"
+                  >
+                    No structured final answer available from current TUI session. Use
+                    Terminal Selection as Reply.
+                  </div>
+                )}
+            </div>
+          </details>
         </div>
       </Modal>
 

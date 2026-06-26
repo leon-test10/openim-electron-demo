@@ -1,13 +1,25 @@
 import { CloseOutlined } from "@ant-design/icons";
 import { useLatest } from "ahooks";
-import { Button, message as antdMessage } from "antd";
+import { Button, message as antdMessage, Modal, Switch, Tooltip } from "antd";
 import { t } from "i18next";
-import { forwardRef, ForwardRefRenderFunction, memo, useEffect, useState } from "react";
+import {
+  forwardRef,
+  ForwardRefRenderFunction,
+  memo,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import CKEditor from "@/components/CKEditor";
 import { getCleanText } from "@/components/CKEditor/utils";
 import i18n from "@/i18n";
 import { IMSDK } from "@/layout/MainContentWrap";
+import {
+  useConversationStore,
+  usePendingAgentRequestStore,
+  useTerminalDockStore,
+} from "@/store";
 import emitter, { PendingChatAttachmentParams } from "@/utils/events";
 
 import SendActionBar from "./SendActionBar";
@@ -24,15 +36,99 @@ i18n.on("languageChanged", () => {
   sendActions[1].label = t("placeholder.sendWithShiftEnter");
 });
 
+const AUTO_INJECT_WARNING =
+  "Auto Inject is experimental. Remote IM messages may trigger prompts to be injected into your local terminal. Only enable this in trusted conversations.";
+const AUTO_REPLY_WARNING =
+  "Auto Reply is experimental. Structured final_answer events may be sent back to the current IM conversation automatically. Only enable this when you trust the runtime and the conversation.";
+
 const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const [html, setHtml] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<
     PendingChatAttachmentParams[]
   >([]);
   const latestHtml = useLatest(html);
+  const currentConversation = useConversationStore(
+    (state) => state.currentConversation,
+  );
+  const botDetectionEnabled = usePendingAgentRequestStore(
+    (state) => state.botDetectionEnabled,
+  );
+  const setBotDetectionEnabled = usePendingAgentRequestStore(
+    (state) => state.setBotDetectionEnabled,
+  );
+  const autoInjectEnabled = useTerminalDockStore((state) => state.autoInjectEnabled);
+  const autoReplyEnabled = useTerminalDockStore((state) => state.autoReplyEnabled);
+  const setAutoInjectEnabled = useTerminalDockStore(
+    (state) => state.setAutoInjectEnabled,
+  );
+  const setAutoReplyEnabled = useTerminalDockStore(
+    (state) => state.setAutoReplyEnabled,
+  );
+  const activeWorkspaceID = useTerminalDockStore((state) => state.activeWorkspaceID);
+  const workspaces = useTerminalDockStore((state) => state.workspaces);
+  const tabsByWorkspace = useTerminalDockStore((state) => state.tabsByWorkspace);
+  const activeTabByWorkspace = useTerminalDockStore(
+    (state) => state.activeTabByWorkspace,
+  );
 
   const { getFileMessage, getImageMessage } = useFileMessage();
   const { sendMessage } = useSendMessage();
+
+  const automationReady = useMemo(() => {
+    if (!currentConversation?.conversationID || !activeWorkspaceID) return false;
+    const activeWorkspace = workspaces.find(
+      (workspace) => workspace.id === activeWorkspaceID,
+    );
+    const activeTabID = activeTabByWorkspace[activeWorkspaceID];
+    const activeTab = tabsByWorkspace[activeWorkspaceID]?.find(
+      (tab) => tab.id === activeTabID,
+    );
+
+    return Boolean(
+      activeWorkspace?.linkedConversationIDs.includes(
+        currentConversation.conversationID,
+      ) && activeTab?.status === "running",
+    );
+  }, [
+    activeTabByWorkspace,
+    activeWorkspaceID,
+    currentConversation?.conversationID,
+    tabsByWorkspace,
+    workspaces,
+  ]);
+
+  const onAutoInjectChange = (checked: boolean) => {
+    if (!checked) {
+      setAutoInjectEnabled(false);
+      return;
+    }
+
+    Modal.confirm({
+      title: "Enable Auto Inject?",
+      content: AUTO_INJECT_WARNING,
+      okText: "Enable Auto Inject",
+      cancelText: "Cancel",
+      onOk: () => {
+        setBotDetectionEnabled(true);
+        setAutoInjectEnabled(true);
+      },
+    });
+  };
+
+  const onAutoReplyChange = (checked: boolean) => {
+    if (!checked) {
+      setAutoReplyEnabled(false);
+      return;
+    }
+
+    Modal.confirm({
+      title: "Enable Auto Reply?",
+      content: AUTO_REPLY_WARNING,
+      okText: "Enable Auto Reply",
+      cancelText: "Cancel",
+      onOk: () => setAutoReplyEnabled(true),
+    });
+  };
 
   const onChange = (value: string) => {
     setHtml(value);
@@ -135,6 +231,41 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       <div className="flex h-full flex-col border-t border-t-[var(--gap-text)]">
         <SendActionBar sendMessage={sendMessage} getImageMessage={getImageMessage} />
         <div className="relative flex flex-1 flex-col overflow-hidden">
+          <div
+            className="mx-4 mt-2 flex flex-wrap items-center gap-3 rounded border border-[#e5e7eb] bg-[#f8fafc] px-3 py-2 text-xs text-[#475467]"
+            data-testid="chat-agent-automation-bar"
+          >
+            <span className="font-medium text-[#344054]">Agent automation</span>
+            <Tooltip title="Detect @bot requests and inject approved prompts into the active terminal. Enabling this also enables Bot Requests detection.">
+              <label className="flex items-center gap-1">
+                <span>Auto Inject</span>
+                <Switch
+                  size="small"
+                  checked={autoInjectEnabled}
+                  onChange={onAutoInjectChange}
+                  data-testid="terminal-auto-inject-toggle"
+                />
+              </label>
+            </Tooltip>
+            <Tooltip title="Send structured final_answer events from the active terminal workspace back to this IM conversation.">
+              <label className="flex items-center gap-1">
+                <span>Auto Reply</span>
+                <Switch
+                  size="small"
+                  checked={autoReplyEnabled}
+                  onChange={onAutoReplyChange}
+                  data-testid="terminal-auto-reply-toggle"
+                />
+              </label>
+            </Tooltip>
+            <span className="text-[#98a2b3]" data-testid="chat-agent-automation-state">
+              {automationReady
+                ? "ready"
+                : botDetectionEnabled || autoInjectEnabled || autoReplyEnabled
+                ? "needs linked running terminal"
+                : "off"}
+            </span>
+          </div>
           {pendingAttachments.length > 0 && (
             <div
               className="mx-4 mt-2 flex flex-wrap gap-2"

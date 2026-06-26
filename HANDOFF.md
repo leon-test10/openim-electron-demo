@@ -1,5 +1,53 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P10.1 Automation UX Containment (2026-06-26)
+
+Current branch: `feature/p10-safety-opencode-same-session`
+
+P10.1 tightens the UX around bot automation and final-answer capture after real
+UI review. It does not expand runtime ownership.
+
+### Implemented
+
+- Moved the daily Auto Inject / Auto Reply controls out of the Terminal Dock
+  Debug modal and into the IM input area above the editor.
+- Enabling Auto Inject still requires confirmation and now also enables Bot
+  Requests detection, so users do not need to discover a separate terminal-side
+  switch first.
+- Auto Reply remains explicit and confirmation-gated. It still only sends
+  structured `final_answer` events for the active, linked workspace/conversation.
+- `Reply Debug Tools` was renamed to `Reply Tools` and reduced to reply/capture
+  controls.
+- Structured sidecar status and OpenCode same-session server/probe controls are
+  now hidden under `Developer diagnostics`, because they are implementation
+  diagnostics rather than the normal runtime UX.
+- The UI continues to make degraded OpenCode probing explicit. Native OpenCode
+  TUI output is not presented as a reliable final answer unless a structured
+  sidecar event or a bound same-session source exists.
+
+### Validation
+
+- `git diff --check` passed.
+- `npm.cmd run lint -- --quiet` passed.
+- `npx.cmd tsc --noEmit` passed.
+- `npm.cmd run build` passed.
+- Targeted Electron E2E passed:
+  - `auto-inject skips pending review and sends directly to terminal`
+  - `auto-reply sends structured final_answer to IM`
+  - `terminal dock smoke is available without a real runtime`
+  - `unsafe automation defaults reset and stay in experimental debug UI`
+  - `opencode probe degraded does not pretend to have final answer`
+  - `opencode bound probe shows agent reply card and inserts only draft`
+
+### Current Reality
+
+- `@bot @targetUserID ...` is verified in E2E with the OpenIM harness.
+- Structured `final_answer` auto-reply is verified in E2E by emitting a structured
+  event into the active workspace.
+- Native `npx.cmd -y opencode-ai@1.17.9` TUI output still does not automatically
+  become a structured final answer by itself. For reliable automation, the
+  runtime needs a sidecar writer, wrapper, or proven same-session API.
+
 ## Latest Update - P10.0 Safety Containment + OpenCode Same-Session Probe (2026-06-25)
 
 Current branch: `feature/p10-safety-opencode-same-session`

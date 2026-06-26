@@ -1,4 +1,5 @@
 import { Platform, SessionType } from "@openim/wasm-client-sdk";
+import { Modal, Switch } from "antd";
 import { useEffect, useMemo, useState } from "react";
 
 import TerminalDock from "@/components/TerminalDock";
@@ -420,8 +421,19 @@ const E2EHarness = () => {
   const botDetectionEnabled = usePendingAgentRequestStore(
     (state) => state.botDetectionEnabled,
   );
+  const setBotDetectionEnabled = usePendingAgentRequestStore(
+    (state) => state.setBotDetectionEnabled,
+  );
   const addPendingAgentRequest = usePendingAgentRequestStore(
     (state) => state.addRequest,
+  );
+  const autoInjectEnabled = useTerminalDockStore((state) => state.autoInjectEnabled);
+  const autoReplyEnabled = useTerminalDockStore((state) => state.autoReplyEnabled);
+  const setAutoInjectEnabled = useTerminalDockStore(
+    (state) => state.setAutoInjectEnabled,
+  );
+  const setAutoReplyEnabled = useTerminalDockStore(
+    (state) => state.setAutoReplyEnabled,
   );
   const selectionAnchorIndex = useMemo(() => {
     if (!selectionActive || activeMessages.length === 0) return -1;
@@ -438,6 +450,41 @@ const E2EHarness = () => {
   if (terminalEnabled) {
     installE2EElectronMock();
   }
+
+  const onAutoInjectChange = (checked: boolean) => {
+    if (!checked) {
+      setAutoInjectEnabled(false);
+      return;
+    }
+
+    Modal.confirm({
+      title: "Enable Auto Inject?",
+      content:
+        "Auto Inject is experimental. Remote IM messages may trigger prompts to be injected into your local terminal.",
+      okText: "Enable Auto Inject",
+      cancelText: "Cancel",
+      onOk: () => {
+        setBotDetectionEnabled(true);
+        setAutoInjectEnabled(true);
+      },
+    });
+  };
+
+  const onAutoReplyChange = (checked: boolean) => {
+    if (!checked) {
+      setAutoReplyEnabled(false);
+      return;
+    }
+
+    Modal.confirm({
+      title: "Enable Auto Reply?",
+      content:
+        "Auto Reply is experimental. Structured final_answer events may be sent back to the current IM conversation automatically.",
+      okText: "Enable Auto Reply",
+      cancelText: "Cancel",
+      onOk: () => setAutoReplyEnabled(true),
+    });
+  };
 
   useEffect(() => {
     const syncTerminalFlag = () => {
@@ -680,6 +727,35 @@ const E2EHarness = () => {
           onClose={() => setHistoryOpen(false)}
         />
         <div className="border-t border-[#e5e7eb] bg-[#f8fafc] px-4 py-3">
+          <div
+            className="mb-3 flex flex-wrap items-center gap-3 rounded border border-[#e5e7eb] bg-white px-3 py-2 text-xs text-[#475467]"
+            data-testid="chat-agent-automation-bar"
+          >
+            <span className="font-medium text-[#344054]">Agent automation</span>
+            <label className="flex items-center gap-1">
+              <span>Auto Inject</span>
+              <Switch
+                size="small"
+                checked={autoInjectEnabled}
+                onChange={onAutoInjectChange}
+                data-testid="terminal-auto-inject-toggle"
+              />
+            </label>
+            <label className="flex items-center gap-1">
+              <span>Auto Reply</span>
+              <Switch
+                size="small"
+                checked={autoReplyEnabled}
+                onChange={onAutoReplyChange}
+                data-testid="terminal-auto-reply-toggle"
+              />
+            </label>
+            <span className="text-[#98a2b3]" data-testid="chat-agent-automation-state">
+              {botDetectionEnabled || autoInjectEnabled || autoReplyEnabled
+                ? "enabled"
+                : "off"}
+            </span>
+          </div>
           <div className="text-xs font-medium text-[#475467]">E2E Draft</div>
           <pre
             className="mt-2 min-h-[72px] whitespace-pre-wrap rounded border border-[#d0d5dd] bg-white p-2 text-xs text-[#101828]"
