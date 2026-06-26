@@ -145,7 +145,7 @@ const ChatContent = () => {
 
       if (!trigger) return;
 
-      // Only process triggers targeting this user (or no specific target).
+      // Only process triggers explicitly targeting this user.
       if (trigger.targetUserID && trigger.targetUserID !== selfUserID) return;
 
       const contextMessages = loadState.messageList.slice(

@@ -11,6 +11,28 @@ const FINAL_ANSWER_SKILL_PATH = ".agent/skills/openim-final-answer.md";
 const CONTEXT_SKILL_PATH = ".agent/skills/openim-context.md";
 const LATEST_RUN_PATH = ".agent/latest-run.json";
 
+export const DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE = [
+  "Use the OpenIM skill:",
+  "{finalAnswerSkill}",
+  "",
+  "Current run:",
+  "{runDir}/",
+  "",
+  "Read:",
+  "{requestPath}",
+  "",
+  "When finished, overwrite:",
+  "{finalAnswerPath}",
+  "",
+  "Then update:",
+  "{manifestPath}",
+  "",
+  "Important:",
+  "- Do not append to final_answer.md.",
+  "- Do not write this result to any other run directory.",
+  "- Do not send messages back to OpenIM yourself.",
+].join("\n");
+
 const normalizeRunIDSegment = (value: string) =>
   value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
 
@@ -84,28 +106,23 @@ const buildRunRequestMarkdown = (params: CreateAgentRunContractParams) =>
     "After writing final_answer.md, overwrite manifest.json with status completed.",
   ].join("\n");
 
-const buildTerminalPrompt = (contract: AgentRunContract) =>
-  [
-    "Use the OpenIM skill:",
-    contract.skillPaths.finalAnswer,
-    "",
-    "Current run:",
-    `${contract.runDir}/`,
-    "",
-    "Read:",
-    contract.requestPath,
-    "",
-    "When finished, overwrite:",
-    contract.finalAnswerPath,
-    "",
-    "Then update:",
-    contract.manifestPath,
-    "",
-    "Important:",
-    "- Do not append to final_answer.md.",
-    "- Do not write this result to any other run directory.",
-    "- Do not send messages back to OpenIM yourself.",
-  ].join("\n");
+const renderTerminalPrompt = (
+  contract: AgentRunContract,
+  template = DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE,
+) => {
+  const safeTemplate = template.trim()
+    ? template
+    : DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE;
+
+  return safeTemplate
+    .replaceAll("{finalAnswerSkill}", contract.skillPaths.finalAnswer)
+    .replaceAll("{contextSkill}", contract.skillPaths.context)
+    .replaceAll("{runID}", contract.runID)
+    .replaceAll("{runDir}", contract.runDir)
+    .replaceAll("{requestPath}", contract.requestPath)
+    .replaceAll("{finalAnswerPath}", contract.finalAnswerPath)
+    .replaceAll("{manifestPath}", contract.manifestPath);
+};
 
 export const AgentRunContractService = {
   create(params: CreateAgentRunContractParams): AgentRunContractArtifacts {
@@ -146,7 +163,7 @@ export const AgentRunContractService = {
           content: buildContextSkill(),
         },
       ],
-      terminalPrompt: buildTerminalPrompt(contract),
+      terminalPrompt: renderTerminalPrompt(contract, params.terminalPromptTemplate),
     };
   },
 

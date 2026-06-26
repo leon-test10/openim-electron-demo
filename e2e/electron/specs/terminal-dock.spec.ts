@@ -357,6 +357,45 @@ test("send to agent creates run-scoped final answer contract", async ({
   expect(writes.join("\n")).toContain("overwrite");
 });
 
+test("agent prompt template can be edited without keeping prompt history", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+
+  await appWindow.getByTestId("terminal-run-profile").click();
+  await appWindow.getByRole("menuitem", { name: "Command Templates" }).click();
+  await expect(
+    appWindow.getByRole("dialog", { name: "Command Templates" }),
+  ).toBeVisible();
+  await appWindow.getByTestId("terminal-agent-prompt-template").fill(
+    [
+      "CUSTOM OPENIM RUN",
+      "Read {requestPath}",
+      "Write {finalAnswerPath}",
+      "Update {manifestPath}",
+    ].join("\n"),
+  );
+  await appWindow
+    .getByRole("dialog", { name: "Command Templates" })
+    .locator("button")
+    .filter({ hasText: "Close" })
+    .click();
+
+  await appWindow.locator(messageActionTrigger(e2eMessageIDs[0])).click();
+  await appWindow.getByTestId("message-action-select").click();
+  await appWindow.getByTestId("message-selection-send").click();
+
+  const writes = await appWindow.evaluate(
+    () =>
+      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites ??
+      [],
+  );
+
+  expect(writes.join("\n")).toContain("CUSTOM OPENIM RUN");
+  expect(writes.join("\n")).toContain(".agent/runs/");
+  expect(writes.join("\n")).toContain("final_answer.md");
+});
+
 test("run-scoped final answer capture reads completed manifest", async ({
   appWindow,
 }) => {

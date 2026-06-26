@@ -29,6 +29,7 @@ export interface CreateAgentRunContractParams {
   conversationID: string;
   requestMarkdown: string;
   promptText: string;
+  terminalPromptTemplate?: string;
   now?: number;
 }
 

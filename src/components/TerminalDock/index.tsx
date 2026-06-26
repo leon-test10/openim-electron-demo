@@ -218,6 +218,9 @@ const TerminalDock = () => {
     (state) => state.contextBundlesByWorkspace,
   );
   const commandTemplates = useTerminalDockStore((state) => state.commandTemplates);
+  const agentPromptTemplate = useTerminalDockStore(
+    (state) => state.agentPromptTemplate,
+  );
   const autoReceiveEnabled = useTerminalDockStore((state) => state.autoReceiveEnabled);
   const autoSendEnabled = useTerminalDockStore((state) => state.autoSendEnabled);
   const autoReplyEnabled = useTerminalDockStore((state) => state.autoReplyEnabled);
@@ -269,6 +272,12 @@ const TerminalDock = () => {
   );
   const resetCommandTemplates = useTerminalDockStore(
     (state) => state.resetCommandTemplates,
+  );
+  const setAgentPromptTemplate = useTerminalDockStore(
+    (state) => state.setAgentPromptTemplate,
+  );
+  const resetAgentPromptTemplate = useTerminalDockStore(
+    (state) => state.resetAgentPromptTemplate,
   );
   const setLastCapturedText = useTerminalDockStore(
     (state) => state.setLastCapturedText,
@@ -891,6 +900,7 @@ const TerminalDock = () => {
       conversationID,
       requestMarkdown: result.bundle.markdown,
       promptText: result.bundle.promptText,
+      terminalPromptTemplate: agentPromptTemplate,
     });
 
     for (const skillFile of artifacts.skillFiles) {
@@ -1620,6 +1630,42 @@ const TerminalDock = () => {
         ]}
       >
         <div className="terminal-dock-template-list">
+          <div className="terminal-dock-context-history-item">
+            <div className="min-w-0 flex-1">
+              <div className="terminal-dock-context-history-title">
+                Agent Prompt Template
+              </div>
+              <div className="terminal-dock-context-history-meta">
+                <span>Local only</span>
+                <span>No prompt history is stored</span>
+              </div>
+              <div className="mt-2 text-[11px] text-[#8c8c8c]">
+                Available placeholders:{" "}
+                {[
+                  "{runID}",
+                  "{runDir}",
+                  "{requestPath}",
+                  "{finalAnswerPath}",
+                  "{manifestPath}",
+                  "{finalAnswerSkill}",
+                  "{contextSkill}",
+                ].join(", ")}
+                .
+              </div>
+              <Input.TextArea
+                className="mt-2"
+                value={agentPromptTemplate}
+                onChange={(event) => setAgentPromptTemplate(event.target.value)}
+                autoSize={{ minRows: 8, maxRows: 14 }}
+                data-testid="terminal-agent-prompt-template"
+              />
+            </div>
+            <div className="terminal-dock-context-history-actions">
+              <Button size="small" onClick={resetAgentPromptTemplate}>
+                Reset Template
+              </Button>
+            </div>
+          </div>
           {commandTemplates.map((template) => (
             <div key={template.id} className="terminal-dock-template-item">
               <div className="terminal-dock-template-row">

@@ -3,6 +3,7 @@ import { Modal, Switch } from "antd";
 import { useEffect, useMemo, useState } from "react";
 
 import TerminalDock from "@/components/TerminalDock";
+import { DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE } from "@/services/agentRunContract";
 import {
   type BotTargetCandidate,
   createPendingAgentRequest,
@@ -538,7 +539,9 @@ const E2EHarness = () => {
     if (terminalEnabled) {
       installE2EElectronMock();
     }
-    useTerminalDockStore.getState().setPanelOpen(terminalEnabled);
+    const terminalDockState = useTerminalDockStore.getState();
+    terminalDockState.setAgentPromptTemplate(DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE);
+    terminalDockState.setPanelOpen(terminalEnabled);
 
     return () => {
       useMessageSelectionStore.getState().clearSelection(activeConversationID);
@@ -611,7 +614,7 @@ const E2EHarness = () => {
 
       if (!trigger) return;
 
-      // Only process triggers targeting this user (or no specific target).
+      // Only process triggers explicitly targeting this user.
       if (trigger.targetUserID && trigger.targetUserID !== selfUserID) return;
 
       const contextMessages = activeMessages.slice(

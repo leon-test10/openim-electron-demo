@@ -26,8 +26,13 @@ debug-first workflow.
 - `Advanced / Debug Context Files` was renamed to `Context Files`; it remains
   the place to inspect/export workspace context bundles and manage context-file
   history.
-- Command Templates remain editable and local-only. No prompt-template history
-  feature was added.
+- Command Templates remain editable and local-only.
+- Added a local-only `Agent Prompt Template` editor inside Command Templates.
+  It supports `{runID}`, `{runDir}`, `{requestPath}`, `{finalAnswerPath}`,
+  `{manifestPath}`, `{finalAnswerSkill}`, and `{contextSkill}` placeholders.
+  Only the current template is stored; no prompt-template history is kept.
+- E2E harness now resets the agent prompt template to the default on mount so
+  test runs do not inherit a prior local template.
 
 ### Current Reality
 
@@ -47,17 +52,19 @@ debug-first workflow.
 - `npm.cmd run lint -- --quiet`: pass.
 - `npx.cmd tsc --noEmit`: pass.
 - `npm.cmd run build`: pass.
+- `npm.cmd run test:e2e -- e2e/electron/specs/bot-trigger.spec.ts e2e/electron/specs/terminal-dock.spec.ts --workers=1 --reporter=list --timeout=90000`: 25 passed.
 - Targeted Electron E2E passed:
   - `bare @bot and agent-generated messages do not create pending requests`
   - `self-sent @bot targeted at own nickname can inject own agent`
   - `compact @bot@nickname resolves a unique local target`
   - `auto-reply requires structured final_answer to match active run`
   - `chat input exposes a self-targeting bot mention helper`
+  - `agent prompt template can be edited without keeping prompt history`
   - Terminal Dock smoke verifies no Reply Debug/OpenCode probe controls are
     visible in the primary UI
   - structured output suite for watcher and Tier 1 final_answer capture
   - run-scoped final answer contract/capture/auto-reply tests
-  - `bot-trigger.spec.ts` + `terminal-dock.spec.ts`: 24 passed
+  - `bot-trigger.spec.ts` + `terminal-dock.spec.ts`: 25 passed
 
 ## Latest Update - P11 OpenIM Agent Skill Pack + Run-Scoped Final Answer (2026-06-26)
 

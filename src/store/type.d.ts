@@ -242,6 +242,7 @@ export interface TerminalDockStore {
   lastContextPromptByWorkspace: Record<string, string | undefined>;
   contextBundlesByWorkspace: Record<string, TerminalContextBundleRecord[]>;
   commandTemplates: TerminalCommandTemplate[];
+  agentPromptTemplate: string;
   autoReceiveEnabled: boolean;
   autoSendEnabled: boolean;
   autoInjectEnabled: boolean;
@@ -282,6 +283,8 @@ export interface TerminalDockStore {
   addCommandTemplate: () => void;
   removeCommandTemplate: (templateID: string) => void;
   resetCommandTemplates: () => void;
+  setAgentPromptTemplate: (template: string) => void;
+  resetAgentPromptTemplate: () => void;
   setAutoReceiveEnabled: (enabled: boolean) => void;
   setAutoSendEnabled: (enabled: boolean) => void;
   setAutoInjectEnabled: (enabled: boolean) => void;

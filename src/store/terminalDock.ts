@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import { DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE } from "@/services/agentRunContract";
+
 import {
   TerminalCaptureSource,
   TerminalCommandTemplate,
@@ -38,6 +40,7 @@ type StoredTerminalDockState = Pick<
   | "lastContextPromptByWorkspace"
   | "contextBundlesByWorkspace"
   | "commandTemplates"
+  | "agentPromptTemplate"
   | "autoReceiveEnabled"
   | "autoSendEnabled"
   | "autoInjectEnabled"
@@ -55,6 +58,7 @@ const defaultState: StoredTerminalDockState = {
   lastContextPromptByWorkspace: {},
   contextBundlesByWorkspace: {},
   commandTemplates: DEFAULT_COMMAND_TEMPLATES,
+  agentPromptTemplate: DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE,
   autoReceiveEnabled: false,
   autoSendEnabled: false,
   captureSource: "auto",
@@ -256,6 +260,11 @@ const readStoredState = (): StoredTerminalDockState => {
         parsed.contextBundlesByWorkspace,
       ),
       commandTemplates: normalizeCommandTemplates(parsed.commandTemplates),
+      agentPromptTemplate:
+        typeof parsed.agentPromptTemplate === "string" &&
+        parsed.agentPromptTemplate.trim()
+          ? parsed.agentPromptTemplate
+          : DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE,
       // Safety reset: debug handoff features should always come back disabled after reload.
       autoReceiveEnabled: false,
       autoSendEnabled: false,
@@ -293,6 +302,7 @@ const toStoredState = (state: TerminalDockStore): StoredTerminalDockState => ({
   lastContextPromptByWorkspace: state.lastContextPromptByWorkspace,
   contextBundlesByWorkspace: state.contextBundlesByWorkspace,
   commandTemplates: state.commandTemplates,
+  agentPromptTemplate: state.agentPromptTemplate,
   autoReceiveEnabled: state.autoReceiveEnabled,
   autoSendEnabled: state.autoSendEnabled,
   autoInjectEnabled: state.autoInjectEnabled,
@@ -690,6 +700,16 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
     set((state) =>
       save(state, {
         commandTemplates: DEFAULT_COMMAND_TEMPLATES,
+      }),
+    );
+  },
+  setAgentPromptTemplate: (agentPromptTemplate) => {
+    set((state) => save(state, { agentPromptTemplate }));
+  },
+  resetAgentPromptTemplate: () => {
+    set((state) =>
+      save(state, {
+        agentPromptTemplate: DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE,
       }),
     );
   },
