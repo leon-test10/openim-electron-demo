@@ -28,10 +28,11 @@ test("terminal dock smoke is available without a real runtime", async ({
   await expect(appWindow.getByTestId("terminal-context-menu")).toHaveCount(0);
   await expect(appWindow.getByTestId("terminal-send-last-context")).toHaveCount(0);
   await expect(appWindow.getByTestId("terminal-reply-debug")).toHaveCount(0);
+  await expect(appWindow.getByTestId("terminal-opencode-probe")).toHaveCount(0);
   await expect(appWindow.getByTestId("terminal-capture-final-answer")).toBeVisible();
 });
 
-test("unsafe automation defaults reset and stay in experimental debug UI", async ({
+test("unsafe automation defaults reset and debug controls stay hidden", async ({
   appWindow,
 }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
@@ -627,7 +628,7 @@ test("context library can attach a generated workspace file as pending draft att
     "context/",
   );
   await appWindow
-    .getByRole("dialog", { name: "Advanced / Debug Context Files" })
+    .getByRole("dialog", { name: "Context Files" })
     .getByLabel("Close", { exact: true })
     .click();
   await appWindow.getByTestId("chat-footer-remove-pending-attachment").click();

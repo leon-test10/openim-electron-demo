@@ -21,6 +21,13 @@ debug-first workflow.
 - The large Reply Debug Tools entry point was removed from the Terminal Dock
   primary toolbar. `Capture Final` is now directly available as the normal
   Agent -> IM action.
+- The unreachable Reply Tools modal and user-visible OpenCode same-session
+  probe UI were removed from Terminal Dock.
+- `Advanced / Debug Context Files` was renamed to `Context Files`; it remains
+  the place to inspect/export workspace context bundles and manage context-file
+  history.
+- Command Templates remain editable and local-only. No prompt-template history
+  feature was added.
 
 ### Current Reality
 
@@ -45,8 +52,12 @@ debug-first workflow.
   - `self-sent @bot targeted at own nickname can inject own agent`
   - `compact @bot@nickname resolves a unique local target`
   - `auto-reply requires structured final_answer to match active run`
+  - `chat input exposes a self-targeting bot mention helper`
+  - Terminal Dock smoke verifies no Reply Debug/OpenCode probe controls are
+    visible in the primary UI
   - structured output suite for watcher and Tier 1 final_answer capture
   - run-scoped final answer contract/capture/auto-reply tests
+  - `bot-trigger.spec.ts` + `terminal-dock.spec.ts`: 24 passed
 
 ## Latest Update - P11 OpenIM Agent Skill Pack + Run-Scoped Final Answer (2026-06-26)
 

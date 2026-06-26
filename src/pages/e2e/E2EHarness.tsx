@@ -504,6 +504,13 @@ const E2EHarness = () => {
       onOk: () => setAutoReplyEnabled(true),
     });
   };
+  const selfMentionTemplate = "@bot @E2E Self";
+  const insertSelfBotMention = () => {
+    setDraftText((current) => {
+      const separator = current && !current.endsWith(" ") ? " " : "";
+      return `${current}${separator}${selfMentionTemplate} `;
+    });
+  };
 
   useEffect(() => {
     const syncTerminalFlag = () => {
@@ -766,6 +773,14 @@ const E2EHarness = () => {
             data-testid="chat-agent-automation-bar"
           >
             <span className="font-medium text-[#344054]">Agent automation</span>
+            <button
+              type="button"
+              className="rounded px-1 text-xs text-[#175cd3]"
+              onClick={insertSelfBotMention}
+              data-testid="chat-agent-mention-insert"
+            >
+              Use {selfMentionTemplate}
+            </button>
             <label className="flex items-center gap-1">
               <span>Auto Inject</span>
               <Switch

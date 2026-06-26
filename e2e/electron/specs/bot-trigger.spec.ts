@@ -155,6 +155,20 @@ test("bare @bot and agent-generated messages do not create pending requests", as
   ).toHaveCount(0);
 });
 
+test("chat input exposes a self-targeting bot mention helper", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow);
+
+  await expect(appWindow.getByTestId("chat-agent-mention-insert")).toContainText(
+    "Use @bot @E2E Self",
+  );
+  await appWindow.getByTestId("chat-agent-mention-insert").click();
+  await expect(appWindow.getByTestId("e2e-draft-preview")).toContainText(
+    "@bot @E2E Self",
+  );
+});
+
 test("self-sent @bot targeted at own nickname can inject own agent", async ({
   appWindow,
 }) => {
