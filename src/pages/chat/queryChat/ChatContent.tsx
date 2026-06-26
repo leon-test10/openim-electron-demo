@@ -26,7 +26,6 @@ import MessageItem from "./MessageItem";
 import MessageSelectionBoundary from "./MessageSelectionBoundary";
 import MessageSelectionToolbar from "./MessageSelectionToolbar";
 import NotificationMessage from "./NotificationMessage";
-import PendingAgentRequests from "./PendingAgentRequests";
 import { useHistoryMessageList } from "./useHistoryMessageList";
 
 const ChatContent = () => {
@@ -302,7 +301,6 @@ const ChatContent = () => {
           {selectionActive && (
             <MessageSelectionToolbar conversationID={conversationID} />
           )}
-          <PendingAgentRequests conversationID={conversationID} />
           <Virtuoso
             id="chat-list"
             className="w-full overflow-x-hidden"

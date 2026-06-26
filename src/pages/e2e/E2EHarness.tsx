@@ -32,7 +32,6 @@ import MessageHistoryDrawer from "../chat/queryChat/MessageHistoryDrawer";
 import MessageItem from "../chat/queryChat/MessageItem";
 import MessageSelectionBoundary from "../chat/queryChat/MessageSelectionBoundary";
 import MessageSelectionToolbar from "../chat/queryChat/MessageSelectionToolbar";
-import PendingAgentRequests from "../chat/queryChat/PendingAgentRequests";
 
 const installE2EElectronMock = () => {
   if (typeof window === "undefined" || window.electronAPI) return;
@@ -743,7 +742,6 @@ const E2EHarness = () => {
           {selectionActive && (
             <MessageSelectionToolbar conversationID={activeConversationID} />
           )}
-          <PendingAgentRequests conversationID={activeConversationID} />
           {activeMessages.map((message, index) => (
             <div key={message.clientMsgID}>
               {selectionActive && index === selectionAnchorIndex && (

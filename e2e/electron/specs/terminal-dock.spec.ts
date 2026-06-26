@@ -65,18 +65,23 @@ test("auto-inject enabled without binding still creates pending request only", a
   appWindow,
 }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
+  // Enable auto-inject but do NOT link workspace to conversation.
+  // Enable bot detection too so requests are created.
   await appWindow.getByTestId("terminal-auto-inject-toggle").click();
   await appWindow.getByRole("button", { name: "Enable Auto Inject" }).click();
+  await enableBotDetection(appWindow);
 
+  // Pending count badge should appear (request stored but not injected)
   await expect(
-    appWindow
-      .getByTestId("pending-agent-request")
-      .filter({ hasText: "@bot @e2e_self summarize this conversation." }),
-  ).toContainText("@bot @e2e_self summarize this conversation.");
+    appWindow.getByTestId("terminal-pending-agent-count"),
+  ).toContainText("Pending: 1");
+
+  // Terminal should NOT have received the injection
   const writes = await appWindow.evaluate(
-    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+    () =>
+      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
   );
-  expect(writes?.join("\n") ?? "").not.toContain("botTrigger");
+  expect(writes?.join("\n") ?? "").not.toContain("@bot @e2e_self");
 });
 
 test("auto-reply off ignores structured final_answer", async ({ appWindow }) => {
