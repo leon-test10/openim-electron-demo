@@ -1,4 +1,4 @@
-import { BotConversationType, BotTriggerResult } from "./types";
+import { BotConversationType, BotTargetCandidate, BotTriggerResult } from "./types";
 
 const DEFAULT_BOT_ALIASES = ["@bot", "/bot"];
 
@@ -37,11 +37,63 @@ const extractUserMention = (
   };
 };
 
+const normalize = (value: string) => value.trim().toLocaleLowerCase();
+
+const uniqueCandidates = (candidates: BotTargetCandidate[] = []) => {
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const userID = candidate.userID?.trim();
+    if (!userID || seen.has(userID)) return false;
+    seen.add(userID);
+    return true;
+  });
+};
+
+const resolveCandidateMention = (
+  text: string,
+  candidates?: BotTargetCandidate[],
+): { userID: string; remaining: string } | undefined => {
+  const candidateList = uniqueCandidates(candidates);
+  if (candidateList.length === 0) return undefined;
+
+  const candidateMentions = candidateList.flatMap((candidate) =>
+    [candidate.userID, candidate.nickname]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .map((value) => ({
+        userID: candidate.userID,
+        mention: `@${value.trim()}`,
+      })),
+  );
+
+  const matched = candidateMentions
+    .filter((item) => normalize(text).startsWith(normalize(item.mention)))
+    .sort((a, b) => b.mention.length - a.mention.length);
+
+  if (matched.length === 0) return undefined;
+
+  const first = matched[0];
+  const sameLengthMatches = matched.filter(
+    (item) => normalize(item.mention) === normalize(first.mention),
+  );
+  const uniqueUserIDs = new Set(sameLengthMatches.map((item) => item.userID));
+
+  if (uniqueUserIDs.size > 1) return undefined;
+
+  const remaining = text.slice(first.mention.length);
+  if (remaining && !/^\s/.test(remaining)) return undefined;
+
+  return {
+    userID: first.userID,
+    remaining: remaining.trim(),
+  };
+};
+
 export function detectBotTrigger(args: {
   text: string;
   currentUserID?: string;
   conversationType?: BotConversationType;
   botAliases?: string[];
+  targetCandidates?: BotTargetCandidate[];
 }): BotTriggerResult | null {
   const rawText = args.text.trim();
   if (!rawText) return null;
@@ -57,15 +109,22 @@ export function detectBotTrigger(args: {
   // Check if the text starts with a bot alias.
   for (const alias of aliases) {
     const aliasMatch = candidateText.match(
-      new RegExp(`^${escapeRegExp(alias)}(?:\\s+|$)`, "i"),
+      new RegExp(`^${escapeRegExp(alias)}(?=\\s+|@|$)`, "i"),
     );
     if (!aliasMatch) continue;
 
-    const afterAlias = candidateText.slice(aliasMatch[0].length).trim();
+    const afterAlias = candidateText.slice(aliasMatch[0].length).trimStart();
 
-    // Look for @targetUserID mention after the bot alias.
-    const mention = extractUserMention(afterAlias);
+    // A target mention is mandatory. Bare `@bot` is too easy to send by
+    // accident, especially with Auto Inject enabled.
+    if (!afterAlias.startsWith("@")) return null;
+
+    const mention =
+      resolveCandidateMention(afterAlias, args.targetCandidates) ??
+      extractUserMention(afterAlias);
     const targetUserID = mention?.userID;
+    if (!targetUserID) return null;
+
     const instructionText = mention ? mention.remaining.trim() : afterAlias.trim();
 
     return {

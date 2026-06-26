@@ -6,6 +6,11 @@ export type BotConversationType = "single" | "group";
 
 export type PendingAgentRequestStatus = "pending" | "sent" | "ignored" | "dismissed";
 
+export interface BotTargetCandidate {
+  userID: string;
+  nickname?: string;
+}
+
 export interface BotTriggerResult {
   triggerKind: BotTriggerKind;
   alias: string;

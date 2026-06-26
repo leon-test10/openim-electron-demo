@@ -54,6 +54,23 @@ const getLatestRequestMarkdown = async (appWindow: Page) =>
       .find((write) => write.relativePath?.endsWith("/request.md"))?.content;
   });
 
+const getAllRequestMarkdownText = async (appWindow: Page) =>
+  appWindow.evaluate(() => {
+    const writes =
+      (
+        window as unknown as {
+          __e2eWorkspaceWrites?: Array<{
+            relativePath?: string;
+            content?: string;
+          }>;
+        }
+      ).__e2eWorkspaceWrites ?? [];
+    return writes
+      .filter((write) => write.relativePath?.endsWith("/request.md"))
+      .map((write) => write.content ?? "")
+      .join("\n---REQUEST---\n");
+  });
+
 const getActiveRunID = async (appWindow: Page) =>
   appWindow.evaluate(() => {
     const stateRaw = window.localStorage.getItem("openim_terminal_dock_state");
@@ -120,22 +137,48 @@ test("/bot @e2e_self creates pending request and stays pending until manual send
   );
 });
 
-test("self and agent-generated @bot messages do not create pending requests", async ({
+test("bare @bot and agent-generated messages do not create pending requests", async ({
   appWindow,
 }) => {
   await setupTerminalHarness(appWindow);
   await enableBotDetection(appWindow);
 
-  // Self-sent @bot message should be ignored
   await expect(
-    appWindow.getByTestId("pending-agent-request").filter({ hasText: "from myself" }),
+    appWindow
+      .getByTestId("pending-agent-request")
+      .filter({ hasText: "should not trigger without a target mention" }),
   ).toHaveCount(0);
-  // Agent-generated message should be ignored
   await expect(
     appWindow
       .getByTestId("pending-agent-request")
       .filter({ hasText: "generated loop should be ignored" }),
   ).toHaveCount(0);
+});
+
+test("self-sent @bot targeted at own nickname can inject own agent", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+  await linkActiveConversationToWorkspace(appWindow);
+  await enableAutoInject(appWindow);
+  await enableBotDetection(appWindow);
+
+  await expect
+    .poll(() => getAllRequestMarkdownText(appWindow), { timeout: 5000 })
+    .toContain("@bot @E2E Self trigger my own agent");
+
+  const requestMarkdown = await getAllRequestMarkdownText(appWindow);
+  expect(requestMarkdown).toContain("Context source: botTrigger");
+});
+
+test("compact @bot@nickname resolves a unique local target", async ({ appWindow }) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+  await enableBotDetection(appWindow);
+
+  const compactRequest = appWindow
+    .getByTestId("pending-agent-request")
+    .filter({ hasText: "@bot@E2E Self compact nickname target" });
+  await expect(compactRequest).toContainText("@bot@E2E Self compact nickname target");
 });
 
 test("group @bot @e2e_self creates pending request with review warning", async ({

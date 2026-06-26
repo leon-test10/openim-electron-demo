@@ -1561,6 +1561,19 @@ const TerminalDock = () => {
               Use Selection as Reply
             </Button>
           </Tooltip>
+          <Tooltip title="Capture the current run-scoped final answer into the IM draft">
+            <Button
+              size="small"
+              type="default"
+              className="terminal-dock-command-button"
+              disabled={!activeTab}
+              icon={<CopyOutlined rev={undefined} />}
+              onClick={() => captureTerminalFinalAnswer("manual")}
+              data-testid="terminal-capture-final-answer"
+            >
+              Capture Final
+            </Button>
+          </Tooltip>
           <Tooltip title="Attach a file from the active workspace to the current conversation after confirmation">
             <Button
               size="small"
@@ -1572,18 +1585,6 @@ const TerminalDock = () => {
               data-testid="terminal-attach-workspace-file"
             >
               Attach Workspace File
-            </Button>
-          </Tooltip>
-          <Tooltip title="Debug reply handoff tools">
-            <Button
-              size="small"
-              type="text"
-              className="terminal-dock-icon-button"
-              disabled={!activeTab}
-              onClick={() => setReplyDebugModalOpen(true)}
-              data-testid="terminal-reply-debug"
-            >
-              Debug
             </Button>
           </Tooltip>
         </div>
@@ -2085,7 +2086,7 @@ const TerminalDock = () => {
               disabled={!activeTab}
               icon={<CopyOutlined rev={undefined} />}
               onClick={() => captureTerminalFinalAnswer("manual")}
-              data-testid="terminal-capture-final-answer"
+              data-testid="terminal-debug-capture-final-answer"
             >
               Capture to Draft
             </Button>

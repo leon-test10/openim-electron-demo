@@ -19,6 +19,7 @@ import {
   useConversationStore,
   usePendingAgentRequestStore,
   useTerminalDockStore,
+  useUserStore,
 } from "@/store";
 import emitter, { PendingChatAttachmentParams } from "@/utils/events";
 
@@ -50,6 +51,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const currentConversation = useConversationStore(
     (state) => state.currentConversation,
   );
+  const selfInfo = useUserStore((state) => state.selfInfo);
   const botDetectionEnabled = usePendingAgentRequestStore(
     (state) => state.botDetectionEnabled,
   );
@@ -69,6 +71,9 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const tabsByWorkspace = useTerminalDockStore((state) => state.tabsByWorkspace);
   const activeTabByWorkspace = useTerminalDockStore(
     (state) => state.activeTabByWorkspace,
+  );
+  const activeAgentRunByWorkspace = useTerminalDockStore(
+    (state) => state.activeAgentRunByWorkspace,
   );
 
   const { getFileMessage, getImageMessage } = useFileMessage();
@@ -96,6 +101,24 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     tabsByWorkspace,
     workspaces,
   ]);
+  const activeAgentRun = activeWorkspaceID
+    ? activeAgentRunByWorkspace[activeWorkspaceID]
+    : undefined;
+  const selfMentionTarget = selfInfo.nickname || selfInfo.userID;
+  const selfMentionTemplate = selfMentionTarget
+    ? `@bot @${selfMentionTarget}`
+    : "@bot @<your user id>";
+  const automationStateText = automationReady
+    ? autoReplyEnabled && activeAgentRun
+      ? "waiting for final answer"
+      : "ready"
+    : botDetectionEnabled || autoInjectEnabled || autoReplyEnabled
+    ? "needs linked running terminal"
+    : "off";
+
+  const insertSelfBotMention = () => {
+    setHtml((prev) => `${prev}${escapeHtml(`${selfMentionTemplate} `)}`);
+  };
 
   const onAutoInjectChange = (checked: boolean) => {
     if (!checked) {
@@ -236,6 +259,17 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
             data-testid="chat-agent-automation-bar"
           >
             <span className="font-medium text-[#344054]">Agent automation</span>
+            <Tooltip title="Use this exact prefix to target your own local agent. Bare @bot will not trigger.">
+              <Button
+                size="small"
+                type="text"
+                className="!h-6 !px-1 text-xs"
+                onClick={insertSelfBotMention}
+                data-testid="chat-agent-mention-insert"
+              >
+                Use {selfMentionTemplate}
+              </Button>
+            </Tooltip>
             <Tooltip title="Detect @bot requests and inject approved prompts into the active terminal. Enabling this also enables Bot Requests detection.">
               <label className="flex items-center gap-1">
                 <span>Auto Inject</span>
@@ -259,11 +293,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
               </label>
             </Tooltip>
             <span className="text-[#98a2b3]" data-testid="chat-agent-automation-state">
-              {automationReady
-                ? "ready"
-                : botDetectionEnabled || autoInjectEnabled || autoReplyEnabled
-                ? "needs linked running terminal"
-                : "off"}
+              {automationStateText}
             </span>
           </div>
           {pendingAttachments.length > 0 && (

@@ -27,9 +27,8 @@ test("terminal dock smoke is available without a real runtime", async ({
   await expect(appWindow.getByTestId("chat-agent-automation-bar")).toBeVisible();
   await expect(appWindow.getByTestId("terminal-context-menu")).toHaveCount(0);
   await expect(appWindow.getByTestId("terminal-send-last-context")).toHaveCount(0);
-  await expect(appWindow.getByTestId("terminal-reply-debug")).toBeVisible();
-  // The debug button is enabled when at least one tab exists (even if stopped).
-  // Tabs from previous test sessions may persist in localStorage.
+  await expect(appWindow.getByTestId("terminal-reply-debug")).toHaveCount(0);
+  await expect(appWindow.getByTestId("terminal-capture-final-answer")).toBeVisible();
 });
 
 test("unsafe automation defaults reset and stay in experimental debug UI", async ({
@@ -56,9 +55,9 @@ test("unsafe automation defaults reset and stay in experimental debug UI", async
   await expect(appWindow.getByTestId("terminal-dock")).toBeVisible();
   await expect(appWindow.getByTestId("terminal-auto-inject-toggle")).not.toBeChecked();
   await expect(appWindow.getByTestId("terminal-auto-reply-toggle")).not.toBeChecked();
-  await appWindow.getByTestId("terminal-reply-debug").click();
-  await expect(appWindow.getByTestId("terminal-output-draft-toggle")).not.toBeChecked();
-  await expect(appWindow.getByTestId("terminal-draft-chat-toggle")).not.toBeChecked();
+  await expect(appWindow.getByTestId("chat-agent-automation-state")).toContainText(
+    /off|needs linked running terminal/,
+  );
 });
 
 test("auto-inject enabled without binding still creates pending request only", async ({
@@ -116,51 +115,6 @@ test("auto-reply off ignores structured final_answer", async ({ appWindow }) => 
   await expect(appWindow.getByTestId("e2e-sent-drafts")).not.toContainText(
     "This should not auto-send.",
   );
-});
-
-test("opencode probe degraded does not pretend to have final answer", async ({
-  appWindow,
-}) => {
-  await setupTerminalHarness(appWindow, { startTerminal: true });
-  await appWindow.getByTestId("terminal-reply-debug").click();
-  await appWindow
-    .locator("details")
-    .filter({ hasText: "Developer diagnostics" })
-    .click();
-  await appWindow.getByTestId("terminal-opencode-probe").click();
-
-  await expect(appWindow.getByTestId("terminal-opencode-binding")).toContainText(
-    "Status: failed",
-  );
-  await expect(appWindow.getByTestId("agent-reply-degraded")).toContainText(
-    "No structured final answer available",
-  );
-  await expect(appWindow.getByTestId("agent-reply-card")).toHaveCount(0);
-});
-
-test("opencode bound probe shows agent reply card and inserts only draft", async ({
-  appWindow,
-}) => {
-  await setupTerminalHarness(appWindow, { startTerminal: true });
-  await appWindow.evaluate(() => {
-    (window as unknown as { __e2eOpenCodeProbeMode?: string }).__e2eOpenCodeProbeMode =
-      "bound";
-  });
-  await appWindow.getByTestId("terminal-reply-debug").click();
-  await appWindow
-    .locator("details")
-    .filter({ hasText: "Developer diagnostics" })
-    .click();
-  await appWindow.getByTestId("terminal-opencode-probe").click();
-
-  await expect(appWindow.getByTestId("agent-reply-card")).toContainText(
-    "OpenCode shared-session reply from mock.",
-  );
-  await appWindow.getByTestId("agent-reply-insert").click();
-  await expect(appWindow.getByTestId("e2e-draft-preview")).toContainText(
-    "OpenCode shared-session reply from mock.",
-  );
-  await expect(appWindow.getByTestId("e2e-sent-drafts")).toBeEmpty();
 });
 
 test("terminal context history can copy and send prompt", async ({ appWindow }) => {
@@ -324,7 +278,6 @@ test("structured final answer capture prefers machine-readable output and only u
       ].join("\n"),
     );
   });
-  await appWindow.getByTestId("terminal-reply-debug").click();
   await appWindow.getByTestId("terminal-capture-final-answer").click();
   await expect(appWindow.getByTestId("e2e-draft-preview")).toContainText(
     "Structured final answer from opencode",
@@ -481,7 +434,6 @@ test("run-scoped final answer capture reads completed manifest", async ({
     },
   );
 
-  await appWindow.getByTestId("terminal-reply-debug").click();
   await appWindow.getByTestId("terminal-capture-final-answer").click();
   await expect(appWindow.getByTestId("e2e-draft-preview")).toContainText(
     "Run file final answer from agent.",

@@ -108,11 +108,6 @@ test("agent watcher survives missing events file and forwards later final_answer
     });
   }, workspaceID);
 
-  await appWindow.getByTestId("terminal-reply-debug").click();
-  await expect(
-    appWindow.getByTestId("terminal-reply-debug-modal"),
-  ).toBeVisible();
-
   await expect
     .poll(
       async () => {
@@ -156,11 +151,6 @@ test("structured final_answer event resolves as Tier 1", async ({
     );
   });
 
-  // Open Reply Debug modal and capture
-  await appWindow.getByTestId("terminal-reply-debug").click();
-  await expect(
-    appWindow.getByTestId("terminal-reply-debug-modal"),
-  ).toBeVisible();
   await appWindow.getByTestId("terminal-capture-final-answer").click();
 
   // Draft should contain the structured answer, not garbage
@@ -230,10 +220,6 @@ test("structured events flow: progress does not resolve, error + final_answer re
   expect(events.length).toBeGreaterThanOrEqual(5);
 
   // Capture — should get final_answer, not progress, not error, not raw garbage
-  await appWindow.getByTestId("terminal-reply-debug").click();
-  await expect(
-    appWindow.getByTestId("terminal-reply-debug-modal"),
-  ).toBeVisible();
   await appWindow.getByTestId("terminal-capture-final-answer").click();
 
   await expect(appWindow.getByTestId("e2e-draft-preview")).toContainText(

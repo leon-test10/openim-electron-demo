@@ -6,6 +6,7 @@ import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
 import { SystemMessageTypes } from "@/constants/im";
 import {
+  BotTargetCandidate,
   createPendingAgentRequest,
   detectBotTrigger,
   extractTextMessageContent,
@@ -30,8 +31,12 @@ import { useHistoryMessageList } from "./useHistoryMessageList";
 const ChatContent = () => {
   const virtuoso = useRef<VirtuosoHandle>(null);
   const selfUserID = useUserStore((state) => state.selfInfo.userID);
+  const selfNickname = useUserStore((state) => state.selfInfo.nickname);
   const currentConversation = useConversationStore(
     (state) => state.currentConversation,
+  );
+  const currentMemberInGroup = useConversationStore(
+    (state) => state.currentMemberInGroup,
   );
   const botDetectionEnabled = usePendingAgentRequestStore(
     (state) => state.botDetectionEnabled,
@@ -81,6 +86,31 @@ const ChatContent = () => {
       ),
     );
   }, [loadState.messageList, selectionActive, selectionAnchorMessageID]);
+  const botTargetCandidates = useMemo<BotTargetCandidate[]>(() => {
+    const candidates: Array<BotTargetCandidate | undefined> = [
+      {
+        userID: selfUserID,
+        nickname: currentMemberInGroup?.nickname || selfNickname,
+      },
+      currentConversation?.conversationType === SessionType.Single
+        ? {
+            userID: currentConversation.userID,
+            nickname: currentConversation.showName,
+          }
+        : undefined,
+    ];
+
+    return candidates.filter((candidate): candidate is BotTargetCandidate =>
+      Boolean(candidate?.userID),
+    );
+  }, [
+    currentConversation?.conversationType,
+    currentConversation?.showName,
+    currentConversation?.userID,
+    currentMemberInGroup?.nickname,
+    selfNickname,
+    selfUserID,
+  ]);
 
   useEffect(() => {
     emitter.on("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
@@ -103,7 +133,6 @@ const ChatContent = () => {
       currentConversation?.conversationType === SessionType.Group ? "group" : "single";
 
     loadState.messageList.forEach((message, index) => {
-      if (message.sendID === selfUserID) return;
       if (isAgentGeneratedMessage(message)) return;
 
       const text = extractTextMessageContent(message);
@@ -111,6 +140,7 @@ const ChatContent = () => {
         text,
         currentUserID: selfUserID,
         conversationType,
+        targetCandidates: botTargetCandidates,
       });
 
       if (!trigger) return;
@@ -183,6 +213,7 @@ const ChatContent = () => {
   }, [
     addPendingAgentRequest,
     autoInjectEnabled,
+    botTargetCandidates,
     botDetectionEnabled,
     conversationID,
     currentConversation?.conversationType,

@@ -1,5 +1,53 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P11.1 Targeted @bot UX + Automation Verification (2026-06-26)
+
+Current branch: `feature/agent-run-contract`
+
+P11.1 tightens the user-facing trigger semantics and removes the misleading
+debug-first workflow.
+
+### Implemented
+
+- `@bot` now requires an explicit target mention. Bare `@bot ...` is ignored.
+- A user can trigger their own local agent only with a targeted prefix such as
+  `@bot @<my nickname> ...` or `@bot @<my userID> ...`.
+- Compact input such as `@bot@<nickname> ...` is supported when the nickname or
+  userID resolves uniquely in the local candidate set.
+- Self-sent targeted messages are allowed, so a user can intentionally trigger
+  their own local agent from the IM input.
+- The IM input automation bar now exposes a helper button that inserts the
+  correct self-targeting prefix.
+- The large Reply Debug Tools entry point was removed from the Terminal Dock
+  primary toolbar. `Capture Final` is now directly available as the normal
+  Agent -> IM action.
+
+### Current Reality
+
+- If logged in as `Codex Test 2`, sending `@bot@Codex Peer ...` should not
+  trigger the `Codex Test 2` local agent. That message targets Codex Peer and
+  should be processed by a Codex Peer client/session.
+- Auto Reply still does not parse arbitrary native TUI screen text. It sends
+  only validated run-file results or structured `final_answer` events matching
+  the active run.
+- For native `opencode` TUI, reliable automation requires the agent to obey the
+  injected OpenIM skill contract and write the current run's
+  `.agent/runs/<runID>/final_answer.md` plus completed `manifest.json`.
+
+### Validation
+
+- `git diff --check`: pass.
+- `npm.cmd run lint -- --quiet`: pass.
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd run build`: pass.
+- Targeted Electron E2E passed:
+  - `bare @bot and agent-generated messages do not create pending requests`
+  - `self-sent @bot targeted at own nickname can inject own agent`
+  - `compact @bot@nickname resolves a unique local target`
+  - `auto-reply requires structured final_answer to match active run`
+  - structured output suite for watcher and Tier 1 final_answer capture
+  - run-scoped final answer contract/capture/auto-reply tests
+
 ## Latest Update - P11 OpenIM Agent Skill Pack + Run-Scoped Final Answer (2026-06-26)
 
 Current branch: `feature/agent-run-contract`

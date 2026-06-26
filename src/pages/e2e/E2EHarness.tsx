@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import TerminalDock from "@/components/TerminalDock";
 import {
+  type BotTargetCandidate,
   createPendingAgentRequest,
   detectBotTrigger,
   extractTextMessageContent,
@@ -574,9 +575,23 @@ const E2EHarness = () => {
     const conversationType =
       activeConversation.conversationType === SessionType.Group ? "group" : "single";
     const autoInject = useTerminalDockStore.getState().autoInjectEnabled;
+    const rawTargetCandidates: Array<BotTargetCandidate | undefined> = [
+      {
+        userID: selfUserID,
+        nickname: "E2E Self",
+      },
+      activeConversation.conversationType === SessionType.Single
+        ? {
+            userID: activeConversation.userID,
+            nickname: activeConversation.showName,
+          }
+        : undefined,
+    ];
+    const targetCandidates = rawTargetCandidates.filter(
+      (candidate): candidate is BotTargetCandidate => Boolean(candidate?.userID),
+    );
 
     activeMessages.forEach((message, index) => {
-      if (message.sendID === selfUserID) return;
       if (isAgentGeneratedMessage(message)) return;
 
       const text = extractTextMessageContent(message);
@@ -584,6 +599,7 @@ const E2EHarness = () => {
         text,
         currentUserID: selfUserID,
         conversationType,
+        targetCandidates,
       });
 
       if (!trigger) return;

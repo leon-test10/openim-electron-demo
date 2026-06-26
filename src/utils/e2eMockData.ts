@@ -55,8 +55,7 @@ export const createE2ETextMessage = (
     sendID: options.sendID ?? (clientMsgID.endsWith("1") ? "e2e_self" : "e2e_peer"),
     recvID: options.recvID ?? (clientMsgID.endsWith("1") ? "e2e_peer" : "e2e_self"),
     senderNickname:
-      options.senderNickname ??
-      (clientMsgID.endsWith("1") ? "E2E Self" : "E2E Peer"),
+      options.senderNickname ?? (clientMsgID.endsWith("1") ? "E2E Self" : "E2E Peer"),
     senderFaceUrl: "",
     sessionType: options.sessionType ?? SessionType.Single,
     contentType: MessageType.TextMessage,
@@ -163,6 +162,9 @@ export const e2eBotMessageIDs = {
   mention: "e2e_msg_bot_mention",
   slash: "e2e_msg_bot_slash",
   selfMention: "e2e_msg_bot_self",
+  selfNickname: "e2e_msg_bot_self_nickname",
+  compactNickname: "e2e_msg_bot_compact_nickname",
+  bareBot: "e2e_msg_bot_bare",
   agentGenerated: "e2e_msg_bot_agent_generated",
   groupMention: "e2e_group_msg_bot_mention",
 };
@@ -184,11 +186,36 @@ export const e2eMessages = [
     "/bot @e2e_self explain the previous error.",
     700,
   ),
-  createE2ETextMessage(e2eBotMessageIDs.selfMention, "@bot @e2e_self from myself", 600, {
-    sendID: "e2e_self",
-    recvID: "e2e_peer",
-    senderNickname: "E2E Self",
-  }),
+  createE2ETextMessage(
+    e2eBotMessageIDs.selfMention,
+    "@bot @e2e_self from myself",
+    600,
+    {
+      sendID: "e2e_self",
+      recvID: "e2e_peer",
+      senderNickname: "E2E Self",
+    },
+  ),
+  createE2ETextMessage(
+    e2eBotMessageIDs.selfNickname,
+    "@bot @E2E Self trigger my own agent",
+    580,
+    {
+      sendID: "e2e_self",
+      recvID: "e2e_peer",
+      senderNickname: "E2E Self",
+    },
+  ),
+  createE2ETextMessage(
+    e2eBotMessageIDs.compactNickname,
+    "@bot@E2E Self compact nickname target",
+    560,
+  ),
+  createE2ETextMessage(
+    e2eBotMessageIDs.bareBot,
+    "@bot should not trigger without a target mention",
+    540,
+  ),
   createE2ETextMessage(
     e2eBotMessageIDs.agentGenerated,
     "@bot @e2e_self generated loop should be ignored",
