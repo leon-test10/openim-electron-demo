@@ -1,47 +1,24 @@
 # Session Handoff - Terminal Dock Redesign
 
-## Latest Update — @mention Autocomplete + Safety Hardening (2026-06-26)
+## Latest Update — Remove PendingAgentRequests Card + @mention Autocomplete + Safety (2026-06-26)
 
 Current branch: `feature/agent-run-contract`
 
-### Completed
+### Removed: PendingAgentRequests Card
 
-**@mention Autocomplete Popup** (`BotMentionAutocomplete.tsx`):
+The pending agent request card UI (`PendingAgentRequests.tsx`) has been removed. Detection and store logic remain intact. The UX now relies on:
 
-Typing `@bot @` in the chat input now shows a filtered candidate popover:
-- **Real-time filtering**: candidates matched against nickname and userID (case-insensitive)
-- **Keyboard navigation**: ArrowUp/Down to move highlight, Tab/Enter to select, Escape to close
-- **Mouse selection**: click on any candidate, mouse hover updates highlight
-- **Integration**: positioned above the CKEditor, detects `@bot @<partial>` via `getCleanText` parsing
-- **Replacement**: on select, inserts `@bot @<displayName> ` replacing the partial text
+- **Auto Inject toggle** — when ON, targeted @bot messages auto-inject into terminal
+- **Pending count badge** — `terminal-pending-agent-count` in TerminalDock shows count when auto-inject is off but workspace isn't linked
+- **Automation bar buttons** — "Use @bot@nickname" helper + Auto Inject/Auto Reply toggles
 
-**Safety Hardening**:
+### Added: @mention Autocomplete
 
-| Before | After |
-|--------|-------|
-| `extractUserMention` raw regex fallback extracted ANY `@string` | Removed entirely |
-| `botTargetCandidates` = [self, single-chat partner] only | Now includes all group members via `useGroupMembers` |
-| Typing `@bot @RandomStranger` would extract userID and potentially match | **No longer matches** — only users in the candidate list can be targeted |
+Typing `@bot @` in the chat input shows a filtered candidate popover with keyboard navigation (↑↓/Tab/Enter/Escape) and click selection. Only users in the current conversation (self + conversation members) appear as candidates.
 
-**Candidate list per conversation type**:
-- **Single chat**: self + the other person
-- **Group chat**: self + all group members (from `IMSDK.getGroupMemberList`)
-- **Safety invariant**: impossible to target a user not in the current conversation
+### Safety: No Raw Regex Fallback
 
-### Files Changed
-
-- `src/pages/chat/queryChat/ChatFooter/BotMentionAutocomplete.tsx` 🆕
-- `src/pages/chat/queryChat/ChatFooter/botMention.module.scss` 🆕
-- `src/pages/chat/queryChat/ChatFooter/index.tsx`
-- `src/pages/chat/queryChat/ChatContent.tsx`
-- `src/services/botTrigger/detectBotTrigger.ts`
-- `e2e/electron/specs/bot-trigger.spec.ts`
-
-### Validation
-
-- `npx.cmd tsc --noEmit`: pass
-- `npm.cmd run build`: pass
-- `npx.cmd playwright test -c playwright.electron.config.ts`: 37/38 pass (1 pre-existing flaky test)
+`extractUserMention` removed. Targets only resolve from the candidate list — impossible to target users outside the current conversation.
 
 ---
 
