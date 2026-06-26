@@ -33,6 +33,8 @@ export interface AgentFinalAnswerEvent {
   format?: "markdown" | "text" | "json";
   /** Optional session identifier. */
   sessionID?: string;
+  /** Optional OpenIM agent run identifier. */
+  runID?: string;
 }
 
 /** File artifact produced by the agent in the workspace. */

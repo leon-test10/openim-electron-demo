@@ -28,6 +28,46 @@ const enableAutoReply = async (appWindow: Page) => {
   await appWindow.getByRole("button", { name: "Enable Auto Reply" }).click();
 };
 
+const getTerminalWritesText = async (appWindow: Page) =>
+  appWindow.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __e2eTerminalWrites?: string[];
+        }
+      ).__e2eTerminalWrites?.join("\n") ?? "",
+  );
+
+const getLatestRequestMarkdown = async (appWindow: Page) =>
+  appWindow.evaluate(() => {
+    const writes =
+      (
+        window as unknown as {
+          __e2eWorkspaceWrites?: Array<{
+            relativePath?: string;
+            content?: string;
+          }>;
+        }
+      ).__e2eWorkspaceWrites ?? [];
+    return [...writes]
+      .reverse()
+      .find((write) => write.relativePath?.endsWith("/request.md"))?.content;
+  });
+
+const getActiveRunID = async (appWindow: Page) =>
+  appWindow.evaluate(() => {
+    const stateRaw = window.localStorage.getItem("openim_terminal_dock_state");
+    const state = stateRaw ? JSON.parse(stateRaw) : {};
+    const workspaceID = (
+      window as unknown as {
+        __e2eGetActiveWorkspaceID?: () => string | undefined;
+      }
+    ).__e2eGetActiveWorkspaceID?.();
+    return workspaceID
+      ? state.activeAgentRunByWorkspace?.[workspaceID]?.runID
+      : undefined;
+  });
+
 test("single chat @bot @e2e_self creates pending request and sends only after user action", async ({
   appWindow,
 }) => {
@@ -41,39 +81,22 @@ test("single chat @bot @e2e_self creates pending request and sends only after us
     "@bot @e2e_self summarize this conversation.",
   );
 
-  let writes = await appWindow.evaluate(
-    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
-  );
-  expect(writes?.join("\n") ?? "").not.toContain("botTrigger");
+  expect(await getTerminalWritesText(appWindow)).not.toContain("botTrigger");
 
   await mentionRequest.getByTestId("pending-agent-review").click();
-  writes = await appWindow.evaluate(
-    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
-  );
-  expect(writes?.join("\n") ?? "").not.toContain("botTrigger");
+  expect(await getTerminalWritesText(appWindow)).not.toContain("botTrigger");
 
   await mentionRequest.getByTestId("pending-agent-send").click();
 
   await expect
-    .poll(
-      () =>
-        appWindow.evaluate(
-          () =>
-            (
-              window as unknown as { __e2eTerminalWrites?: string[] }
-            ).__e2eTerminalWrites?.join("\n") ?? "",
-        ),
-      { timeout: 5000 },
-    )
-    .toContain("botTrigger");
-  writes = await appWindow.evaluate(
-    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
-  );
-  const terminalWritesText = writes?.join("\n") ?? "";
-  expect(terminalWritesText).toContain("@bot @e2e_self summarize this conversation.");
-  expect(terminalWritesText).toContain(
-    "Do not send messages back to OpenIM by yourself.",
-  );
+    .poll(() => getTerminalWritesText(appWindow), { timeout: 5000 })
+    .toContain("Current run:");
+  const terminalWritesText = await getTerminalWritesText(appWindow);
+  expect(terminalWritesText).toContain(".agent/skills/openim-final-answer.md");
+  expect(terminalWritesText).toContain("Do not send messages back to OpenIM yourself.");
+  const requestMarkdown = await getLatestRequestMarkdown(appWindow);
+  expect(requestMarkdown).toContain("Context source: botTrigger");
+  expect(requestMarkdown).toContain("@bot @e2e_self summarize this conversation.");
   await expect(mentionRequest).toHaveCount(0);
 });
 
@@ -92,10 +115,7 @@ test("/bot @e2e_self creates pending request and stays pending until manual send
   await expect(slashRequest.getByTestId("pending-agent-review")).toBeVisible();
   await expect(slashRequest.getByTestId("pending-agent-send")).toBeVisible();
 
-  const writes = await appWindow.evaluate(
-    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
-  );
-  expect(writes?.join("\n") ?? "").not.toContain(
+  expect(await getTerminalWritesText(appWindow)).not.toContain(
     "/bot @e2e_self explain the previous error.",
   );
 });
@@ -150,27 +170,16 @@ test("auto-inject skips pending review and sends directly to terminal", async ({
 
   // Terminal should have received the auto-injected context immediately
   await expect
-    .poll(
-      () =>
-        appWindow.evaluate(
-          () =>
-            (
-              window as unknown as { __e2eTerminalWrites?: string[] }
-            ).__e2eTerminalWrites?.join("\n") ?? "",
-        ),
-      { timeout: 5000 },
-    )
-    .toContain("botTrigger");
+    .poll(() => getTerminalWritesText(appWindow), { timeout: 5000 })
+    .toContain("Current run:");
 
   // Verify the auto-injected content
-  const writes = await appWindow.evaluate(
-    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
-  );
-  const terminalWritesText = writes?.join("\n") ?? "";
-  expect(terminalWritesText).toContain("@bot @e2e_self summarize this conversation.");
-  expect(terminalWritesText).toContain(
-    "Do not send messages back to OpenIM by yourself.",
-  );
+  const terminalWritesText = await getTerminalWritesText(appWindow);
+  expect(terminalWritesText).toContain(".agent/runs/");
+  expect(terminalWritesText).toContain("Do not send messages back to OpenIM yourself.");
+  const requestMarkdown = await getLatestRequestMarkdown(appWindow);
+  expect(requestMarkdown).toContain("Context source: botTrigger");
+  expect(requestMarkdown).toContain("@bot @e2e_self summarize this conversation.");
 });
 
 test("auto-inject does not duplicate the same trigger on repeated scans", async ({
@@ -182,50 +191,31 @@ test("auto-inject does not duplicate the same trigger on repeated scans", async 
   await enableBotDetection(appWindow);
 
   await expect
-    .poll(
-      () =>
-        appWindow.evaluate(
-          () =>
-            (
-              window as unknown as { __e2eTerminalWrites?: string[] }
-            ).__e2eTerminalWrites?.join("\n") ?? "",
-        ),
-      { timeout: 5000 },
-    )
-    .toContain("botTrigger");
+    .poll(() => getTerminalWritesText(appWindow), { timeout: 5000 })
+    .toContain("Current run:");
 
-  const beforeWritesText = await appWindow.evaluate(
-    () =>
-      (
-        window as unknown as { __e2eTerminalWrites?: string[] }
-      ).__e2eTerminalWrites?.join("\n") ?? "",
-  );
-  const beforeOccurrences =
-    beforeWritesText.match(/Context source: botTrigger/g)?.length ?? 0;
+  const beforeWritesText = await getTerminalWritesText(appWindow);
+  const beforeOccurrences = beforeWritesText.match(/Current run:/g)?.length ?? 0;
   expect(beforeOccurrences).toBeGreaterThan(0);
 
   await appWindow.getByTestId("terminal-auto-inject-toggle").click();
   await appWindow.getByTestId("terminal-auto-inject-toggle").click();
   await appWindow.getByRole("button", { name: "Enable Auto Inject" }).click();
 
-  const writesText = await appWindow.evaluate(
-    () =>
-      (
-        window as unknown as { __e2eTerminalWrites?: string[] }
-      ).__e2eTerminalWrites?.join("\n") ?? "",
-  );
-  const occurrences = writesText.match(/Context source: botTrigger/g)?.length ?? 0;
+  const writesText = await getTerminalWritesText(appWindow);
+  const occurrences = writesText.match(/Current run:/g)?.length ?? 0;
   expect(occurrences).toBe(beforeOccurrences);
 });
 
-test("auto-reply sends structured final_answer to IM", async ({ appWindow }) => {
+test("auto-reply requires structured final_answer to match active run", async ({
+  appWindow,
+}) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
   await linkActiveConversationToWorkspace(appWindow);
-
-  // Enable auto-reply
+  await enableAutoInject(appWindow);
+  await enableBotDetection(appWindow);
   await enableAutoReply(appWindow);
 
-  // Get workspace ID and emit a structured final_answer
   const workspaceID = await appWindow.evaluate(() =>
     (
       window as unknown as {
@@ -235,6 +225,13 @@ test("auto-reply sends structured final_answer to IM", async ({ appWindow }) => 
   );
   expect(workspaceID).toBeTruthy();
   if (!workspaceID) return;
+
+  const runID = await expect
+    .poll(() => getActiveRunID(appWindow), { timeout: 5000 })
+    .not.toBeUndefined()
+    .then(() => getActiveRunID(appWindow));
+  expect(runID).toBeTruthy();
+  if (!runID) return;
 
   await appWindow.evaluate(
     ({ wid }) => {
@@ -247,16 +244,38 @@ test("auto-reply sends structured final_answer to IM", async ({ appWindow }) => 
         }
       ).__e2eEmitStructuredEvent?.(wid, {
         type: "final_answer",
-        text: "Auto-reply test: the answer is 42.",
+        text: "Unscoped structured answer must not send.",
         format: "text",
       });
     },
     { wid: workspaceID },
   );
 
-  // The answer should appear in sent drafts
+  await expect(appWindow.getByTestId("e2e-sent-drafts")).not.toContainText(
+    "Unscoped structured answer must not send.",
+  );
+
+  await appWindow.evaluate(
+    ({ wid, rid }) => {
+      (
+        window as unknown as {
+          __e2eEmitStructuredEvent?: (
+            workspaceID: string,
+            event: Record<string, unknown>,
+          ) => void;
+        }
+      ).__e2eEmitStructuredEvent?.(wid, {
+        type: "final_answer",
+        text: "Run-scoped structured answer sends.",
+        format: "text",
+        runID: rid,
+      });
+    },
+    { wid: workspaceID, rid: runID },
+  );
+
   await expect(appWindow.getByTestId("e2e-sent-drafts")).toContainText(
-    "Auto-reply test: the answer is 42.",
+    "Run-scoped structured answer sends.",
     { timeout: 5000 },
   );
 });
@@ -266,6 +285,8 @@ test("auto-reply dedupes per session but allows same text from a new session", a
 }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
   await linkActiveConversationToWorkspace(appWindow);
+  await enableAutoInject(appWindow);
+  await enableBotDetection(appWindow);
   await enableAutoReply(appWindow);
 
   const workspaceID = await appWindow.evaluate(() =>
@@ -278,9 +299,16 @@ test("auto-reply dedupes per session but allows same text from a new session", a
   expect(workspaceID).toBeTruthy();
   if (!workspaceID) return;
 
+  const runID = await expect
+    .poll(() => getActiveRunID(appWindow), { timeout: 5000 })
+    .not.toBeUndefined()
+    .then(() => getActiveRunID(appWindow));
+  expect(runID).toBeTruthy();
+  if (!runID) return;
+
   const emitFinal = async (sessionID: string) => {
     await appWindow.evaluate(
-      ({ wid, sid }) => {
+      ({ wid, sid, rid }) => {
         (
           window as unknown as {
             __e2eEmitStructuredEvent?: (
@@ -293,9 +321,10 @@ test("auto-reply dedupes per session but allows same text from a new session", a
           text: "Same text from distinct sessions.",
           format: "text",
           sessionID: sid,
+          runID: rid,
         });
       },
-      { wid: workspaceID, sid: sessionID },
+      { wid: workspaceID, sid: sessionID, rid: runID },
     );
   };
 

@@ -1,5 +1,77 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P11 OpenIM Agent Skill Pack + Run-Scoped Final Answer (2026-06-26)
+
+Current branch: `feature/agent-run-contract`
+
+P11 replaces the old "hope the runtime emits a final answer" path with a
+run-scoped OpenIM file contract. It is still runtime-neutral: OpenIM does not
+own opencode/codex/claude sessions, prompts, memory, tools, model config, or
+API keys.
+
+### Implemented
+
+- Added `src/services/agentRunContract/`:
+  - creates unique `runID` values;
+  - writes `.agent/skills/openim-final-answer.md`;
+  - writes `.agent/skills/openim-context.md`;
+  - creates `.agent/runs/<runID>/request.md`;
+  - creates `.agent/runs/<runID>/manifest.json`;
+  - records `.agent/latest-run.json` for diagnostics only.
+- `Send to Agent` and Auto Inject now create an active run contract before
+  writing to the terminal.
+- The injected terminal prompt now tells the runtime to:
+  - read `.agent/runs/<runID>/request.md`;
+  - overwrite `.agent/runs/<runID>/final_answer.md`;
+  - overwrite `.agent/runs/<runID>/manifest.json` with `status: "completed"`.
+- `AgentOutputResolver` now supports source `run_file` and validates:
+  - manifest `runID` matches the active run;
+  - `status === "completed"`;
+  - `finalAnswerPath` is exactly the current run final answer path;
+  - `updatedAt` is later than the run creation time;
+  - the resolved path stays inside `.agent/runs/<runID>/`.
+- Terminal Dock Auto Receive / Auto Reply now prefer the active run file result.
+- Auto Reply only accepts:
+  - validated `run_file`; or
+  - structured `final_answer` events tagged with the current active `runID`.
+- Untagged structured `final_answer` events remain usable for manual capture but
+  do not auto-send.
+- E2E harness file mocks now support reading previously written workspace files,
+  so tests can simulate runtime-written `manifest.json` and `final_answer.md`.
+
+### Current Reality
+
+- This is an OpenIM file-style skill contract, not a native opencode skill,
+  Codex skill, Claude plugin, or ACP integration.
+- Plain native `opencode` / `npx.cmd -y opencode-ai@1.17.9` TUI will not
+  reliably produce a final answer unless it follows the injected instruction or
+  is launched through a future wrapper.
+- The intended next step is a runtime-specific wrapper, for example
+  `openim-agent opencode`, that starts the runtime and guarantees this file
+  contract is obeyed.
+
+### Validation
+
+- `git diff --check`: pass.
+- `npm.cmd run lint -- --quiet`: pass.
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd run build`: pass.
+- Targeted Electron E2E passed:
+  - `send to agent creates run-scoped final answer contract`
+  - `run-scoped final answer capture reads completed manifest`
+  - `auto-reply sends only the active run completed final answer`
+  - `auto-reply requires structured final_answer to match active run`
+  - `auto-reply dedupes per session but allows same text from a new session`
+
+### Not Implemented
+
+- Native runtime skill/plugin installation.
+- A guaranteed final answer from an arbitrary TUI that ignores the file
+  contract.
+- Default Auto Reply enablement.
+- Expanding `@bot` automation scope.
+- Runtime-specific wrapper commands such as `openim-agent opencode`.
+
 ## Latest Update - P10.1 Automation UX Containment (2026-06-26)
 
 Current branch: `feature/p10-safety-opencode-same-session`

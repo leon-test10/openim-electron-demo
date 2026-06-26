@@ -43,6 +43,7 @@ type StoredTerminalDockState = Pick<
   | "autoInjectEnabled"
   | "autoReplyEnabled"
   | "captureSource"
+  | "activeAgentRunByWorkspace"
 >;
 
 const defaultState: StoredTerminalDockState = {
@@ -59,6 +60,7 @@ const defaultState: StoredTerminalDockState = {
   captureSource: "auto",
   autoInjectEnabled: false,
   autoReplyEnabled: false,
+  activeAgentRunByWorkspace: {},
 };
 
 const canUseLocalStorage = () => typeof window !== "undefined" && window.localStorage;
@@ -265,6 +267,11 @@ const readStoredState = (): StoredTerminalDockState => {
         parsed.captureSource === "auto"
           ? parsed.captureSource
           : "auto",
+      activeAgentRunByWorkspace:
+        parsed.activeAgentRunByWorkspace &&
+        typeof parsed.activeAgentRunByWorkspace === "object"
+          ? parsed.activeAgentRunByWorkspace
+          : {},
     };
   } catch {
     return defaultState;
@@ -291,6 +298,7 @@ const toStoredState = (state: TerminalDockStore): StoredTerminalDockState => ({
   autoInjectEnabled: state.autoInjectEnabled,
   autoReplyEnabled: state.autoReplyEnabled,
   captureSource: state.captureSource,
+  activeAgentRunByWorkspace: state.activeAgentRunByWorkspace,
 });
 
 const save = (state: TerminalDockStore, patch: Partial<TerminalDockStore>) => {
@@ -353,6 +361,7 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
   outputByTab: {},
   lastCapturedTextByTab: {},
   structuredEventsByWorkspace: {},
+  activeAgentRunByWorkspace: readStoredState().activeAgentRunByWorkspace,
   handledBotTriggerKeys: {},
   togglePanel: () => {
     set((state) => {
@@ -726,6 +735,16 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
       delete structuredEventsByWorkspace[workspaceID];
       return { structuredEventsByWorkspace };
     });
+  },
+  setActiveAgentRun: (workspaceID, run) => {
+    set((state) =>
+      save(state, {
+        activeAgentRunByWorkspace: {
+          ...state.activeAgentRunByWorkspace,
+          [workspaceID]: run,
+        },
+      }),
+    );
   },
   hasHandledBotTrigger: (key) => Boolean(get().handledBotTriggerKeys[key]),
   markBotTriggerHandled: (key) => {

@@ -96,7 +96,7 @@ const installE2EElectronMock = () => {
     }
   };
 
-  const createMockFile = (filePath: string) => {
+  const createMockFile = (filePath: string, content?: string) => {
     const fileName = filePath.split(/[\\/]/).filter(Boolean).pop() ?? "mock-file.txt";
     const lowerName = fileName.toLowerCase();
     const type = lowerName.endsWith(".png")
@@ -114,7 +114,17 @@ const installE2EElectronMock = () => {
       : lowerName.endsWith(".txt")
       ? "text/plain"
       : "application/octet-stream";
-    return new File([`e2e fixture for ${fileName}`], fileName, { type });
+    return new File([content ?? `e2e fixture for ${fileName}`], fileName, { type });
+  };
+
+  const getWorkspaceRelativePathFromAbsolute = (filePath: string) => {
+    const normalizedRoot = `${workspaceRoot}\\`.toLowerCase();
+    const normalizedPath = filePath.toLowerCase();
+    if (!normalizedPath.startsWith(normalizedRoot)) return undefined;
+    const withoutRoot = filePath.slice(normalizedRoot.length);
+    const parts = withoutRoot.split(/[\\/]/);
+    parts.shift();
+    return parts.join("/");
   };
 
   const emitToSubscribers = (channel: string, ...args: unknown[]) => {
@@ -382,7 +392,15 @@ const installE2EElectronMock = () => {
     },
     ipcSendSync: <T,>() => undefined as T,
     saveFileToDisk: () => Promise.resolve(""),
-    getFileByPath: (filePath: string) => Promise.resolve(createMockFile(filePath)),
+    getFileByPath: (filePath: string) => {
+      const relativePath = getWorkspaceRelativePathFromAbsolute(filePath);
+      const workspaceWrite = relativePath
+        ? [...(e2eWindow.__e2eWorkspaceWrites ?? [])]
+            .reverse()
+            .find((write) => write.relativePath === relativePath)
+        : undefined;
+      return Promise.resolve(createMockFile(filePath, workspaceWrite?.content));
+    },
   };
 };
 

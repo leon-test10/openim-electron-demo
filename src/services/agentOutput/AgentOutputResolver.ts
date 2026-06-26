@@ -1,3 +1,5 @@
+import type { AgentRunContract, AgentRunManifest } from "@/services/agentRunContract";
+
 import type { AgentOutputEvent } from "./types";
 
 const ANSI_ESCAPE = String.fromCharCode(27);
@@ -7,6 +9,8 @@ const ANSI_CONTROL_PATTERN = new RegExp(
 );
 
 export type AgentOutputSource =
+  /** Reliable completed final_answer.md from the active run contract. */
+  | "run_file"
   /** Reliable structured event from agent:structuredOutput IPC (Tier 1). */
   | "structured"
   /** Heuristic JSON scanning of raw PTY output (Tier 2). */
@@ -20,6 +24,7 @@ export interface AgentOutputResolution {
   text?: string;
   source: AgentOutputSource;
   sessionID?: string;
+  runID?: string;
 }
 
 interface ResolveAgentOutputParams {
@@ -29,6 +34,31 @@ interface ResolveAgentOutputParams {
   /** Structured events received via the agent:structuredOutput IPC channel (Tier 1). */
   structuredEvents?: AgentOutputEvent[];
 }
+
+const isPathInsideRun = (runDir: string, path: string) =>
+  path === runDir || path.startsWith(`${runDir}/`);
+
+export const resolveFromAgentRunContract = (
+  contract: AgentRunContract | undefined,
+  manifest: AgentRunManifest | undefined,
+  finalAnswerText: string | undefined,
+): AgentOutputResolution | undefined => {
+  if (!contract || !manifest) return undefined;
+  if (manifest.runID !== contract.runID) return undefined;
+  if (manifest.status !== "completed") return undefined;
+  if (manifest.updatedAt < contract.createdAt) return undefined;
+  if (manifest.finalAnswerPath !== contract.finalAnswerPath) return undefined;
+  if (!isPathInsideRun(contract.runDir, manifest.finalAnswerPath)) return undefined;
+
+  const text = cleanText(finalAnswerText ?? "");
+  if (!text) return undefined;
+
+  return {
+    text,
+    source: "run_file",
+    runID: contract.runID,
+  };
+};
 
 const cleanText = (value: string) =>
   value
@@ -187,6 +217,7 @@ const resolveFromStructuredEvents = (
         text: event.text,
         source: "structured",
         sessionID: event.sessionID ?? sessionID,
+        runID: event.runID,
       };
     }
   }

@@ -275,12 +275,19 @@ test("failed attachment export keeps bundle and terminal prompt", async ({
   const manifestWrite = workspaceWrites?.find((write) =>
     write.relativePath?.endsWith(".manifest.json"),
   );
+  const requestWrite = workspaceWrites?.find((write) =>
+    write.relativePath?.endsWith("/request.md"),
+  );
 
-  expect(writes?.join("\n")).toContain("context/");
+  expect(writes?.join("\n")).toContain("Current run:");
+  expect(writes?.join("\n")).toContain(".agent/runs/");
   expect(writes?.join("\n")).toContain("manifest");
-  expect(writes?.join("\n")).toContain(
+  expect(requestWrite?.content).toContain("context/");
+  expect(requestWrite?.content).toContain("manifest");
+  expect(requestWrite?.content).toContain(
     "Check manifest status, error, and source fields",
   );
+  expect(writes?.join("\n")).toContain("Do not send messages back to OpenIM yourself");
   expect(manifestWrite?.content).toContain('"attachments"');
   expect(manifestWrite?.content).toContain('"attachmentExportState": "degraded"');
   expect(manifestWrite?.content).toContain('"status": "failed"');
@@ -323,6 +330,275 @@ test("structured final answer capture prefers machine-readable output and only u
     "Structured final answer from opencode",
   );
   await expect(appWindow.getByTestId("e2e-sent-drafts")).toBeEmpty();
+});
+
+test("send to agent creates run-scoped final answer contract", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+
+  await appWindow.locator(messageActionTrigger(e2eMessageIDs[0])).click();
+  await appWindow.getByTestId("message-action-select").click();
+  await appWindow.getByTestId("message-selection-send").click();
+
+  await expect
+    .poll(
+      () =>
+        appWindow.evaluate(
+          () =>
+            (
+              window as unknown as {
+                __e2eWorkspaceWrites?: Array<{
+                  relativePath?: string;
+                  content?: string;
+                }>;
+              }
+            ).__e2eWorkspaceWrites?.some(
+              (write) => write.relativePath === ".agent/skills/openim-final-answer.md",
+            ) ?? false,
+        ),
+      { timeout: 5000 },
+    )
+    .toBeTruthy();
+
+  const workspaceWrites = await appWindow.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __e2eWorkspaceWrites?: Array<{ relativePath?: string; content?: string }>;
+        }
+      ).__e2eWorkspaceWrites ?? [],
+  );
+  const writes = await appWindow.evaluate(
+    () =>
+      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites ??
+      [],
+  );
+
+  const runRequest = workspaceWrites.find((write) =>
+    /^\.agent\/runs\/run_.*\/request\.md$/.test(write.relativePath ?? ""),
+  );
+  const runManifest = workspaceWrites.find((write) =>
+    /^\.agent\/runs\/run_.*\/manifest\.json$/.test(write.relativePath ?? ""),
+  );
+  const latestRun = workspaceWrites.find(
+    (write) => write.relativePath === ".agent/latest-run.json",
+  );
+
+  expect(
+    workspaceWrites.some(
+      (write) => write.relativePath === ".agent/skills/openim-final-answer.md",
+    ),
+  ).toBeTruthy();
+  expect(
+    workspaceWrites.some(
+      (write) => write.relativePath === ".agent/skills/openim-context.md",
+    ),
+  ).toBeTruthy();
+  expect(runRequest?.content).toContain("OpenIM Context Bundle");
+  expect(runManifest?.content).toContain('"status": "pending"');
+  expect(latestRun?.content).toContain('"finalAnswerPath"');
+  expect(writes.join("\n")).toContain(".agent/skills/openim-final-answer.md");
+  expect(writes.join("\n")).toContain(runRequest?.relativePath ?? "missing-run");
+  expect(writes.join("\n")).toContain("overwrite");
+});
+
+test("run-scoped final answer capture reads completed manifest", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+
+  await appWindow.locator(messageActionTrigger(e2eMessageIDs[0])).click();
+  await appWindow.getByTestId("message-action-select").click();
+  await appWindow.getByTestId("message-selection-send").click();
+
+  await expect
+    .poll(
+      () =>
+        appWindow.evaluate(
+          () =>
+            (
+              window as unknown as {
+                __e2eWorkspaceWrites?: Array<{
+                  relativePath?: string;
+                  content?: string;
+                }>;
+              }
+            ).__e2eWorkspaceWrites?.find((write) =>
+              /^\.agent\/runs\/run_.*\/manifest\.json$/.test(write.relativePath ?? ""),
+            )?.content,
+        ),
+      { timeout: 5000 },
+    )
+    .toContain('"status": "pending"');
+
+  const runManifestWrite = await appWindow.evaluate(() =>
+    (
+      window as unknown as {
+        __e2eWorkspaceWrites?: Array<{ relativePath?: string; content?: string }>;
+      }
+    ).__e2eWorkspaceWrites?.find((write) =>
+      /^\.agent\/runs\/run_.*\/manifest\.json$/.test(write.relativePath ?? ""),
+    ),
+  );
+  expect(runManifestWrite?.content).toBeTruthy();
+  const manifest = JSON.parse(runManifestWrite?.content ?? "{}") as {
+    runID: string;
+    requestPath: string;
+    finalAnswerPath: string;
+    updatedAt: number;
+  };
+
+  await appWindow.evaluate(
+    ({ manifestPath, finalAnswerPath, manifest: baseManifest }) => {
+      const writes =
+        (
+          window as unknown as {
+            __e2eWorkspaceWrites?: Array<{ relativePath?: string; content?: string }>;
+          }
+        ).__e2eWorkspaceWrites ?? [];
+      writes.push({
+        relativePath: finalAnswerPath,
+        content: "Run file final answer from agent.",
+      });
+      writes.push({
+        relativePath: manifestPath,
+        content: JSON.stringify(
+          {
+            ...baseManifest,
+            status: "completed",
+            updatedAt: Date.now(),
+          },
+          null,
+          2,
+        ),
+      });
+    },
+    {
+      manifestPath: runManifestWrite?.relativePath,
+      finalAnswerPath: manifest.finalAnswerPath,
+      manifest,
+    },
+  );
+
+  await appWindow.getByTestId("terminal-reply-debug").click();
+  await appWindow.getByTestId("terminal-capture-final-answer").click();
+  await expect(appWindow.getByTestId("e2e-draft-preview")).toContainText(
+    "Run file final answer from agent.",
+  );
+});
+
+test("auto-reply sends only the active run completed final answer", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow, { startTerminal: true });
+  await appWindow.evaluate(() => {
+    (
+      window as unknown as {
+        __e2eLinkActiveConversationToWorkspace?: () => void;
+      }
+    ).__e2eLinkActiveConversationToWorkspace?.();
+  });
+  await appWindow.getByTestId("terminal-auto-reply-toggle").click();
+  await appWindow.getByRole("button", { name: "Enable Auto Reply" }).click();
+
+  await appWindow.locator(messageActionTrigger(e2eMessageIDs[0])).click();
+  await appWindow.getByTestId("message-action-select").click();
+  await appWindow.getByTestId("message-selection-send").click();
+
+  await expect
+    .poll(
+      () =>
+        appWindow.evaluate(
+          () =>
+            (
+              window as unknown as {
+                __e2eWorkspaceWrites?: Array<{
+                  relativePath?: string;
+                  content?: string;
+                }>;
+              }
+            ).__e2eWorkspaceWrites?.find((write) =>
+              /^\.agent\/runs\/run_.*\/manifest\.json$/.test(write.relativePath ?? ""),
+            )?.content,
+        ),
+      { timeout: 5000 },
+    )
+    .toContain('"status": "pending"');
+
+  const runManifestWrite = await appWindow.evaluate(() =>
+    (
+      window as unknown as {
+        __e2eWorkspaceWrites?: Array<{ relativePath?: string; content?: string }>;
+      }
+    ).__e2eWorkspaceWrites?.find((write) =>
+      /^\.agent\/runs\/run_.*\/manifest\.json$/.test(write.relativePath ?? ""),
+    ),
+  );
+  const manifest = JSON.parse(runManifestWrite?.content ?? "{}") as {
+    runID: string;
+    requestPath: string;
+    finalAnswerPath: string;
+    updatedAt: number;
+  };
+
+  await appWindow.evaluate(
+    ({ manifestPath, finalAnswerPath, manifest: baseManifest }) => {
+      const writes =
+        (
+          window as unknown as {
+            __e2eWorkspaceWrites?: Array<{ relativePath?: string; content?: string }>;
+          }
+        ).__e2eWorkspaceWrites ?? [];
+      writes.push({
+        relativePath: ".agent/runs/run_old/final_answer.md",
+        content: "Old run answer should not send.",
+      });
+      writes.push({
+        relativePath: ".agent/runs/run_old/manifest.json",
+        content: JSON.stringify(
+          {
+            ...baseManifest,
+            runID: "run_old",
+            finalAnswerPath: ".agent/runs/run_old/final_answer.md",
+            status: "completed",
+            updatedAt: Date.now(),
+          },
+          null,
+          2,
+        ),
+      });
+      writes.push({
+        relativePath: finalAnswerPath,
+        content: "Current run auto reply answer.",
+      });
+      writes.push({
+        relativePath: manifestPath,
+        content: JSON.stringify(
+          {
+            ...baseManifest,
+            status: "completed",
+            updatedAt: Date.now(),
+          },
+          null,
+          2,
+        ),
+      });
+    },
+    {
+      manifestPath: runManifestWrite?.relativePath,
+      finalAnswerPath: manifest.finalAnswerPath,
+      manifest,
+    },
+  );
+
+  await expect(appWindow.getByTestId("e2e-sent-drafts")).toContainText(
+    "Current run auto reply answer.",
+    { timeout: 6000 },
+  );
+  await expect(appWindow.getByTestId("e2e-sent-drafts")).not.toContainText(
+    "Old run answer should not send.",
+  );
 });
 
 test("dangerous attachment is skipped by export policy without blocking bundle", async ({

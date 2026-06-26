@@ -11,6 +11,7 @@ import {
 
 import { BusinessUserInfo } from "@/api/login";
 import { AgentOutputEvent } from "@/services/agentOutput";
+import { AgentRunContract } from "@/services/agentRunContract";
 import { ContextSourceKind } from "@/services/imContext";
 import {
   RuntimeEvent,
@@ -248,6 +249,7 @@ export interface TerminalDockStore {
   captureSource: TerminalCaptureSource;
   lastCapturedTextByTab: Record<string, string | undefined>;
   structuredEventsByWorkspace: Record<string, AgentOutputEvent[]>;
+  activeAgentRunByWorkspace: Record<string, AgentRunContract | undefined>;
   handledBotTriggerKeys: Record<string, true>;
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
@@ -288,6 +290,7 @@ export interface TerminalDockStore {
   setLastCapturedText: (tabID: string, text: string) => void;
   addStructuredEvent: (workspaceID: string, event: AgentOutputEvent) => void;
   clearStructuredEvents: (workspaceID: string) => void;
+  setActiveAgentRun: (workspaceID: string, run?: AgentRunContract) => void;
   hasHandledBotTrigger: (key: string) => boolean;
   markBotTriggerHandled: (key: string) => void;
 }

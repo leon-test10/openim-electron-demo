@@ -29,7 +29,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { IMSDK } from "@/layout/MainContentWrap";
-import { resolveAgentFinalAnswer } from "@/services/agentOutput";
+import {
+  resolveAgentFinalAnswer,
+  resolveFromAgentRunContract,
+} from "@/services/agentOutput";
+import {
+  AgentRunContract,
+  AgentRunContractService,
+  AgentRunManifest,
+} from "@/services/agentRunContract";
 import { PendingAgentRequest } from "@/services/botTrigger";
 import {
   ContextBundle,
@@ -59,6 +67,8 @@ type ContextExportResult = {
   prompt: string;
   files: string[];
   bundle: ContextBundle;
+  agentRun?: AgentRunContract;
+  terminalPrompt?: string;
 };
 
 type WorkspaceAttachmentExportResponse = {
@@ -220,6 +230,9 @@ const TerminalDock = () => {
   const structuredEventsByWorkspace = useTerminalDockStore(
     (state) => state.structuredEventsByWorkspace,
   );
+  const activeAgentRunByWorkspace = useTerminalDockStore(
+    (state) => state.activeAgentRunByWorkspace,
+  );
   const addStructuredEvent = useTerminalDockStore((state) => state.addStructuredEvent);
   const clearStructuredEvents = useTerminalDockStore(
     (state) => state.clearStructuredEvents,
@@ -267,6 +280,7 @@ const TerminalDock = () => {
   const setLastCapturedText = useTerminalDockStore(
     (state) => state.setLastCapturedText,
   );
+  const setActiveAgentRun = useTerminalDockStore((state) => state.setActiveAgentRun);
 
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [commandModalOpen, setCommandModalOpen] = useState(false);
@@ -339,30 +353,70 @@ const TerminalDock = () => {
   const lastStructuredFinalAnswer = [...structuredSidecarEvents]
     .reverse()
     .find((event) => event.type === "final_answer");
+  const activeAgentRun = activeWorkspaceID
+    ? activeAgentRunByWorkspace[activeWorkspaceID]
+    : undefined;
 
-  const getResolvedFinalAnswer = useCallback((tab: TerminalTab) => {
-    const api = terminalApisRef.current.get(tab.id);
-    const latestState = useTerminalDockStore.getState();
-    const storedOutputText = getStoredOutputFallback(latestState.outputByTab, tab.id);
-    const structuredEvents = latestState.structuredEventsByWorkspace[tab.workspaceID];
+  const readWorkspaceText = useCallback(
+    async (relativePath: string) => {
+      if (!activeWorkspace || !window.electronAPI) return undefined;
+      const file = await window.electronAPI.getFileByPath(
+        joinWorkspacePath(activeWorkspace.rootPath, relativePath),
+      );
+      if (!file) return undefined;
+      return file.text();
+    },
+    [activeWorkspace],
+  );
 
-    return resolveAgentFinalAnswer({
-      visibleText: api?.getVisibleText(),
-      recentOutputText: api?.getRecentOutputText(),
-      storedOutputText,
-      structuredEvents,
-    });
-  }, []);
+  const getResolvedFinalAnswer = useCallback(
+    async (tab: TerminalTab) => {
+      const latestState = useTerminalDockStore.getState();
+      const run = latestState.activeAgentRunByWorkspace[tab.workspaceID];
+      if (run) {
+        const [manifestText, finalAnswerText] = await Promise.all([
+          readWorkspaceText(run.manifestPath),
+          readWorkspaceText(run.finalAnswerPath),
+        ]);
+        const manifest = manifestText
+          ? AgentRunContractService.parseManifest(manifestText)
+          : undefined;
+        const runResolution = resolveFromAgentRunContract(
+          run,
+          manifest,
+          finalAnswerText,
+        );
+        if (runResolution?.text) return runResolution;
+      }
+
+      const api = terminalApisRef.current.get(tab.id);
+      const storedOutputText = getStoredOutputFallback(latestState.outputByTab, tab.id);
+      const structuredEvents = latestState.structuredEventsByWorkspace[
+        tab.workspaceID
+      ]?.filter((event) => {
+        if (event.type !== "final_answer") return true;
+        return !run || !event.runID || event.runID === run.runID;
+      });
+
+      return resolveAgentFinalAnswer({
+        visibleText: api?.getVisibleText(),
+        recentOutputText: api?.getRecentOutputText(),
+        storedOutputText,
+        structuredEvents,
+      });
+    },
+    [readWorkspaceText],
+  );
 
   const captureTerminalFinalAnswer = useCallback(
-    (mode: "manual" | "auto") => {
+    async (mode: "manual" | "auto") => {
       if (!activeTab) return;
 
-      const resolution = getResolvedFinalAnswer(activeTab);
-      if (!isStructuredResolution(resolution)) {
+      const resolution = await getResolvedFinalAnswer(activeTab);
+      if (!isStructuredResolution(resolution) && resolution?.source !== "run_file") {
         if (mode === "manual") {
           message.info(
-            "No structured final answer available. Use Terminal Selection as Reply.",
+            "No run final answer available. Use Terminal Selection as Reply.",
           );
         }
         return;
@@ -395,6 +449,8 @@ const TerminalDock = () => {
         message.success(
           resolution?.source === "structured"
             ? "Structured final answer captured"
+            : resolution?.source === "run_file"
+            ? "Run final answer captured"
             : "Structured terminal JSON answer captured",
         );
       }
@@ -458,7 +514,7 @@ const TerminalDock = () => {
     }
 
     const timer = window.setTimeout(() => {
-      captureTerminalFinalAnswer("auto");
+      void captureTerminalFinalAnswer("auto");
     }, AUTO_CAPTURE_DEBOUNCE);
 
     return () => window.clearTimeout(timer);
@@ -480,32 +536,36 @@ const TerminalDock = () => {
     }
 
     const timer = window.setTimeout(() => {
-      const resolution = getResolvedFinalAnswer(activeTab);
-      if (!isStructuredResolution(resolution)) return;
+      void (async () => {
+        const resolution = await getResolvedFinalAnswer(activeTab);
+        if (!isStructuredResolution(resolution) && resolution?.source !== "run_file") {
+          return;
+        }
 
-      const normalizedText = resolution?.text?.trim();
-      if (!normalizedText || shouldSkipAutoSend(normalizedText)) return;
+        const normalizedText = resolution?.text?.trim();
+        if (!normalizedText || shouldSkipAutoSend(normalizedText)) return;
 
-      const textHash = hashText(normalizedText);
-      const now = Date.now();
-      const lastDraftHash = lastDraftHashByTabRef.current.get(activeTab.id);
-      const lastSentHash = lastSentHashByTabRef.current.get(activeTab.id);
-      const lastSentAt = lastSentAtByTabRef.current.get(activeTab.id) ?? 0;
+        const textHash = hashText(normalizedText);
+        const now = Date.now();
+        const lastDraftHash = lastDraftHashByTabRef.current.get(activeTab.id);
+        const lastSentHash = lastSentHashByTabRef.current.get(activeTab.id);
+        const lastSentAt = lastSentAtByTabRef.current.get(activeTab.id) ?? 0;
 
-      if (lastDraftHash !== textHash) {
-        lastDraftHashByTabRef.current.set(activeTab.id, textHash);
-        setLastCapturedText(activeTab.id, normalizedText);
-        emit("REPLACE_CHAT_INPUT", normalizedText);
-      }
+        if (lastDraftHash !== textHash) {
+          lastDraftHashByTabRef.current.set(activeTab.id, textHash);
+          setLastCapturedText(activeTab.id, normalizedText);
+          emit("REPLACE_CHAT_INPUT", normalizedText);
+        }
 
-      if (lastSentHash === textHash || now - lastSentAt < AUTO_SEND_MIN_INTERVAL) {
-        return;
-      }
+        if (lastSentHash === textHash || now - lastSentAt < AUTO_SEND_MIN_INTERVAL) {
+          return;
+        }
 
-      emit("SEND_CHAT_INPUT", normalizedText);
-      lastSentHashByTabRef.current.set(activeTab.id, textHash);
-      lastSentAtByTabRef.current.set(activeTab.id, now);
-      message.success("Draft sent to chat");
+        emit("SEND_CHAT_INPUT", normalizedText);
+        lastSentHashByTabRef.current.set(activeTab.id, textHash);
+        lastSentAtByTabRef.current.set(activeTab.id, now);
+        message.success("Draft sent to chat");
+      })();
     }, AUTO_SEND_MIN_INTERVAL);
 
     return () => window.clearTimeout(timer);
@@ -543,7 +603,10 @@ const TerminalDock = () => {
 
     const finalAnswers = events.filter(
       (event): event is import("@/services/agentOutput").AgentFinalAnswerEvent =>
-        event.type === "final_answer" && Boolean(event.text),
+        event.type === "final_answer" &&
+        Boolean(event.text) &&
+        Boolean(activeAgentRun?.runID) &&
+        event.runID === activeAgentRun?.runID,
     );
 
     for (const finalAnswer of finalAnswers) {
@@ -552,6 +615,7 @@ const TerminalDock = () => {
       const replyKey = [
         activeWorkspaceID,
         conversationID,
+        finalAnswer.runID,
         finalAnswer.sessionID || textHash,
         textHash,
       ].join("|");
@@ -569,11 +633,53 @@ const TerminalDock = () => {
     }
   }, [
     autoReplyEnabled,
+    activeAgentRun?.runID,
     activeConversationBound,
     activeTab,
     activeWorkspaceID,
     conversationID,
     structuredEventsByWorkspace,
+  ]);
+
+  useEffect(() => {
+    if (!autoReplyEnabled || !activeAgentRun || !activeWorkspaceID || !conversationID) {
+      return undefined;
+    }
+    if (!activeTab || activeTab.status !== "running") return undefined;
+    if (activeTab.workspaceID !== activeWorkspaceID) return undefined;
+    if (!activeConversationBound) return undefined;
+
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const resolution = await getResolvedFinalAnswer(activeTab);
+        if (resolution?.source !== "run_file" || !resolution.text?.trim()) return;
+
+        const text = resolution.text.trim();
+        const textHash = hashText(text);
+        const replyKey = [
+          activeWorkspaceID,
+          conversationID,
+          activeAgentRun.runID,
+          textHash,
+        ].join("|");
+
+        if (autoRepliedHashesRef.current.has(replyKey)) return;
+
+        autoRepliedHashesRef.current.add(replyKey);
+        emit("SEND_CHAT_INPUT", text);
+        message.success("Run final answer auto-sent to chat");
+      })();
+    }, AUTO_CAPTURE_DEBOUNCE);
+
+    return () => window.clearInterval(timer);
+  }, [
+    autoReplyEnabled,
+    activeAgentRun,
+    activeConversationBound,
+    activeTab,
+    activeWorkspaceID,
+    conversationID,
+    getResolvedFinalAnswer,
   ]);
 
   const onCreateWorkspace = async () => {
@@ -784,6 +890,48 @@ const TerminalDock = () => {
     };
   };
 
+  const createAgentRunForContext = async (result: ContextExportResult) => {
+    if (!activeWorkspace || !conversationID || !window.electronAPI) {
+      message.warning("No active workspace or conversation");
+      return undefined;
+    }
+
+    const artifacts = AgentRunContractService.create({
+      workspaceID: activeWorkspace.id,
+      conversationID,
+      requestMarkdown: result.bundle.markdown,
+      promptText: result.bundle.promptText,
+    });
+
+    for (const skillFile of artifacts.skillFiles) {
+      await window.electronAPI.ipcInvoke("workspace:writeWorkspaceFile", {
+        workspaceID: activeWorkspace.id,
+        relativePath: skillFile.path,
+        content: skillFile.content,
+      });
+    }
+
+    await window.electronAPI.ipcInvoke("workspace:writeWorkspaceFile", {
+      workspaceID: activeWorkspace.id,
+      relativePath: artifacts.contract.requestPath,
+      content: artifacts.requestMarkdown,
+    });
+    await window.electronAPI.ipcInvoke("workspace:writeWorkspaceFile", {
+      workspaceID: activeWorkspace.id,
+      relativePath: artifacts.contract.manifestPath,
+      content: JSON.stringify(artifacts.initialManifest, null, 2),
+    });
+    await window.electronAPI.ipcInvoke("workspace:writeWorkspaceFile", {
+      workspaceID: activeWorkspace.id,
+      relativePath: AgentRunContractService.latestRunPath,
+      content: JSON.stringify(artifacts.latestRun, null, 2),
+    });
+
+    setActiveAgentRun(activeWorkspace.id, artifacts.contract);
+
+    return artifacts;
+  };
+
   const sendPromptToTerminal = async (promptText: string) => {
     if (!activeTab) {
       message.warning("No active terminal");
@@ -810,7 +958,11 @@ const TerminalDock = () => {
     }
 
     if (action === "send") {
-      return sendPromptToTerminal(result.bundle.promptText);
+      const run = await createAgentRunForContext(result);
+      if (!run) return false;
+      result.agentRun = run.contract;
+      result.terminalPrompt = run.terminalPrompt;
+      return sendPromptToTerminal(run.terminalPrompt);
     }
 
     message.success(
