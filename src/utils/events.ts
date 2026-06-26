@@ -45,13 +45,23 @@ export type TerminalContextActionParams = IMContextActionParams;
 export type { ContextAction, ContextSource };
 
 export type PendingChatAttachmentParams = {
-  source: "workspace";
+  source: "picker" | "workspace";
   fileName: string;
-  filePath: string;
-  relativePath: string;
+  /** Absolute native path on disk (Electron). */
+  nativePath?: string;
+  /** Workspace-relative path (workspace source). */
+  relativePath?: string;
   fileType: string;
   fileSize: number;
   sendKind: "image" | "file";
+  /** Browser File object (picker source, web fallback). */
+  file?: File;
+};
+
+export type DraftAttachment = PendingChatAttachmentParams & {
+  id: string;
+  status: "pending" | "sending" | "sent" | "failed";
+  error?: string;
 };
 
 export type RemoveMessagesParams = {

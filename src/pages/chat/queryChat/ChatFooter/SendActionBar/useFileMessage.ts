@@ -6,49 +6,73 @@ export interface FileWithPath extends File {
   path?: string;
 }
 
+export type LocalFileInput =
+  | File
+  | {
+      nativePath: string;
+      fileName: string;
+      fileSize?: number;
+      mimeType?: string;
+    };
+
 export function useFileMessage() {
-  const getImageMessage = async (file: FileWithPath) => {
-    const { width, height } = await getPicInfo(file);
+  const getImageMessage = async (input: LocalFileInput) => {
+    const isFile = input instanceof File;
+    const nativePath = isFile ? (input as FileWithPath).path : input.nativePath;
+
+    if (window.electronAPI && nativePath) {
+      const imageMessage = (await IMSDK.createImageMessageFromFullPath(nativePath))
+        .data;
+      const baseUrl = URL.createObjectURL(
+        new Blob([], {
+          type: isFile ? input.type : input.mimeType ?? "image/png",
+        }),
+      );
+      imageMessage.pictureElem!.sourcePicture.url = baseUrl;
+      return imageMessage;
+    }
+
+    const file = isFile ? input : new File([], input.fileName);
+    const picInfo = await getPicInfo(file);
     const baseInfo = {
       uuid: uuidV4(),
-      type: file.type,
+      type: file.type || "image/png",
       size: file.size,
-      width,
-      height,
+      width: picInfo.width,
+      height: picInfo.height,
       url: URL.createObjectURL(file),
     };
 
-    if (window.electronAPI) {
-      const imageMessage = (await IMSDK.createImageMessageFromFullPath(file.path!))
-        .data;
-      imageMessage.pictureElem!.sourcePicture.url = baseInfo.url;
-      return imageMessage;
-    }
-    const options = {
-      sourcePicture: baseInfo,
-      bigPicture: baseInfo,
-      snapshotPicture: baseInfo,
-      sourcePath: "",
-      file,
-    };
-
-    return (await IMSDK.createImageMessageByFile(options)).data;
+    return (
+      await IMSDK.createImageMessageByFile({
+        sourcePicture: baseInfo,
+        bigPicture: baseInfo,
+        snapshotPicture: baseInfo,
+        sourcePath: "",
+        file,
+      })
+    ).data;
   };
 
-  const getFileMessage = async (file: FileWithPath) => {
-    if (window.electronAPI && file.path) {
+  const getFileMessage = async (input: LocalFileInput) => {
+    const isFile = input instanceof File;
+    const nativePath = isFile ? (input as FileWithPath).path : input.nativePath;
+    const fileName = isFile ? input.name : input.fileName;
+
+    if (window.electronAPI && nativePath) {
       return (
         await IMSDK.createFileMessageFromFullPath({
-          filePath: file.path,
-          fileName: file.name,
+          filePath: nativePath,
+          fileName,
         })
       ).data;
     }
 
+    const file = isFile ? input : new File([], fileName);
     return (
       await IMSDK.createFileMessageByFile({
         filePath: "",
-        fileName: file.name,
+        fileName,
         uuid: uuidV4(),
         sourceUrl: URL.createObjectURL(file),
         fileSize: file.size,

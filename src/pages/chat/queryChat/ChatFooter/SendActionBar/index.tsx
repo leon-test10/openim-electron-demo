@@ -7,43 +7,54 @@ import { UploadRequestOption } from "rc-upload/lib/interface";
 import { memo, ReactNode, useState } from "react";
 import React from "react";
 
+import fileIconSvg from "@/assets/images/chatFooter/file.png";
 import image from "@/assets/images/chatFooter/image.png";
 import rtc from "@/assets/images/chatFooter/rtc.png";
 import { useConversationStore } from "@/store";
+import emitter, { PendingChatAttachmentParams } from "@/utils/events";
 
 import { SendMessageParams } from "../useSendMessage";
 import CallPopContent from "./CallPopContent";
 
 const sendActionList = [
   {
+    id: "image" as const,
     title: t("placeholder.image"),
     icon: image,
-    key: "image",
     accept: "image/*",
+    kind: "image" as const,
     comp: null,
-    placement: undefined,
+    placement: undefined as TooltipPlacement | undefined,
   },
   {
+    id: "file" as const,
+    title: "文件",
+    icon: fileIconSvg,
+    accept: "*",
+    kind: "file" as const,
+    comp: null,
+    placement: undefined as TooltipPlacement | undefined,
+  },
+  {
+    id: "rtc" as const,
     title: t("placeholder.call"),
     icon: rtc,
-    key: "rtc",
     accept: undefined,
+    kind: undefined,
     comp: <CallPopContent />,
-    placement: "top",
+    placement: "top" as TooltipPlacement | undefined,
   },
 ];
 
 i18n.on("languageChanged", () => {
   sendActionList[0].title = t("placeholder.image");
-  sendActionList[1].title = t("placeholder.call");
+  sendActionList[2].title = t("placeholder.call");
 });
 
 const SendActionBar = ({
   sendMessage,
-  getImageMessage,
 }: {
   sendMessage: (params: SendMessageParams) => Promise<void>;
-  getImageMessage: (file: File) => Promise<MessageItem>;
 }) => {
   const [visibleState, setVisibleState] = useState(false);
   const isGroupSession = useConversationStore((state) =>
@@ -52,17 +63,24 @@ const SendActionBar = ({
 
   const closePop = () => setVisibleState(false);
 
-  const fileHandle = async (options: UploadRequestOption) => {
-    const message = await getImageMessage(options.file as File);
-    sendMessage({
-      message,
-    });
+  const fileHandle = (options: UploadRequestOption, kind: "image" | "file") => {
+    const file = options.file as File & { path?: string };
+    const attachment: PendingChatAttachmentParams = {
+      source: "picker",
+      fileName: file.name,
+      nativePath: file.path,
+      fileType: file.type,
+      fileSize: file.size,
+      sendKind: kind,
+      file,
+    };
+    emitter.emit("ADD_PENDING_CHAT_ATTACHMENT", attachment);
   };
 
   return (
     <div className="flex items-center px-4.5 pt-2">
       {sendActionList.map((action) => {
-        if (action.key === "rtc" && isGroupSession) {
+        if (action.id === "rtc" && isGroupSession) {
           return null;
         }
         const popProps: PopoverProps = {
@@ -83,9 +101,9 @@ const SendActionBar = ({
         return (
           <ActionWrap
             popProps={popProps}
-            key={action.key}
+            key={action.id}
             accept={action.accept}
-            fileHandle={fileHandle}
+            fileHandle={(opts) => fileHandle(opts, action.kind || "file")}
           >
             <div
               className={clsx("flex cursor-pointer items-center last:mr-0", {

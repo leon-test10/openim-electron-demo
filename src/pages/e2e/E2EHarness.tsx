@@ -831,7 +831,9 @@ const E2EHarness = () => {
               pendingAttachments.map((attachment, index) => (
                 <div
                   className="mb-2 flex items-center justify-between gap-2 last:mb-0"
-                  key={`${attachment.filePath}-${index}`}
+                  key={String(
+                    attachment.nativePath || attachment.relativePath || index,
+                  )}
                 >
                   <span className="min-w-0 flex-1 truncate">
                     {attachment.fileName} | {attachment.relativePath} |{" "}

@@ -700,7 +700,7 @@ const TerminalDock = () => {
             emit("ADD_PENDING_CHAT_ATTACHMENT", {
               source: "workspace" as const,
               fileName: relativePath.split("/").pop() || relativePath,
-              filePath: joinWorkspacePath(activeWorkspace.rootPath, relativePath),
+              nativePath: joinWorkspacePath(activeWorkspace.rootPath, relativePath),
               relativePath,
               fileType: inferredKind === "image" ? "image" : "file",
               fileSize: 0,
@@ -1070,7 +1070,7 @@ const TerminalDock = () => {
       emit("ADD_PENDING_CHAT_ATTACHMENT", {
         source: "workspace",
         fileName: attachmentCandidate.fileName,
-        filePath: attachmentCandidate.absolutePath,
+        nativePath: attachmentCandidate.absolutePath,
         relativePath: attachmentCandidate.relativePath,
         fileType: attachmentCandidate.fileType,
         fileSize: attachmentCandidate.fileSize,

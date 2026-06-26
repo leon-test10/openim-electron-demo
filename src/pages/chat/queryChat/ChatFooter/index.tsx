@@ -312,20 +312,44 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   };
 
   const sendPendingAttachment = async (attachment: PendingChatAttachmentParams) => {
-    const workspaceFile = await window.electronAPI?.getFileByPath(attachment.filePath);
-    if (!workspaceFile) {
-      throw new Error(`Cannot read workspace file: ${attachment.relativePath}`);
+    const nativePath =
+      attachment.nativePath ??
+      (attachment.source === "workspace" && attachment.relativePath && activeWorkspaceID
+        ? (() => {
+            const ws = useTerminalDockStore
+              .getState()
+              .workspaces.find((w) => w.id === activeWorkspaceID);
+            return ws ? `${ws.rootPath}/${attachment.relativePath}` : undefined;
+          })()
+        : undefined);
+
+    if (attachment.sendKind === "image") {
+      const message = nativePath
+        ? await getImageMessage({
+            nativePath,
+            fileName: attachment.fileName,
+            fileSize: attachment.fileSize,
+            mimeType: attachment.fileType,
+          })
+        : attachment.file
+        ? await getImageMessage(attachment.file)
+        : null;
+      if (!message) throw new Error("Cannot create image message");
+      await sendMessage({ message });
+    } else {
+      const message = nativePath
+        ? await getFileMessage({
+            nativePath,
+            fileName: attachment.fileName,
+            fileSize: attachment.fileSize,
+            mimeType: attachment.fileType,
+          })
+        : attachment.file
+        ? await getFileMessage(attachment.file)
+        : null;
+      if (!message) throw new Error("Cannot create file message");
+      await sendMessage({ message });
     }
-
-    const fileWithPath = Object.assign(workspaceFile, {
-      path: attachment.filePath,
-    });
-    const message =
-      attachment.sendKind === "image"
-        ? await getImageMessage(fileWithPath)
-        : await getFileMessage(fileWithPath);
-
-    await sendMessage({ message });
   };
 
   const enterToSend = async () => {
@@ -358,7 +382,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   return (
     <footer className="relative h-full bg-white py-px">
       <div className="flex h-full flex-col border-t border-t-[var(--gap-text)]">
-        <SendActionBar sendMessage={sendMessage} getImageMessage={getImageMessage} />
+        <SendActionBar sendMessage={sendMessage} />
         <div className="relative flex flex-1 flex-col overflow-hidden">
           <div
             className="mx-4 mt-2 flex flex-wrap items-center gap-3 rounded border border-[#e5e7eb] bg-[#f8fafc] px-3 py-2 text-xs text-[#475467]"
@@ -427,27 +451,33 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
               className="mx-4 mt-2 flex flex-wrap gap-2"
               data-testid="chat-footer-pending-attachments"
             >
-              {pendingAttachments.map((attachment, index) => (
-                <div
-                  className="flex max-w-[280px] items-center gap-1 rounded border border-[#d0d5dd] bg-[#f8fafc] px-2 py-1 text-xs text-[#344054]"
-                  key={`${attachment.filePath}-${index}`}
-                  title={attachment.filePath}
-                  data-testid="chat-footer-pending-attachment"
-                >
-                  <span className="truncate">
-                    Pending {attachment.sendKind}: {attachment.fileName}
-                  </span>
-                  <Button
-                    size="small"
-                    type="text"
-                    className="!h-5 !w-5 shrink-0 !p-0"
-                    icon={<CloseOutlined rev={undefined} />}
-                    onClick={() => removePendingAttachment(index)}
-                    aria-label={`Remove ${attachment.fileName}`}
-                    data-testid="chat-footer-remove-pending-attachment"
-                  />
-                </div>
-              ))}
+              {pendingAttachments.map((attachment, index) => {
+                const displayPath =
+                  attachment.nativePath ||
+                  attachment.relativePath ||
+                  attachment.fileName;
+                return (
+                  <div
+                    className="flex max-w-[280px] items-center gap-1 rounded border border-[#d0d5dd] bg-[#f8fafc] px-2 py-1 text-xs text-[#344054]"
+                    key={`${displayPath}-${index}`}
+                    title={displayPath}
+                    data-testid="chat-footer-pending-attachment"
+                  >
+                    <span className="truncate">
+                      Pending {attachment.sendKind}: {attachment.fileName}
+                    </span>
+                    <Button
+                      size="small"
+                      type="text"
+                      className="!h-5 !w-5 shrink-0 !p-0"
+                      icon={<CloseOutlined rev={undefined} />}
+                      onClick={() => removePendingAttachment(index)}
+                      aria-label={`Remove ${attachment.fileName}`}
+                      data-testid="chat-footer-remove-pending-attachment"
+                    />
+                  </div>
+                );
+              })}
             </div>
           )}
           <div className="relative">
