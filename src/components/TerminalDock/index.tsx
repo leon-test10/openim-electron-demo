@@ -379,23 +379,42 @@ const TerminalDock = () => {
     [activeWorkspace],
   );
 
+  const readWorkspaceStat = useCallback(
+    async (relativePath: string) => {
+      if (!activeWorkspace || !window.electronAPI) return undefined;
+      const result = await window.electronAPI.ipcInvoke<{
+        exists: boolean;
+        isFile: boolean;
+        size: number;
+        mtimeMs: number;
+      }>("workspace:statFile", activeWorkspace.id, relativePath);
+      return result?.exists && result.isFile ? result : undefined;
+    },
+    [activeWorkspace],
+  );
+
   const getResolvedFinalAnswer = useCallback(
     async (tab: TerminalTab) => {
       const latestState = useTerminalDockStore.getState();
       const run = latestState.activeAgentRunByWorkspace[tab.workspaceID];
       if (run) {
-        const [manifestText, finalAnswerText] = await Promise.all([
-          readWorkspaceText(run.manifestPath),
-          readWorkspaceText(run.finalAnswerPath),
-        ]);
+        const [manifestText, finalAnswerText, manifestStat, finalAnswerStat] =
+          await Promise.all([
+            readWorkspaceText(run.manifestPath),
+            readWorkspaceText(run.finalAnswerPath),
+            readWorkspaceStat(run.manifestPath),
+            readWorkspaceStat(run.finalAnswerPath),
+          ]);
         const manifest = manifestText
           ? AgentRunContractService.parseManifest(manifestText)
           : undefined;
-        const runResolution = resolveFromAgentRunContract(
-          run,
+        const runResolution = resolveFromAgentRunContract({
+          contract: run,
           manifest,
           finalAnswerText,
-        );
+          manifestFileMtimeMs: manifestStat?.mtimeMs,
+          finalAnswerFileMtimeMs: finalAnswerStat?.mtimeMs,
+        });
         if (runResolution?.text) return runResolution;
       }
 
@@ -415,7 +434,7 @@ const TerminalDock = () => {
         structuredEvents,
       });
     },
-    [readWorkspaceText],
+    [activeWorkspace, readWorkspaceStat, readWorkspaceText],
   );
 
   const captureTerminalFinalAnswer = useCallback(

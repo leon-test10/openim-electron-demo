@@ -44,4 +44,5 @@ export const IpcRenderToMain = {
   workspaceWriteWorkspaceFile: "workspace:writeWorkspaceFile",
   workspaceCopyWorkspaceFile: "workspace:copyWorkspaceFile",
   workspaceDownloadWorkspaceFile: "workspace:downloadWorkspaceFile",
+  workspaceStatFile: "workspace:statFile",
 };

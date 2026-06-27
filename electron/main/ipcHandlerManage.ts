@@ -20,6 +20,7 @@ import {
   downloadFileToTerminalWorkspace,
   getConversationWorkspaceDir,
   getTerminalWorkspaceDir,
+  statWorkspaceFile,
   writeFileToConversationWorkspace,
   writeFileToTerminalWorkspace,
 } from "./workspaceManage";
@@ -173,6 +174,12 @@ export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.workspaceDownloadWorkspaceFile, (_, params) => {
     return downloadFileToTerminalWorkspace(params);
   });
+  ipcMain.handle(
+    IpcRenderToMain.workspaceStatFile,
+    (_, workspaceID: string, relativePath: string) => {
+      return statWorkspaceFile(workspaceID, relativePath);
+    },
+  );
   ipcMain.on(IpcRenderToMain.getDataPath, (e, key: string) => {
     switch (key) {
       case "public":

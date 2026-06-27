@@ -67,11 +67,14 @@ const parseOutputFiles = (text: string): string[] | undefined => {
   return paths.length > 0 ? paths : undefined;
 };
 
-export const resolveFromAgentRunContract = (
-  contract: AgentRunContract | undefined,
-  manifest: AgentRunManifest | undefined,
-  finalAnswerText: string | undefined,
-): AgentOutputResolution | undefined => {
+export const resolveFromAgentRunContract = (args: {
+  contract: AgentRunContract | undefined;
+  manifest: AgentRunManifest | undefined;
+  finalAnswerText: string | undefined;
+  manifestFileMtimeMs?: number;
+  finalAnswerFileMtimeMs?: number;
+}): AgentOutputResolution | undefined => {
+  const { contract, manifest, finalAnswerText, manifestFileMtimeMs, finalAnswerFileMtimeMs } = args;
   if (!contract || !manifest) return undefined;
   if (manifest.runID !== contract.runID) return undefined;
   if (manifest.status !== "completed") return undefined;
@@ -87,8 +90,8 @@ export const resolveFromAgentRunContract = (
     source: "run_file",
     runID: contract.runID,
     outputFiles: parseOutputFiles(finalAnswerText ?? ""),
-    manifestFileMtimeMs: manifest.updatedAt,
-    finalAnswerFileMtimeMs: manifest.updatedAt,
+    manifestFileMtimeMs: manifestFileMtimeMs ?? manifest.updatedAt,
+    finalAnswerFileMtimeMs: finalAnswerFileMtimeMs ?? manifest.updatedAt,
     manifestStatus: manifest.status,
   };
 };

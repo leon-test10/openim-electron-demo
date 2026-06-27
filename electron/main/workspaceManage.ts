@@ -64,6 +64,28 @@ export const getTerminalWorkspaceDir = async (workspaceID: string) => {
   return workspaceDir;
 };
 
+export const statWorkspaceFile = async (
+  workspaceID: string,
+  relativePath: string,
+) => {
+  const workspaceDir = await getTerminalWorkspaceDir(workspaceID);
+  const resolved = path.resolve(workspaceDir, relativePath);
+  if (!resolved.startsWith(path.resolve(workspaceDir) + path.sep)) {
+    return { exists: false, isFile: false, size: 0, mtimeMs: 0 };
+  }
+  try {
+    const stat = await fs.promises.stat(resolved);
+    return {
+      exists: true,
+      isFile: stat.isFile(),
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+    };
+  } catch {
+    return { exists: false, isFile: false, size: 0, mtimeMs: 0 };
+  }
+};
+
 const ensurePathInsideRoot = (root: string, relativePath: string) => {
   if (!relativePath.trim()) {
     throw new Error("Invalid workspace path");
