@@ -1,10 +1,9 @@
-import { MessageItem } from "@openim/wasm-client-sdk";
 import { Popover, PopoverProps, Upload } from "antd";
 import { TooltipPlacement } from "antd/es/tooltip";
 import clsx from "clsx";
 import i18n, { t } from "i18next";
 import { UploadRequestOption } from "rc-upload/lib/interface";
-import { memo, ReactNode, useState } from "react";
+import { memo, ReactNode, useCallback, useState } from "react";
 import React from "react";
 
 import fileIconSvg from "@/assets/images/chatFooter/file.png";
@@ -13,7 +12,6 @@ import rtc from "@/assets/images/chatFooter/rtc.png";
 import { useConversationStore } from "@/store";
 import emitter, { PendingChatAttachmentParams } from "@/utils/events";
 
-import { SendMessageParams } from "../useSendMessage";
 import CallPopContent from "./CallPopContent";
 
 const sendActionList = [
@@ -51,17 +49,38 @@ i18n.on("languageChanged", () => {
   sendActionList[2].title = t("placeholder.call");
 });
 
-const SendActionBar = ({
-  sendMessage,
-}: {
-  sendMessage: (params: SendMessageParams) => Promise<void>;
-}) => {
+const SendActionBar = () => {
   const [visibleState, setVisibleState] = useState(false);
   const isGroupSession = useConversationStore((state) =>
     Boolean(state.currentConversation?.groupID),
   );
 
   const closePop = () => setVisibleState(false);
+
+  const onNativeFilePick = useCallback(async () => {
+    if (!window.electronAPI) return;
+    const files = await window.electronAPI.ipcInvoke<
+      Array<{
+        nativePath: string;
+        fileName: string;
+        fileSize: number;
+        mimeType?: string;
+      }>
+    >("file:selectFiles");
+    if (!files || files.length === 0) return;
+
+    for (const f of files) {
+      const attachment: PendingChatAttachmentParams = {
+        source: "picker",
+        fileName: f.fileName,
+        nativePath: f.nativePath,
+        fileType: f.mimeType ?? "",
+        fileSize: f.fileSize,
+        sendKind: "file",
+      };
+      emitter.emit("ADD_PENDING_CHAT_ATTACHMENT", attachment);
+    }
+  }, []);
 
   const fileHandle = (options: UploadRequestOption, kind: "image" | "file") => {
     const file = options.file as File & { path?: string };
@@ -97,6 +116,20 @@ const SendActionBar = ({
           open: action.comp ? visibleState : false,
           onOpenChange: (visible) => setVisibleState(visible),
         };
+
+        // File icon: use Electron dialog when available, fall back to Upload
+        if (action.id === "file" && window.electronAPI) {
+          return (
+            <div
+              key={action.id}
+              className="mr-5 flex cursor-pointer items-center"
+              onClick={() => void onNativeFilePick()}
+              title="选择文件"
+            >
+              <img src={action.icon} width={20} alt={action.title} />
+            </div>
+          );
+        }
 
         return (
           <ActionWrap

@@ -290,18 +290,21 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
 
     const onSend = async (text: string) => {
       const cleanText = text.trim();
-      if (!cleanText) return;
-
-      // Drain pending attachments (sync via ref to avoid React batching).
       const attachmentsToSend = [...pendingAttachmentsRef.current];
+
+      if (!cleanText && attachmentsToSend.length === 0) return;
+
+      // Drain pending attachments
       if (attachmentsToSend.length > 0) {
         pendingAttachmentsRef.current = [];
         setPendingAttachments([]);
       }
 
-      const message = (await IMSDK.createTextMessage(cleanText)).data;
-      setHtml("");
-      await sendMessage({ message });
+      if (cleanText) {
+        const message = (await IMSDK.createTextMessage(cleanText)).data;
+        setHtml("");
+        await sendMessage({ message });
+      }
 
       for (const attachment of attachmentsToSend) {
         try {
@@ -410,7 +413,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   return (
     <footer className="relative h-full bg-white py-px">
       <div className="flex h-full flex-col border-t border-t-[var(--gap-text)]">
-        <SendActionBar sendMessage={sendMessage} />
+        <SendActionBar />
         <div className="relative flex flex-1 flex-col overflow-hidden">
           <div
             className="mx-4 mt-2 flex flex-wrap items-center gap-3 rounded border border-[#e5e7eb] bg-[#f8fafc] px-3 py-2 text-xs text-[#475467]"
