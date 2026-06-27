@@ -670,6 +670,13 @@ const TerminalDock = () => {
     structuredEventsByWorkspace,
   ]);
 
+  const terminalStartedAtRef = useRef<number>(0);
+  useEffect(() => {
+    if (activeTab?.status === "running" && terminalStartedAtRef.current === 0) {
+      terminalStartedAtRef.current = Date.now();
+    }
+  }, [activeTab?.status]);
+
   useEffect(() => {
     const canAutoReply = autoReplyTextEnabled || autoFileAttachmentEnabled;
     if (!canAutoReply || !activeAgentRun || !activeWorkspaceID || !conversationID) {
@@ -679,33 +686,46 @@ const TerminalDock = () => {
     if (activeTab.workspaceID !== activeWorkspaceID) return undefined;
     if (!activeConversationBound) return undefined;
 
-    const textGate = Math.max(autoReplyTextEnabledAt ?? 0, activeAgentRun.createdAt);
+    const terminalStartedAt = terminalStartedAtRef.current;
+    const textGate = Math.max(
+      autoReplyTextEnabledAt ?? 0,
+      terminalStartedAt,
+      activeAgentRun.createdAt,
+    );
     const fileGate = Math.max(
       autoFileAttachmentEnabledAt ?? 0,
+      terminalStartedAt,
       activeAgentRun.createdAt,
     );
 
     const timer = window.setInterval(() => {
       void (async () => {
         const resolution = await getResolvedFinalAnswer(activeTab);
-        if (resolution?.source !== "run_file" || !resolution.text?.trim()) return;
+        if (
+          resolution?.source !== "run_file" ||
+          !resolution.text?.trim() ||
+          resolution.runID !== activeAgentRun.runID
+        )
+          return;
 
-        const manifestUpdatedAt =
-          resolution.runID === activeAgentRun.runID
-            ? Date.now() // approximate — manifest was just completed
-            : 0;
-        if (manifestUpdatedAt < Math.max(textGate, fileGate)) return;
+        const manifestUpdatedAt = resolution.manifestUpdatedAt ?? 0;
+        if (manifestUpdatedAt === 0) return;
 
         const text = resolution.text.trim();
 
-        // Auto Reply Text
-        if (autoReplyTextEnabled && manifestUpdatedAt > textGate) {
+        // Auto Reply Text — use stable key with real timestamps
+        if (
+          autoReplyTextEnabled &&
+          resolution.finalAnswerUpdatedAt != null &&
+          resolution.finalAnswerUpdatedAt > textGate
+        ) {
           const replyKey = [
             "text",
             conversationID,
             activeWorkspaceID,
             activeAgentRun.runID,
             String(manifestUpdatedAt),
+            String(resolution.finalAnswerUpdatedAt),
           ].join(":");
           if (!autoRepliedHashesRef.current.has(replyKey)) {
             autoRepliedHashesRef.current.add(replyKey);

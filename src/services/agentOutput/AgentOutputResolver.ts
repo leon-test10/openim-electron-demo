@@ -27,6 +27,10 @@ export interface AgentOutputResolution {
   runID?: string;
   /** Workspace-relative file paths extracted from ## Output Files section. */
   outputFiles?: string[];
+  /** Timestamp from the completed manifest. */
+  manifestUpdatedAt?: number;
+  /** Timestamp when final_answer.md was written. */
+  finalAnswerUpdatedAt?: number;
 }
 
 interface ResolveAgentOutputParams {
@@ -81,6 +85,8 @@ export const resolveFromAgentRunContract = (
     source: "run_file",
     runID: contract.runID,
     outputFiles: parseOutputFiles(finalAnswerText ?? ""),
+    manifestUpdatedAt: manifest.updatedAt,
+    finalAnswerUpdatedAt: manifest.updatedAt,
   };
 };
 
