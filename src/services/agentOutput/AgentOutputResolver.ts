@@ -27,10 +27,12 @@ export interface AgentOutputResolution {
   runID?: string;
   /** Workspace-relative file paths extracted from ## Output Files section. */
   outputFiles?: string[];
-  /** Timestamp from the completed manifest. */
-  manifestUpdatedAt?: number;
-  /** Timestamp when final_answer.md was written. */
-  finalAnswerUpdatedAt?: number;
+  /** File mtime of manifest.json (milliseconds). */
+  manifestFileMtimeMs?: number;
+  /** File mtime of final_answer.md (milliseconds). */
+  finalAnswerFileMtimeMs?: number;
+  /** Status from the manifest. */
+  manifestStatus?: "pending" | "running" | "completed" | "failed";
 }
 
 interface ResolveAgentOutputParams {
@@ -85,8 +87,9 @@ export const resolveFromAgentRunContract = (
     source: "run_file",
     runID: contract.runID,
     outputFiles: parseOutputFiles(finalAnswerText ?? ""),
-    manifestUpdatedAt: manifest.updatedAt,
-    finalAnswerUpdatedAt: manifest.updatedAt,
+    manifestFileMtimeMs: manifest.updatedAt,
+    finalAnswerFileMtimeMs: manifest.updatedAt,
+    manifestStatus: manifest.status,
   };
 };
 

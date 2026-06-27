@@ -677,6 +677,9 @@ const TerminalDock = () => {
     }
   }, [activeTab?.status]);
 
+  const inFlightRef = useRef<Set<string>>(new Set());
+  const blockedReasonRef = useRef<string>("");
+
   useEffect(() => {
     const canAutoReply = autoReplyTextEnabled || autoFileAttachmentEnabled;
     if (!canAutoReply || !activeAgentRun || !activeWorkspaceID || !conversationID) {
@@ -701,23 +704,35 @@ const TerminalDock = () => {
     const timer = window.setInterval(() => {
       void (async () => {
         const resolution = await getResolvedFinalAnswer(activeTab);
+        if (!resolution) {
+          blockedReasonRef.current = "no_resolution";
+          return;
+        }
         if (
-          resolution?.source !== "run_file" ||
+          resolution.source !== "run_file" ||
           !resolution.text?.trim() ||
           resolution.runID !== activeAgentRun.runID
         )
           return;
 
-        const manifestUpdatedAt = resolution.manifestUpdatedAt ?? 0;
-        if (manifestUpdatedAt === 0) return;
+        if (resolution.manifestStatus !== "completed") {
+          blockedReasonRef.current = `manifest_${resolution.manifestStatus ?? "unknown"}`;
+          return;
+        }
+
+        const manifestUpdatedAt = resolution.manifestFileMtimeMs ?? 0;
+        if (manifestUpdatedAt === 0) {
+          blockedReasonRef.current = "no_file_mtime";
+          return;
+        }
 
         const text = resolution.text.trim();
 
         // Auto Reply Text — use stable key with real timestamps
         if (
           autoReplyTextEnabled &&
-          resolution.finalAnswerUpdatedAt != null &&
-          resolution.finalAnswerUpdatedAt > textGate
+          resolution.finalAnswerFileMtimeMs != null &&
+          resolution.finalAnswerFileMtimeMs > textGate
         ) {
           const replyKey = [
             "text",
@@ -725,13 +740,25 @@ const TerminalDock = () => {
             activeWorkspaceID,
             activeAgentRun.runID,
             String(manifestUpdatedAt),
-            String(resolution.finalAnswerUpdatedAt),
+            String(resolution.finalAnswerFileMtimeMs),
           ].join(":");
-          if (!autoRepliedHashesRef.current.has(replyKey)) {
-            autoRepliedHashesRef.current.add(replyKey);
-            emit("SEND_CHAT_INPUT", text);
-            message.success("Run final answer auto-sent to chat");
+          if (autoRepliedHashesRef.current.has(replyKey)) {
+            blockedReasonRef.current = "already_sent";
+          } else if (inFlightRef.current.has(replyKey)) {
+            blockedReasonRef.current = "send_in_flight";
+          } else {
+            inFlightRef.current.add(replyKey);
+            try {
+              emit("SEND_CHAT_INPUT", text);
+              autoRepliedHashesRef.current.add(replyKey);
+              message.success("Run final answer auto-sent to chat");
+              blockedReasonRef.current = "sent";
+            } finally {
+              inFlightRef.current.delete(replyKey);
+            }
           }
+        } else if (autoReplyTextEnabled) {
+          blockedReasonRef.current = "final_answer_older_than_gate";
         }
 
         // Auto File Attachment
@@ -751,18 +778,29 @@ const TerminalDock = () => {
               String(manifestUpdatedAt),
               relativePath,
             ].join(":");
-            if (autoRepliedHashesRef.current.has(fileKey)) continue;
-            autoRepliedHashesRef.current.add(fileKey);
-
-            emit("ADD_PENDING_CHAT_ATTACHMENT", {
-              source: "workspace" as const,
-              fileName: relativePath.split("/").pop() || relativePath,
-              nativePath: joinWorkspacePath(activeWorkspace.rootPath, relativePath),
-              relativePath,
-              fileType: "file",
-              fileSize: 0,
-              sendKind: "file" as const,
-            });
+            if (
+              autoRepliedHashesRef.current.has(fileKey) ||
+              inFlightRef.current.has(fileKey)
+            )
+              continue;
+            inFlightRef.current.add(fileKey);
+            try {
+              emit("ADD_PENDING_CHAT_ATTACHMENT", {
+                source: "workspace" as const,
+                fileName: relativePath.split("/").pop() || relativePath,
+                nativePath: joinWorkspacePath(
+                  activeWorkspace.rootPath,
+                  relativePath,
+                ),
+                relativePath,
+                fileType: "file",
+                fileSize: 0,
+                sendKind: "file" as const,
+              });
+              autoRepliedHashesRef.current.add(fileKey);
+            } finally {
+              inFlightRef.current.delete(fileKey);
+            }
           }
           if (outputFiles.length > 0 && !autoReplyTextEnabled) {
             message.success(`${outputFiles.length} output file(s) auto-attached`);
