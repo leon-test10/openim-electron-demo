@@ -74,7 +74,13 @@ export const resolveFromAgentRunContract = (args: {
   manifestFileMtimeMs?: number;
   finalAnswerFileMtimeMs?: number;
 }): AgentOutputResolution | undefined => {
-  const { contract, manifest, finalAnswerText, manifestFileMtimeMs, finalAnswerFileMtimeMs } = args;
+  const {
+    contract,
+    manifest,
+    finalAnswerText,
+    manifestFileMtimeMs,
+    finalAnswerFileMtimeMs,
+  } = args;
   if (!contract || !manifest) return undefined;
   if (manifest.runID !== contract.runID) return undefined;
   if (manifest.status !== "completed") return undefined;

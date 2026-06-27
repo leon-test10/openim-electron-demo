@@ -44,6 +44,7 @@ const installE2EElectronMock = () => {
     __e2eWorkspaceWrites?: Array<{
       relativePath?: string;
       content?: string;
+      mtimeMs?: number;
     }>;
     __e2eAttachmentExportCalls?: Array<{
       channel: string;
@@ -53,6 +54,14 @@ const installE2EElectronMock = () => {
       fileName?: string;
       filePath?: string;
       contentType?: number;
+    }>;
+    __e2eSentAttachments?: PendingChatAttachmentParams[];
+    __e2eFileActions?: Array<{
+      channel: string;
+      nativePath?: string;
+      sourceUrl?: string;
+      fileName?: string;
+      saveAs?: boolean;
     }>;
     __e2eEmitTerminalOutput?: (text: string) => void;
     __e2eStructuredEvents?: Array<{
@@ -71,6 +80,8 @@ const installE2EElectronMock = () => {
   e2eWindow.__e2eWorkspaceWrites = [];
   e2eWindow.__e2eAttachmentExportCalls = [];
   e2eWindow.__e2eSentMessages = [];
+  e2eWindow.__e2eSentAttachments = [];
+  e2eWindow.__e2eFileActions = [];
   e2eWindow.__e2eStructuredEvents = [];
   e2eWindow.__e2eEmitTerminalOutput = (text: string) => {
     const state = useTerminalDockStore.getState();
@@ -232,8 +243,12 @@ const installE2EElectronMock = () => {
           workspaceID?: string;
           relativePath?: string;
           content?: string;
+          mtimeMs?: number;
         };
-        e2eWindow.__e2eWorkspaceWrites?.push(params);
+        e2eWindow.__e2eWorkspaceWrites?.push({
+          ...params,
+          mtimeMs: params.mtimeMs ?? Date.now(),
+        });
         if (
           params.workspaceID &&
           params.relativePath === ".agent/events.ndjson" &&
@@ -259,6 +274,37 @@ const installE2EElectronMock = () => {
         }
         result = { ok: true };
         return Promise.resolve(result as T);
+      }
+
+      if (channel === "workspace:statFile") {
+        const relativePath = args[1] as string | undefined;
+        const writes = e2eWindow.__e2eWorkspaceWrites ?? [];
+        let matchingWrite:
+          | { relativePath?: string; content?: string; mtimeMs?: number }
+          | undefined;
+        let matchingIndex = -1;
+        for (let index = writes.length - 1; index >= 0; index -= 1) {
+          if (writes[index].relativePath === relativePath) {
+            matchingWrite = writes[index];
+            matchingIndex = index;
+            break;
+          }
+        }
+        if (!matchingWrite) {
+          return Promise.resolve({
+            exists: false,
+            isFile: false,
+            size: 0,
+            mtimeMs: 0,
+          } as T);
+        }
+        return Promise.resolve({
+          exists: true,
+          isFile: true,
+          size: matchingWrite.content?.length ?? 0,
+          // Keep mtime stable per write index so auto-send de-duping is deterministic.
+          mtimeMs: matchingWrite.mtimeMs ?? 1_700_000_000_000 + matchingIndex,
+        } as T);
       }
 
       if (channel === "terminal:resize" || channel === "terminal:interrupt") {
@@ -297,6 +343,41 @@ const installE2EElectronMock = () => {
           sha256: "e2e-download-sha256",
         };
         return Promise.resolve(result as T);
+      }
+
+      if (channel === "file:openPath") {
+        e2eWindow.__e2eFileActions?.push({
+          channel,
+          nativePath: args[0] as string,
+        });
+        return Promise.resolve("" as T);
+      }
+
+      if (channel === "file:showItemInFolder") {
+        e2eWindow.__e2eFileActions?.push({
+          channel,
+          nativePath: args[0] as string,
+        });
+        return Promise.resolve(true as T);
+      }
+
+      if (channel === "file:downloadToLocal") {
+        const params = args[0] as {
+          sourceUrl?: string;
+          fileName?: string;
+          saveAs?: boolean;
+        };
+        const nativePath = `C:\\OpenIM-E2E\\downloads\\${
+          params.fileName ?? "download"
+        }`;
+        e2eWindow.__e2eFileActions?.push({
+          channel,
+          nativePath,
+          sourceUrl: params.sourceUrl,
+          fileName: params.fileName,
+          saveAs: params.saveAs,
+        });
+        return Promise.resolve(nativePath as T);
       }
 
       if (channel === "terminal:stop") {
@@ -578,8 +659,14 @@ const E2EHarness = () => {
     const handleSendDraft = (value: string) => {
       setDraftText(value);
       setSentDrafts((current) => [...current, value]);
-      // Drain pending attachments
-      setPendingAttachments([]);
+      setPendingAttachments((current) => {
+        (
+          window as unknown as {
+            __e2eSentAttachments?: PendingChatAttachmentParams[];
+          }
+        ).__e2eSentAttachments?.push(...current);
+        return [];
+      });
     };
     const handlePendingAttachment = (attachment: PendingChatAttachmentParams) => {
       setPendingAttachments((current) => [...current, attachment]);

@@ -26,6 +26,7 @@ import {
   useUserStore,
 } from "@/store";
 import emitter, { PendingChatAttachmentParams } from "@/utils/events";
+import { recordLocalFileForMessage } from "@/utils/localFileCache";
 
 import BotMentionAutocomplete from "./BotMentionAutocomplete";
 import SendActionBar from "./SendActionBar";
@@ -366,7 +367,15 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
         ? await getImageMessage(attachment.file)
         : null;
       if (!message) throw new Error("Cannot create image message");
-      await sendMessage({ message });
+      const sentMessage = await sendMessage({ message });
+      if (!sentMessage) throw new Error("Failed to send image");
+      if (nativePath) {
+        recordLocalFileForMessage(
+          sentMessage.clientMsgID || message.clientMsgID,
+          attachment.fileName,
+          nativePath,
+        );
+      }
     } else {
       const message = nativePath
         ? await getFileMessage({
@@ -379,7 +388,15 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
         ? await getFileMessage(attachment.file)
         : null;
       if (!message) throw new Error("Cannot create file message");
-      await sendMessage({ message });
+      const sentMessage = await sendMessage({ message });
+      if (!sentMessage) throw new Error("Failed to send file");
+      if (nativePath) {
+        recordLocalFileForMessage(
+          sentMessage.clientMsgID || message.clientMsgID,
+          attachment.fileName,
+          nativePath,
+        );
+      }
     }
   };
 

@@ -2543,3 +2543,50 @@ Phase 2 should be `Runtime Dock Terminal Surface`:
 - Do not add PTY, WebSocket, node-pty, Codex/opencode/OpenHands launch, API keys, or model/provider config yet.
 
 Phase 3 should add PTY bridge only after Phase 2 terminal UI is stable.
+
+## Latest Update - P11.5B IM File/Image UX Foundation
+
+Implemented:
+
+- `final_answer.md` remains the source of truth for IM auto-reply text.
+- Terminal Dock now shows `Final Answer Preview` from the same resolver used by Auto Reply Text.
+- The OpenIM final answer skill now tells agents that `final_answer.md` must contain the complete IM-ready user reply, must not contain debug notes, and that terminal/TUI completion text should stay short.
+- Auto output-file attach now stats workspace files before enqueueing them, preserves real file size, and only emits file-only send when at least one attachment was actually queued.
+- Repeated `auto-sent` toast spam was guarded by counting successfully queued files.
+- Manual Electron file picker and Agent Output Files now share image/file inference:
+  - image extensions: `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.bmp`
+  - MIME values starting with `image/`
+- Image attachments route through `createImageMessageFromFullPath`.
+- Normal file attachments route through `createFileMessageFromFullPath`.
+- Attachment sends now treat SDK send failure as a real failure so the draft attachment can return to pending instead of silently disappearing.
+- Successful local sends cache `clientMsgID -> nativePath` for later desktop open/show-in-folder behavior.
+- File cards no longer default to browser navigation:
+  - cached local file: open via Electron `shell.openPath`
+  - cached local file: show in folder via Electron `shell.showItemInFolder`
+  - remote file: download to local Downloads, cache the native path, then open
+- File message action menu uses the same Electron download/open path for FileMessage `View`/`Download`, plus `Save as`, `Show in folder`, and `Copy file name`.
+- Local Docker OpenIM `.env` MinIO external address was changed to `http://127.0.0.1:10005` for same-host Electron clients.
+- Added targeted Electron E2E coverage in `e2e/electron/specs/file-image-ux.spec.ts`:
+  - `Final Answer Preview` resolves from `final_answer.md`.
+  - `## Output Files` auto-file attach sends image outputs as `sendKind: image` and normal outputs as `sendKind: file`.
+  - File card/menu actions use Electron IPC for open/download/save-as/show-in-folder rather than default browser navigation.
+  - Picture messages keep the built-in image preview renderer.
+- E2E harness now mocks `workspace:statFile`, stable file mtimes, sent attachment snapshots, and desktop file IPC actions.
+- Important verification note: Playwright Electron E2E loads `dist/index.html`, so run `npm.cmd run build` before `npx.cmd playwright test -c playwright.electron.config.ts ...` when testing source changes.
+
+Latest verification:
+
+- `npx.cmd tsc --noEmit` passed.
+- `npm.cmd run lint -- --quiet` passed.
+- `npm.cmd run build` passed; only existing Vite/AntD chunk/directive warnings.
+- `$env:TS_NODE_COMPILER_OPTIONS='{ "module": "commonjs" }'; npx.cmd ts-node src/utils/attachmentKind.test.ts` passed.
+- `$env:TS_NODE_COMPILER_OPTIONS='{ "module": "commonjs", "esModuleInterop": true }'; npx.cmd ts-node src/services/agentRunContract/AgentRunContractService.test.ts` passed.
+- `npx.cmd playwright test -c playwright.electron.config.ts e2e/electron/specs/file-image-ux.spec.ts` passed: 3/3.
+
+Not implemented:
+
+- Folder sending.
+- Folder card.
+- Add-to feature.
+- Cloud drive.
+- Native OpenCode same-session extraction.

@@ -34,6 +34,9 @@ export const IpcRenderToMain = {
 
   fileSelectFiles: "file:selectFiles",
   fileStatNativePath: "file:statNativePath",
+  fileOpenPath: "file:openPath",
+  fileShowItemInFolder: "file:showItemInFolder",
+  fileDownloadToLocal: "file:downloadToLocal",
 
   agentStartWatch: "agent:startWatch",
   agentStopWatch: "agent:stopWatch",

@@ -1,5 +1,7 @@
 import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
 import fs from "node:fs";
+import http from "node:http";
+import https from "node:https";
 import path from "node:path";
 import {
   clearCache,
@@ -28,6 +30,81 @@ import {
 } from "./workspaceManage";
 
 const store = getStore();
+
+const sanitizeDownloadFileName = (fileName: string) =>
+  fileName.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").trim() || "download";
+
+const downloadUrlToLocalFile = async (params: {
+  sourceUrl: string;
+  fileName: string;
+  saveAs?: boolean;
+}) => {
+  const url = new URL(params.sourceUrl);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Only HTTP(S) file URLs can be downloaded");
+  }
+
+  const downloadsDir = app.getPath("downloads");
+  const parsedName = path.parse(sanitizeDownloadFileName(params.fileName));
+  const defaultPath = path.join(
+    downloadsDir,
+    params.saveAs
+      ? `${parsedName.name || "download"}${parsedName.ext}`
+      : `${parsedName.name || "download"}-${Date.now()}${parsedName.ext}`,
+  );
+  const saveResult = params.saveAs
+    ? await dialog.showSaveDialog(BrowserWindow.getFocusedWindow(), {
+        defaultPath,
+      })
+    : undefined;
+  if (saveResult?.canceled) {
+    throw new Error("Save cancelled");
+  }
+  const targetPath = saveResult?.filePath ?? defaultPath;
+  const client = url.protocol === "https:" ? https : http;
+
+  return new Promise<string>((resolve, reject) => {
+    const request = client.get(url, (response) => {
+      if (
+        response.statusCode &&
+        response.statusCode >= 300 &&
+        response.statusCode < 400 &&
+        response.headers.location
+      ) {
+        response.resume();
+        downloadUrlToLocalFile({
+          sourceUrl: new URL(response.headers.location, url).toString(),
+          fileName: params.fileName,
+        })
+          .then(resolve)
+          .catch(reject);
+        return;
+      }
+
+      if (response.statusCode !== 200) {
+        response.resume();
+        reject(new Error(`Download failed with HTTP ${response.statusCode}`));
+        return;
+      }
+
+      const file = fs.createWriteStream(targetPath);
+      response.pipe(file);
+      file.on("finish", () => {
+        file.close((error) => {
+          if (error) reject(error);
+          else resolve(targetPath);
+        });
+      });
+      file.on("error", (error) => {
+        fs.promises.rm(targetPath, { force: true }).finally(() => reject(error));
+      });
+    });
+    request.on("error", reject);
+    request.setTimeout(60_000, () => {
+      request.destroy(new Error("Download timed out"));
+    });
+  });
+};
 
 export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.clearSession, () => {
@@ -171,6 +248,22 @@ export const setIpcMainListener = () => {
       } catch {
         return { exists: false, isFile: false, size: 0, mtimeMs: 0 };
       }
+    },
+  );
+  ipcMain.handle(IpcRenderToMain.fileOpenPath, async (_, nativePath: string) => {
+    return shell.openPath(nativePath);
+  });
+  ipcMain.handle(
+    IpcRenderToMain.fileShowItemInFolder,
+    async (_, nativePath: string) => {
+      shell.showItemInFolder(nativePath);
+      return true;
+    },
+  );
+  ipcMain.handle(
+    IpcRenderToMain.fileDownloadToLocal,
+    async (_, params: { sourceUrl: string; fileName: string }) => {
+      return downloadUrlToLocalFile(params);
     },
   );
   ipcMain.handle(IpcRenderToMain.terminalGetWorkspaceDir, (_, workspaceID) => {

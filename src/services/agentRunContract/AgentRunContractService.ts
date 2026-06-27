@@ -33,6 +33,7 @@ export const DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE = [
   "- Do not append to final_answer.md.",
   "- Do not write this result to any other run directory.",
   "- Do not send messages back to OpenIM yourself.",
+  "- Keep any terminal/TUI completion message short; the full IM reply belongs in final_answer.md.",
 ].join("\n");
 
 const normalizeRunIDSegment = (value: string) =>
@@ -63,6 +64,10 @@ const buildFinalAnswerSkill = () =>
     "Rules:",
     "- Read the current run request.md before answering.",
     "- Create or overwrite final_answer.md. Do not append.",
+    "- The final_answer.md body must be the complete user-readable reply that is ready to send to the IM user.",
+    "- Do not write debug notes, implementation scratchpads, or private terminal diagnostics in final_answer.md.",
+    "- Do not create a separate terminal summary that says something different from final_answer.md.",
+    "- If the terminal/TUI needs a short completion message, use: Final reply has been written to final_answer.md.",
     "- Do not write this request's final answer into any other run directory.",
     "- Do not send messages back to OpenIM yourself.",
     "- After writing final_answer.md, overwrite manifest.json with status completed.",

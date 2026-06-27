@@ -1,11 +1,16 @@
 import { MoreOutlined } from "@ant-design/icons";
 import { MessageItem as MessageItemType, MessageType } from "@openim/wasm-client-sdk";
 import { Button, Dropdown, MenuProps, message as antdMessage } from "antd";
-import { FC, PropsWithChildren } from "react";
+import { FC, PropsWithChildren, useState } from "react";
 
 import { openMessageForwardChooser } from "@/services/messageForward";
 import { useMessageSelectionStore, useTerminalDockStore } from "@/store";
 import emitter from "@/utils/events";
+import {
+  getLocalFileForMessage,
+  type LocalFileCacheEntry,
+  recordLocalFileForMessage,
+} from "@/utils/localFileCache";
 import {
   formatMessageAsQuoteText,
   getPlainMessageContent,
@@ -33,7 +38,11 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
   const setTerminalPanelOpen = useTerminalDockStore((state) => state.setPanelOpen);
   const isTextMessage = message.contentType === MessageType.TextMessage;
   const isPictureMessage = message.contentType === MessageType.PictureMessage;
+  const isFileMessage = message.contentType === MessageType.FileMessage;
   const canCopyText = isTextMessage;
+  const [localFileEntry, setLocalFileEntry] = useState<LocalFileCacheEntry | undefined>(
+    () => getLocalFileForMessage(message.clientMsgID),
+  );
   const previewUrl =
     message.pictureElem?.sourcePicture?.url ??
     message.pictureElem?.bigPicture?.url ??
@@ -42,6 +51,29 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
   const downloadFileName =
     message.fileElem?.fileName ??
     `${message.clientMsgID}${isPictureMessage ? ".png" : ""}`;
+
+  const downloadFileToLocal = async (saveAs = false) => {
+    if (!previewUrl) return undefined;
+    if (!window.electronAPI || isPictureMessage) {
+      const link = document.createElement("a");
+      link.href = previewUrl;
+      link.download = downloadFileName;
+      link.click();
+      return undefined;
+    }
+
+    const nativePath = await window.electronAPI.ipcInvoke<string>(
+      "file:downloadToLocal",
+      {
+        sourceUrl: previewUrl,
+        fileName: downloadFileName,
+        saveAs,
+      },
+    );
+    recordLocalFileForMessage(message.clientMsgID, downloadFileName, nativePath);
+    setLocalFileEntry(getLocalFileForMessage(message.clientMsgID));
+    return nativePath;
+  };
 
   const runSingleMessageContextAction = (action: "preview" | "copy" | "send") => {
     if (!conversationID) return;
@@ -80,6 +112,21 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
     menuItems.push({
       key: "download",
       label: menuLabel("message-action-download", "Download"),
+    });
+    menuItems.push({
+      key: "save-as",
+      label: menuLabel("message-action-save-as", "Save as"),
+    });
+    menuItems.push({
+      key: "copy-file-name",
+      label: menuLabel("message-action-copy-file-name", "Copy file name"),
+    });
+  }
+
+  if (localFileEntry?.nativePath) {
+    menuItems.push({
+      key: "show-in-folder",
+      label: menuLabel("message-action-show-in-folder", "Show in folder"),
     });
   }
 
@@ -177,18 +224,44 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
     }
 
     if (key === "view") {
-      if (previewUrl) {
+      if (isFileMessage && window.electronAPI) {
+        const nativePath = localFileEntry?.nativePath ?? (await downloadFileToLocal());
+        if (nativePath) {
+          const error = await window.electronAPI.ipcInvoke<string>(
+            "file:openPath",
+            nativePath,
+          );
+          if (error) antdMessage.error(error);
+        }
+      } else if (previewUrl) {
         window.open(previewUrl, "_blank", "noopener,noreferrer");
       }
       return;
     }
 
     if (key === "download") {
-      if (!previewUrl) return;
-      const link = document.createElement("a");
-      link.href = previewUrl;
-      link.download = downloadFileName;
-      link.click();
+      await downloadFileToLocal();
+      return;
+    }
+
+    if (key === "save-as") {
+      await downloadFileToLocal(true);
+      return;
+    }
+
+    if (key === "copy-file-name") {
+      await navigator.clipboard.writeText(downloadFileName);
+      antdMessage.success("File name copied");
+      return;
+    }
+
+    if (key === "show-in-folder") {
+      if (localFileEntry?.nativePath) {
+        await window.electronAPI?.ipcInvoke(
+          "file:showItemInFolder",
+          localFileEntry.nativePath,
+        );
+      }
       return;
     }
 

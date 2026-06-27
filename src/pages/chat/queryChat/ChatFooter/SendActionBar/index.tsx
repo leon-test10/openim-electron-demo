@@ -10,6 +10,7 @@ import fileIconSvg from "@/assets/images/chatFooter/file.png";
 import image from "@/assets/images/chatFooter/image.png";
 import rtc from "@/assets/images/chatFooter/rtc.png";
 import { useConversationStore } from "@/store";
+import { inferAttachmentKind } from "@/utils/attachmentKind";
 import emitter, { PendingChatAttachmentParams } from "@/utils/events";
 
 import CallPopContent from "./CallPopContent";
@@ -70,13 +71,14 @@ const SendActionBar = () => {
     if (!files || files.length === 0) return;
 
     for (const f of files) {
+      const sendKind = inferAttachmentKind(f.fileName, f.mimeType);
       const attachment: PendingChatAttachmentParams = {
         source: "picker",
         fileName: f.fileName,
         nativePath: f.nativePath,
         fileType: f.mimeType ?? "",
         fileSize: f.fileSize,
-        sendKind: "file",
+        sendKind,
       };
       emitter.emit("ADD_PENDING_CHAT_ATTACHMENT", attachment);
     }
@@ -84,13 +86,14 @@ const SendActionBar = () => {
 
   const fileHandle = (options: UploadRequestOption, kind: "image" | "file") => {
     const file = options.file as File & { path?: string };
+    const sendKind = inferAttachmentKind(file.name, file.type || undefined);
     const attachment: PendingChatAttachmentParams = {
       source: "picker",
       fileName: file.name,
       nativePath: file.path,
       fileType: file.type,
       fileSize: file.size,
-      sendKind: kind,
+      sendKind: kind === "image" ? "image" : sendKind,
       file,
     };
     emitter.emit("ADD_PENDING_CHAT_ATTACHMENT", attachment);

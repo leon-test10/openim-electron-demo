@@ -39,11 +39,13 @@ export function useSendMessage() {
       try {
         const { data: successMessage } = await IMSDK.sendMessage(options);
         updateOneMessage(successMessage);
+        return successMessage;
       } catch (error) {
         updateOneMessage({
           ...message,
           status: MessageStatus.Failed,
         });
+        return undefined;
       }
     },
     [],

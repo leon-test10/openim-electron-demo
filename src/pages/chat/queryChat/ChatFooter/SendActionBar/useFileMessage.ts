@@ -60,12 +60,17 @@ export function useFileMessage() {
     const fileName = isFile ? input.name : input.fileName;
 
     if (window.electronAPI && nativePath) {
-      return (
+      const message = (
         await IMSDK.createFileMessageFromFullPath({
           filePath: nativePath,
           fileName,
         })
       ).data;
+      const fileSize = isFile ? input.size : input.fileSize;
+      if (message.fileElem && typeof fileSize === "number") {
+        message.fileElem.fileSize = fileSize;
+      }
+      return message;
     }
 
     const file = isFile ? input : new File([], fileName);

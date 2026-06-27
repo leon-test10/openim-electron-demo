@@ -30,6 +30,7 @@ import { useParams } from "react-router-dom";
 
 import { IMSDK } from "@/layout/MainContentWrap";
 import {
+  AgentFinalAnswerEvent,
   resolveAgentFinalAnswer,
   resolveFromAgentRunContract,
 } from "@/services/agentOutput";
@@ -52,6 +53,7 @@ import {
   useTerminalDockStore,
 } from "@/store";
 import { TerminalContextBundleRecord, TerminalTab } from "@/store/type";
+import { inferAttachmentKind } from "@/utils/attachmentKind";
 import emitter, {
   BotAgentRequestActionParams,
   emit,
@@ -103,6 +105,18 @@ const AUTO_CAPTURE_DEBOUNCE = 1200;
 const AUTO_SEND_MIN_LENGTH = 8;
 const AUTO_SEND_MIN_INTERVAL = 5000;
 
+const publishE2EAutoFileAttachDiagnostic = (diagnostic: Record<string, unknown>) => {
+  if (typeof window === "undefined" || !window.location.hash.includes("e2e-harness"))
+    return;
+  const e2eWindow = window as unknown as {
+    __e2eAutoFileAttachDiagnostics?: Array<Record<string, unknown>>;
+  };
+  e2eWindow.__e2eAutoFileAttachDiagnostics = [
+    ...(e2eWindow.__e2eAutoFileAttachDiagnostics ?? []),
+    { ...diagnostic, timestamp: Date.now() },
+  ].slice(-20);
+};
+
 const joinWorkspacePath = (rootPath: string, relativePath: string) => {
   if (!rootPath) return relativePath;
   return `${rootPath.replace(/[\\/]+$/, "")}\\${relativePath.replaceAll("/", "\\")}`;
@@ -110,16 +124,6 @@ const joinWorkspacePath = (rootPath: string, relativePath: string) => {
 
 const getFileNameFromPath = (filePath: string) =>
   filePath.split(/[\\/]/).filter(Boolean).pop() ?? filePath;
-
-const getFileExtension = (filePath: string) =>
-  getFileNameFromPath(filePath).split(".").pop()?.toLowerCase() ?? "";
-
-const IMAGE_FILE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp"]);
-
-const inferWorkspaceAttachmentKind = (fileName: string, fileType?: string) => {
-  if (fileType?.startsWith("image/")) return "image";
-  return IMAGE_FILE_EXTENSIONS.has(getFileExtension(fileName)) ? "image" : "file";
-};
 
 const getStoredOutputFallback = (
   outputByTab: Record<string, Array<{ content: string }>>,
@@ -308,6 +312,7 @@ const TerminalDock = () => {
       text: "",
       source: "selection",
     });
+  const [finalAnswerPreview, setFinalAnswerPreview] = useState("");
   const terminalApisRef = useRef<Map<string, TerminalSurfaceApi>>(new Map());
   const recentTerminalSelectionsRef = useRef<
     Map<string, { text: string; updatedAt: number }>
@@ -362,7 +367,7 @@ const TerminalDock = () => {
   const lastStructuredEvent = structuredSidecarEvents.at(-1);
   const lastStructuredFinalAnswer = [...structuredSidecarEvents]
     .reverse()
-    .find((event) => event.type === "final_answer");
+    .find((event): event is AgentFinalAnswerEvent => event.type === "final_answer");
   const activeAgentRun = activeWorkspaceID
     ? activeAgentRunByWorkspace[activeWorkspaceID]
     : undefined;
@@ -436,6 +441,39 @@ const TerminalDock = () => {
     },
     [activeWorkspace, readWorkspaceStat, readWorkspaceText],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!activeTab) {
+      setFinalAnswerPreview("");
+      return;
+    }
+
+    getResolvedFinalAnswer(activeTab)
+      .then((resolution) => {
+        if (!cancelled) {
+          setFinalAnswerPreview(resolution?.text ?? "");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFinalAnswerPreview("");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeAgentRun?.runID,
+    activeTab,
+    activeTabOutputSignature,
+    getResolvedFinalAnswer,
+    lastStructuredFinalAnswer?.runID,
+    lastStructuredFinalAnswer?.sessionID,
+    lastStructuredFinalAnswer?.text,
+  ]);
 
   const captureTerminalFinalAnswer = useCallback(
     async (mode: "manual" | "auto") => {
@@ -702,11 +740,42 @@ const TerminalDock = () => {
   useEffect(() => {
     const canAutoReply = autoReplyTextEnabled || autoFileAttachmentEnabled;
     if (!canAutoReply || !activeAgentRun || !activeWorkspaceID || !conversationID) {
+      publishE2EAutoFileAttachDiagnostic({
+        reason: "effect_not_ready",
+        canAutoReply,
+        hasActiveAgentRun: Boolean(activeAgentRun),
+        activeWorkspaceID,
+        conversationID,
+        autoReplyTextEnabled,
+        autoFileAttachmentEnabled,
+      });
       return undefined;
     }
-    if (!activeTab || activeTab.status !== "running") return undefined;
-    if (activeTab.workspaceID !== activeWorkspaceID) return undefined;
-    if (!activeConversationBound) return undefined;
+    if (!activeTab || activeTab.status !== "running") {
+      publishE2EAutoFileAttachDiagnostic({
+        reason: "tab_not_running",
+        hasActiveTab: Boolean(activeTab),
+        activeTabStatus: activeTab?.status,
+      });
+      return undefined;
+    }
+    if (activeTab.workspaceID !== activeWorkspaceID) {
+      publishE2EAutoFileAttachDiagnostic({
+        reason: "workspace_mismatch",
+        tabWorkspaceID: activeTab.workspaceID,
+        activeWorkspaceID,
+      });
+      return undefined;
+    }
+    if (!activeConversationBound) {
+      publishE2EAutoFileAttachDiagnostic({
+        reason: "conversation_not_bound",
+        conversationID,
+        activeWorkspaceID,
+        linkedConversationIDs: activeWorkspace?.linkedConversationIDs ?? [],
+      });
+      return undefined;
+    }
 
     const terminalStartedAt = terminalStartedAtRef.current;
     const textGate = Math.max(
@@ -725,23 +794,46 @@ const TerminalDock = () => {
         const resolution = await getResolvedFinalAnswer(activeTab);
         if (!resolution) {
           blockedReasonRef.current = "no_resolution";
+          publishE2EAutoFileAttachDiagnostic({
+            reason: blockedReasonRef.current,
+            activeTabStatus: activeTab.status,
+            activeConversationBound,
+            autoFileAttachmentEnabled,
+          });
           return;
         }
         if (
           resolution.source !== "run_file" ||
           !resolution.text?.trim() ||
           resolution.runID !== activeAgentRun.runID
-        )
+        ) {
+          publishE2EAutoFileAttachDiagnostic({
+            reason: "not_run_file_resolution",
+            source: resolution.source,
+            runID: resolution.runID,
+            expectedRunID: activeAgentRun.runID,
+            hasText: Boolean(resolution.text?.trim()),
+          });
           return;
+        }
 
         if (resolution.manifestStatus !== "completed") {
-          blockedReasonRef.current = `manifest_${resolution.manifestStatus ?? "unknown"}`;
+          blockedReasonRef.current = `manifest_${
+            resolution.manifestStatus ?? "unknown"
+          }`;
+          publishE2EAutoFileAttachDiagnostic({
+            reason: blockedReasonRef.current,
+            manifestStatus: resolution.manifestStatus,
+          });
           return;
         }
 
         const manifestUpdatedAt = resolution.manifestFileMtimeMs ?? 0;
         if (manifestUpdatedAt === 0) {
           blockedReasonRef.current = "no_file_mtime";
+          publishE2EAutoFileAttachDiagnostic({
+            reason: blockedReasonRef.current,
+          });
           return;
         }
 
@@ -750,7 +842,8 @@ const TerminalDock = () => {
         // Auto Reply Text — use stable key with real timestamps
         if (
           autoReplyTextEnabled &&
-          resolution.finalAnswerFileMtimeMs != null &&
+          resolution.finalAnswerFileMtimeMs !== undefined &&
+          resolution.finalAnswerFileMtimeMs !== null &&
           resolution.finalAnswerFileMtimeMs > textGate
         ) {
           const replyKey = [
@@ -782,12 +875,21 @@ const TerminalDock = () => {
 
         // Auto File Attachment
         const outputFiles = resolution.outputFiles ?? [];
+        publishE2EAutoFileAttachDiagnostic({
+          reason: "resolved",
+          outputFiles,
+          autoFileAttachmentEnabled,
+          manifestUpdatedAt,
+          fileGate,
+          activeWorkspace: Boolean(activeWorkspace),
+        });
         if (
           autoFileAttachmentEnabled &&
           outputFiles.length > 0 &&
           manifestUpdatedAt > fileGate &&
           activeWorkspace
         ) {
+          let queuedFileCount = 0;
           for (const relativePath of outputFiles) {
             const fileKey = [
               "file",
@@ -804,28 +906,39 @@ const TerminalDock = () => {
               continue;
             inFlightRef.current.add(fileKey);
             try {
+              const fileStat = await readWorkspaceStat(relativePath);
+              if (!fileStat) {
+                blockedReasonRef.current = "output_file_missing";
+                publishE2EAutoFileAttachDiagnostic({
+                  reason: blockedReasonRef.current,
+                  relativePath,
+                });
+                continue;
+              }
               emit("ADD_PENDING_CHAT_ATTACHMENT", {
                 source: "workspace" as const,
                 fileName: relativePath.split("/").pop() || relativePath,
-                nativePath: joinWorkspacePath(
-                  activeWorkspace.rootPath,
-                  relativePath,
-                ),
+                nativePath: joinWorkspacePath(activeWorkspace.rootPath, relativePath),
                 relativePath,
                 fileType: "file",
-                fileSize: 0,
-                sendKind: "file" as const,
+                fileSize: fileStat.size,
+                sendKind: inferAttachmentKind(relativePath),
               });
+              queuedFileCount += 1;
               autoRepliedHashesRef.current.add(fileKey);
             } finally {
               inFlightRef.current.delete(fileKey);
             }
           }
-          if (outputFiles.length > 0 && !autoReplyTextEnabled) {
-            // Trigger actual send: file-only SEND_CHAT_INPUT.
+          if (queuedFileCount > 0) {
+            // Trigger actual send after the attachments are queued.
             // ChatFooter's onSend handles empty text + pending files.
             emit("SEND_CHAT_INPUT", "");
-            message.success(`${outputFiles.length} output file(s) auto-sent`);
+            message.success(`${queuedFileCount} output file(s) auto-sent`);
+            publishE2EAutoFileAttachDiagnostic({
+              reason: "queued_and_sent",
+              queuedFileCount,
+            });
           }
         }
 
@@ -849,6 +962,7 @@ const TerminalDock = () => {
     activeWorkspaceID,
     conversationID,
     getResolvedFinalAnswer,
+    readWorkspaceStat,
   ]);
 
   const onCreateWorkspace = async () => {
@@ -1190,7 +1304,7 @@ const TerminalDock = () => {
         fileName,
         fileType,
         fileSize,
-        sendKind: inferWorkspaceAttachmentKind(fileName, fileType),
+        sendKind: inferAttachmentKind(fileName, fileType),
       };
 
       emit("ADD_PENDING_CHAT_ATTACHMENT", {
@@ -1687,6 +1801,21 @@ const TerminalDock = () => {
 
       {activeWorkspace ? (
         <>
+          <div
+            className="terminal-dock-final-answer-preview"
+            data-testid="terminal-final-answer-preview"
+          >
+            <div className="terminal-dock-final-answer-preview-title">
+              Final Answer Preview
+            </div>
+            {finalAnswerPreview ? (
+              <pre>{finalAnswerPreview}</pre>
+            ) : (
+              <span className="terminal-dock-final-answer-preview-empty">
+                No resolved final_answer.md yet
+              </span>
+            )}
+          </div>
           <TerminalTabs
             tabs={tabs}
             activeTabID={activeTab?.id}
