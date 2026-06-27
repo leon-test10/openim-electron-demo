@@ -1,0 +1,5 @@
+这是一个测试文件。
+This is a test file.
+
+Created at: 2026-06-27 18:04:09
+Trigger: @bot @Codex Peer 发送一个测试文件

@@ -822,7 +822,10 @@ const TerminalDock = () => {
             }
           }
           if (outputFiles.length > 0 && !autoReplyTextEnabled) {
-            message.success(`${outputFiles.length} output file(s) auto-attached`);
+            // Trigger actual send: file-only SEND_CHAT_INPUT.
+            // ChatFooter's onSend handles empty text + pending files.
+            emit("SEND_CHAT_INPUT", "");
+            message.success(`${outputFiles.length} output file(s) auto-sent`);
           }
         }
 
