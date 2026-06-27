@@ -32,6 +32,9 @@ export const IpcRenderToMain = {
   terminalGetWorkspaceDir: "terminal:getWorkspaceDir",
   terminalOpenWorkspace: "terminal:openWorkspace",
 
+  fileSelectFiles: "file:selectFiles",
+  fileStatNativePath: "file:statNativePath",
+
   agentStartWatch: "agent:startWatch",
   agentStopWatch: "agent:stopWatch",
   opencodeProbeServer: "opencode:probeServer",

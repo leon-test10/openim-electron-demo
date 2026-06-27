@@ -1,4 +1,6 @@
 import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
+import fs from "node:fs";
+import path from "node:path";
 import {
   clearCache,
   closeWindow,
@@ -132,6 +134,45 @@ export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.terminalResize, (_, params) => {
     return terminalManager.resize(params);
   });
+
+  ipcMain.handle(IpcRenderToMain.fileSelectFiles, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openFile", "multiSelections"],
+    });
+    if (result.canceled || result.filePaths.length === 0) return [];
+    return Promise.all(
+      result.filePaths.map(async (filePath) => {
+        try {
+          const stat = await fs.promises.stat(filePath);
+          return {
+            nativePath: filePath,
+            fileName: path.basename(filePath),
+            fileSize: stat.size,
+            mimeType: undefined,
+          };
+        } catch {
+          return null;
+        }
+      }),
+    ).then((files) => files.filter((f): f is NonNullable<typeof f> => f !== null));
+  });
+
+  ipcMain.handle(
+    IpcRenderToMain.fileStatNativePath,
+    async (_, nativePath: string) => {
+      try {
+        const stat = await fs.promises.stat(nativePath);
+        return {
+          exists: true,
+          isFile: stat.isFile(),
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+        };
+      } catch {
+        return { exists: false, isFile: false, size: 0, mtimeMs: 0 };
+      }
+    },
+  );
   ipcMain.handle(IpcRenderToMain.terminalGetWorkspaceDir, (_, workspaceID) => {
     return getTerminalWorkspaceDir(workspaceID);
   });

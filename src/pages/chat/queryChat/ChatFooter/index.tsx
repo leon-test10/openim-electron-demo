@@ -487,7 +487,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
           </div>
           {pendingAttachments.length > 0 && (
             <div
-              className="mx-4 mt-2 flex flex-wrap gap-2"
+              className="mx-4 mt-2 flex max-h-24 flex-wrap gap-2 overflow-y-auto"
               data-testid="chat-footer-pending-attachments"
             >
               {pendingAttachments.map((attachment, index) => {
