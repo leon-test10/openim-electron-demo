@@ -223,7 +223,18 @@ const TerminalDock = () => {
   );
   const autoReceiveEnabled = useTerminalDockStore((state) => state.autoReceiveEnabled);
   const autoSendEnabled = useTerminalDockStore((state) => state.autoSendEnabled);
-  const autoReplyEnabled = useTerminalDockStore((state) => state.autoReplyEnabled);
+  const autoReplyTextEnabled = useTerminalDockStore(
+    (state) => state.autoReplyTextEnabled,
+  );
+  const autoReplyTextEnabledAt = useTerminalDockStore(
+    (state) => state.autoReplyTextEnabledAt,
+  );
+  const autoFileAttachmentEnabled = useTerminalDockStore(
+    (state) => state.autoFileAttachmentEnabled,
+  );
+  const autoFileAttachmentEnabledAt = useTerminalDockStore(
+    (state) => state.autoFileAttachmentEnabledAt,
+  );
   const lastCapturedTextByTab = useTerminalDockStore(
     (state) => state.lastCapturedTextByTab,
   );
@@ -577,36 +588,29 @@ const TerminalDock = () => {
     setLastCapturedText,
   ]);
 
-  // Auto-reply: when autoReplyEnabled and a new structured final_answer arrives,
-  // send it directly to the IM conversation.
   const autoRepliedHashesRef = useRef<Set<string>>(new Set());
-  const prevAutoReplyEnabledRef = useRef(autoReplyEnabled);
+  const prevAutoReplyTextEnabledRef = useRef(autoReplyTextEnabled);
   useEffect(() => {
-    if (!autoReplyEnabled || !activeWorkspaceID || !conversationID) {
-      prevAutoReplyEnabledRef.current = autoReplyEnabled;
+    if (!autoReplyTextEnabled || !activeWorkspaceID || !conversationID) {
+      prevAutoReplyTextEnabledRef.current = autoReplyTextEnabled;
       return;
     }
     if (!activeTab || activeTab.status !== "running") {
-      prevAutoReplyEnabledRef.current = autoReplyEnabled;
-      console.warn("[terminalDock] auto-reply skipped: no running active tab");
+      prevAutoReplyTextEnabledRef.current = autoReplyTextEnabled;
       return;
     }
     if (activeTab.workspaceID !== activeWorkspaceID) {
-      prevAutoReplyEnabledRef.current = autoReplyEnabled;
-      console.warn("[terminalDock] auto-reply skipped: active tab/workspace mismatch");
+      prevAutoReplyTextEnabledRef.current = autoReplyTextEnabled;
       return;
     }
     if (!activeConversationBound) {
-      prevAutoReplyEnabledRef.current = autoReplyEnabled;
-      console.warn(
-        "[terminalDock] auto-reply skipped: conversation is not linked to workspace",
-      );
+      prevAutoReplyTextEnabledRef.current = autoReplyTextEnabled;
       return;
     }
 
-    // When auto-reply was just toggled ON, seed the dedup set with all existing
-    // events so only future events are auto-sent.
-    if (!prevAutoReplyEnabledRef.current) {
+    // When auto-reply text was just toggled ON, seed the dedup set with all
+    // existing events so only future events are auto-sent.
+    if (!prevAutoReplyTextEnabledRef.current) {
       const allEvents = structuredEventsByWorkspace[activeWorkspaceID] ?? [];
       for (const event of allEvents) {
         if (event.type !== "final_answer" || !event.text) continue;
@@ -621,7 +625,7 @@ const TerminalDock = () => {
         autoRepliedHashesRef.current.add(replyKey);
       }
     }
-    prevAutoReplyEnabledRef.current = autoReplyEnabled;
+    prevAutoReplyTextEnabledRef.current = autoReplyTextEnabled;
 
     const events = structuredEventsByWorkspace[activeWorkspaceID];
     if (!events || events.length === 0) return;
@@ -657,7 +661,7 @@ const TerminalDock = () => {
       );
     }
   }, [
-    autoReplyEnabled,
+    autoReplyTextEnabled,
     activeAgentRun?.runID,
     activeConversationBound,
     activeTab,
@@ -667,56 +671,98 @@ const TerminalDock = () => {
   ]);
 
   useEffect(() => {
-    if (!autoReplyEnabled || !activeAgentRun || !activeWorkspaceID || !conversationID) {
+    const canAutoReply = autoReplyTextEnabled || autoFileAttachmentEnabled;
+    if (!canAutoReply || !activeAgentRun || !activeWorkspaceID || !conversationID) {
       return undefined;
     }
     if (!activeTab || activeTab.status !== "running") return undefined;
     if (activeTab.workspaceID !== activeWorkspaceID) return undefined;
     if (!activeConversationBound) return undefined;
 
+    const textGate = Math.max(autoReplyTextEnabledAt ?? 0, activeAgentRun.createdAt);
+    const fileGate = Math.max(
+      autoFileAttachmentEnabledAt ?? 0,
+      activeAgentRun.createdAt,
+    );
+
     const timer = window.setInterval(() => {
       void (async () => {
         const resolution = await getResolvedFinalAnswer(activeTab);
         if (resolution?.source !== "run_file" || !resolution.text?.trim()) return;
 
+        const manifestUpdatedAt =
+          resolution.runID === activeAgentRun.runID
+            ? Date.now() // approximate — manifest was just completed
+            : 0;
+        if (manifestUpdatedAt < Math.max(textGate, fileGate)) return;
+
         const text = resolution.text.trim();
-        const textHash = hashText(text);
-        const replyKey = [
-          activeWorkspaceID,
-          conversationID,
-          activeAgentRun.runID,
-          textHash,
-        ].join("|");
 
-        if (autoRepliedHashesRef.current.has(replyKey)) return;
+        // Auto Reply Text
+        if (autoReplyTextEnabled && manifestUpdatedAt > textGate) {
+          const replyKey = [
+            "text",
+            conversationID,
+            activeWorkspaceID,
+            activeAgentRun.runID,
+            String(manifestUpdatedAt),
+          ].join(":");
+          if (!autoRepliedHashesRef.current.has(replyKey)) {
+            autoRepliedHashesRef.current.add(replyKey);
+            emit("SEND_CHAT_INPUT", text);
+            message.success("Run final answer auto-sent to chat");
+          }
+        }
 
-        autoRepliedHashesRef.current.add(replyKey);
-
-        // Queue any output files first, then send text + attachments together.
+        // Auto File Attachment
         const outputFiles = resolution.outputFiles ?? [];
-        if (outputFiles.length > 0 && activeWorkspace) {
+        if (
+          autoFileAttachmentEnabled &&
+          outputFiles.length > 0 &&
+          manifestUpdatedAt > fileGate &&
+          activeWorkspace
+        ) {
           for (const relativePath of outputFiles) {
-            const inferredKind = inferWorkspaceAttachmentKind(relativePath);
+            const fileKey = [
+              "file",
+              conversationID,
+              activeWorkspaceID,
+              activeAgentRun.runID,
+              String(manifestUpdatedAt),
+              relativePath,
+            ].join(":");
+            if (autoRepliedHashesRef.current.has(fileKey)) continue;
+            autoRepliedHashesRef.current.add(fileKey);
+
             emit("ADD_PENDING_CHAT_ATTACHMENT", {
               source: "workspace" as const,
               fileName: relativePath.split("/").pop() || relativePath,
               nativePath: joinWorkspacePath(activeWorkspace.rootPath, relativePath),
               relativePath,
-              fileType: inferredKind === "image" ? "image" : "file",
+              fileType: "file",
               fileSize: 0,
-              sendKind: inferredKind,
+              sendKind: "file" as const,
             });
+          }
+          if (outputFiles.length > 0 && !autoReplyTextEnabled) {
+            message.success(`${outputFiles.length} output file(s) auto-attached`);
           }
         }
 
-        emit("SEND_CHAT_INPUT", text);
-        message.success("Run final answer auto-sent to chat");
+        if (autoRepliedHashesRef.current.size > 40) {
+          autoRepliedHashesRef.current = new Set(
+            [...autoRepliedHashesRef.current].slice(-20),
+          );
+        }
       })();
     }, AUTO_CAPTURE_DEBOUNCE);
 
     return () => window.clearInterval(timer);
   }, [
-    autoReplyEnabled,
+    autoReplyTextEnabled,
+    autoReplyTextEnabledAt,
+    autoFileAttachmentEnabled,
+    autoFileAttachmentEnabledAt,
     activeAgentRun,
     activeConversationBound,
     activeTab,

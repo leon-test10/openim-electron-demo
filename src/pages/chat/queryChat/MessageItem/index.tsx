@@ -8,6 +8,7 @@ import { useMessageSelectionStore } from "@/store";
 import { formatMessageTime } from "@/utils/imCommon";
 
 import CatchMessageRender from "./CatchMsgRenderer";
+import FileMessageRender from "./FileMessageRender";
 import MediaMessageRender from "./MediaMessageRender";
 import styles from "./message-item.module.scss";
 import MessageActionMenu from "./MessageActionMenu";
@@ -27,6 +28,7 @@ export interface IMessageItemProps {
 const components: Record<number, FC<IMessageItemProps>> = {
   [MessageType.TextMessage]: TextMessageRender,
   [MessageType.PictureMessage]: MediaMessageRender,
+  [MessageType.FileMessage]: FileMessageRender,
 };
 
 const MessageItem: FC<IMessageItemProps> = ({

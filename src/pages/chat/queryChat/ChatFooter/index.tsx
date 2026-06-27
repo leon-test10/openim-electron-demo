@@ -65,15 +65,23 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     (state) => state.setBotDetectionEnabled,
   );
   const autoInjectEnabled = useTerminalDockStore((state) => state.autoInjectEnabled);
-  const autoReplyEnabled = useTerminalDockStore((state) => state.autoReplyEnabled);
+  const autoReplyTextEnabled = useTerminalDockStore(
+    (state) => state.autoReplyTextEnabled,
+  );
+  const autoFileAttachmentEnabled = useTerminalDockStore(
+    (state) => state.autoFileAttachmentEnabled,
+  );
   const botContextMessageLimit = useTerminalDockStore(
     (state) => state.botContextMessageLimit,
   );
   const setAutoInjectEnabled = useTerminalDockStore(
     (state) => state.setAutoInjectEnabled,
   );
-  const setAutoReplyEnabled = useTerminalDockStore(
-    (state) => state.setAutoReplyEnabled,
+  const setAutoReplyTextEnabled = useTerminalDockStore(
+    (state) => state.setAutoReplyTextEnabled,
+  );
+  const setAutoFileAttachmentEnabled = useTerminalDockStore(
+    (state) => state.setAutoFileAttachmentEnabled,
   );
   const setBotContextMessageLimit = useTerminalDockStore(
     (state) => state.setBotContextMessageLimit,
@@ -122,10 +130,13 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     ? `@bot @${selfMentionTarget}`
     : "@bot @<your user id>";
   const automationStateText = automationReady
-    ? autoReplyEnabled && activeAgentRun
+    ? autoReplyTextEnabled && activeAgentRun
       ? "waiting for final answer"
       : "ready"
-    : botDetectionEnabled || autoInjectEnabled || autoReplyEnabled
+    : botDetectionEnabled ||
+      autoInjectEnabled ||
+      autoReplyTextEnabled ||
+      autoFileAttachmentEnabled
     ? "needs linked running terminal"
     : "off";
 
@@ -219,18 +230,35 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     });
   };
 
-  const onAutoReplyChange = (checked: boolean) => {
+  const onAutoReplyTextChange = (checked: boolean) => {
     if (!checked) {
-      setAutoReplyEnabled(false);
+      setAutoReplyTextEnabled(false);
       return;
     }
 
     Modal.confirm({
-      title: "Enable Auto Reply?",
-      content: AUTO_REPLY_WARNING,
-      okText: "Enable Auto Reply",
+      title: "Enable Auto Reply Text?",
+      content:
+        "Auto Reply Text is experimental. New final_answer text from the active agent run may be sent automatically to the current IM conversation. Only enable this when you trust the runtime and the conversation.",
+      okText: "Enable Auto Reply Text",
       cancelText: "Cancel",
-      onOk: () => setAutoReplyEnabled(true),
+      onOk: () => setAutoReplyTextEnabled(true),
+    });
+  };
+
+  const onAutoFileAttachmentChange = (checked: boolean) => {
+    if (!checked) {
+      setAutoFileAttachmentEnabled(false);
+      return;
+    }
+
+    Modal.confirm({
+      title: "Enable Auto File Attachment?",
+      content:
+        "Auto File Attachment is experimental. Files listed under ## Output Files in the active run's final_answer.md may be sent automatically to the current IM conversation. Only enable this when you trust the runtime, workspace, and file outputs.",
+      okText: "Enable Auto File Attachment",
+      cancelText: "Cancel",
+      onOk: () => setAutoFileAttachmentEnabled(true),
     });
   };
 
@@ -411,14 +439,25 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
                 />
               </label>
             </Tooltip>
-            <Tooltip title="Send structured final_answer events from the active terminal workspace back to this IM conversation.">
+            <Tooltip title="Auto Reply Text is experimental. New final_answer text from the active agent run may be sent automatically to the current IM conversation.">
               <label className="flex items-center gap-1">
-                <span>Auto Reply</span>
+                <span>Auto Reply Text</span>
                 <Switch
                   size="small"
-                  checked={autoReplyEnabled}
-                  onChange={onAutoReplyChange}
+                  checked={autoReplyTextEnabled}
+                  onChange={onAutoReplyTextChange}
                   data-testid="terminal-auto-reply-toggle"
+                />
+              </label>
+            </Tooltip>
+            <Tooltip title="Auto File Attachment is experimental. Files listed under ## Output Files in the active run's final_answer.md may be sent automatically to the current IM conversation.">
+              <label className="flex items-center gap-1">
+                <span>Auto File Attach</span>
+                <Switch
+                  size="small"
+                  checked={autoFileAttachmentEnabled}
+                  onChange={onAutoFileAttachmentChange}
+                  data-testid="terminal-auto-file-attach-toggle"
                 />
               </label>
             </Tooltip>

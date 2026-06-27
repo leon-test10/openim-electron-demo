@@ -25,7 +25,7 @@ const enableAutoInject = async (appWindow: Page) => {
 
 const enableAutoReply = async (appWindow: Page) => {
   await appWindow.getByTestId("terminal-auto-reply-toggle").click();
-  await appWindow.getByRole("button", { name: "Enable Auto Reply" }).click();
+  await appWindow.getByRole("button", { name: "Enable Auto Reply Text" }).click();
 };
 
 const getTerminalWritesText = async (appWindow: Page) =>

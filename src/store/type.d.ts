@@ -246,7 +246,10 @@ export interface TerminalDockStore {
   autoReceiveEnabled: boolean;
   autoSendEnabled: boolean;
   autoInjectEnabled: boolean;
-  autoReplyEnabled: boolean;
+  autoReplyTextEnabled: boolean;
+  autoReplyTextEnabledAt?: number;
+  autoFileAttachmentEnabled: boolean;
+  autoFileAttachmentEnabledAt?: number;
   botContextMessageLimit: number;
   captureSource: TerminalCaptureSource;
   lastCapturedTextByTab: Record<string, string | undefined>;
@@ -289,7 +292,8 @@ export interface TerminalDockStore {
   setAutoReceiveEnabled: (enabled: boolean) => void;
   setAutoSendEnabled: (enabled: boolean) => void;
   setAutoInjectEnabled: (enabled: boolean) => void;
-  setAutoReplyEnabled: (enabled: boolean) => void;
+  setAutoReplyTextEnabled: (enabled: boolean) => void;
+  setAutoFileAttachmentEnabled: (enabled: boolean) => void;
   setBotContextMessageLimit: (limit: number) => void;
   setCaptureSource: (source: TerminalCaptureSource) => void;
   setLastCapturedText: (tabID: string, text: string) => void;

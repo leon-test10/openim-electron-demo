@@ -447,12 +447,20 @@ const E2EHarness = () => {
     (state) => state.addRequest,
   );
   const autoInjectEnabled = useTerminalDockStore((state) => state.autoInjectEnabled);
-  const autoReplyEnabled = useTerminalDockStore((state) => state.autoReplyEnabled);
+  const autoReplyTextEnabled = useTerminalDockStore(
+    (state) => state.autoReplyTextEnabled,
+  );
+  const autoFileAttachmentEnabled = useTerminalDockStore(
+    (state) => state.autoFileAttachmentEnabled,
+  );
   const setAutoInjectEnabled = useTerminalDockStore(
     (state) => state.setAutoInjectEnabled,
   );
-  const setAutoReplyEnabled = useTerminalDockStore(
-    (state) => state.setAutoReplyEnabled,
+  const setAutoReplyTextEnabled = useTerminalDockStore(
+    (state) => state.setAutoReplyTextEnabled,
+  );
+  const setAutoFileAttachmentEnabled = useTerminalDockStore(
+    (state) => state.setAutoFileAttachmentEnabled,
   );
   const selectionAnchorIndex = useMemo(() => {
     if (!selectionActive || activeMessages.length === 0) return -1;
@@ -489,19 +497,31 @@ const E2EHarness = () => {
     });
   };
 
-  const onAutoReplyChange = (checked: boolean) => {
+  const onAutoReplyTextChange = (checked: boolean) => {
     if (!checked) {
-      setAutoReplyEnabled(false);
+      setAutoReplyTextEnabled(false);
       return;
     }
-
     Modal.confirm({
-      title: "Enable Auto Reply?",
-      content:
-        "Auto Reply is experimental. Structured final_answer events may be sent back to the current IM conversation automatically.",
-      okText: "Enable Auto Reply",
+      title: "Enable Auto Reply Text?",
+      content: "Auto Reply Text is experimental.",
+      okText: "Enable Auto Reply Text",
       cancelText: "Cancel",
-      onOk: () => setAutoReplyEnabled(true),
+      onOk: () => setAutoReplyTextEnabled(true),
+    });
+  };
+
+  const onAutoFileAttachmentChange = (checked: boolean) => {
+    if (!checked) {
+      setAutoFileAttachmentEnabled(false);
+      return;
+    }
+    Modal.confirm({
+      title: "Enable Auto File Attachment?",
+      content: "Auto File Attachment is experimental.",
+      okText: "Enable Auto File Attachment",
+      cancelText: "Cancel",
+      onOk: () => setAutoFileAttachmentEnabled(true),
     });
   };
   const selfMentionTemplate = "@bot @E2E Self";
@@ -790,16 +810,28 @@ const E2EHarness = () => {
               />
             </label>
             <label className="flex items-center gap-1">
-              <span>Auto Reply</span>
+              <span>Auto Reply Text</span>
               <Switch
                 size="small"
-                checked={autoReplyEnabled}
-                onChange={onAutoReplyChange}
+                checked={autoReplyTextEnabled}
+                onChange={onAutoReplyTextChange}
                 data-testid="terminal-auto-reply-toggle"
               />
             </label>
+            <label className="flex items-center gap-1">
+              <span>Auto File Attach</span>
+              <Switch
+                size="small"
+                checked={autoFileAttachmentEnabled}
+                onChange={onAutoFileAttachmentChange}
+                data-testid="terminal-auto-file-attach-toggle"
+              />
+            </label>
             <span className="text-[#98a2b3]" data-testid="chat-agent-automation-state">
-              {botDetectionEnabled || autoInjectEnabled || autoReplyEnabled
+              {botDetectionEnabled ||
+              autoInjectEnabled ||
+              autoReplyTextEnabled ||
+              autoFileAttachmentEnabled
                 ? "enabled"
                 : "off"}
             </span>

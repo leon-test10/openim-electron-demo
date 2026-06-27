@@ -44,7 +44,10 @@ type StoredTerminalDockState = Pick<
   | "autoReceiveEnabled"
   | "autoSendEnabled"
   | "autoInjectEnabled"
-  | "autoReplyEnabled"
+  | "autoReplyTextEnabled"
+  | "autoReplyTextEnabledAt"
+  | "autoFileAttachmentEnabled"
+  | "autoFileAttachmentEnabledAt"
   | "botContextMessageLimit"
   | "captureSource"
   | "activeAgentRunByWorkspace"
@@ -65,7 +68,10 @@ const defaultState: StoredTerminalDockState = {
   autoSendEnabled: false,
   captureSource: "auto",
   autoInjectEnabled: false,
-  autoReplyEnabled: false,
+  autoReplyTextEnabled: false,
+  autoReplyTextEnabledAt: undefined,
+  autoFileAttachmentEnabled: false,
+  autoFileAttachmentEnabledAt: undefined,
   botContextMessageLimit: 20,
   activeAgentRunByWorkspace: {},
   handledBotTriggerKeys: {},
@@ -227,7 +233,8 @@ const readStoredState = (): StoredTerminalDockState => {
       parsed.autoReceiveEnabled ||
       parsed.autoSendEnabled ||
       parsed.autoInjectEnabled ||
-      parsed.autoReplyEnabled
+      parsed.autoReplyTextEnabled ||
+      parsed.autoFileAttachmentEnabled
     ) {
       console.warn("[terminalDock] unsafe automation flags reset to false on startup");
     }
@@ -273,7 +280,10 @@ const readStoredState = (): StoredTerminalDockState => {
       autoReceiveEnabled: false,
       autoSendEnabled: false,
       autoInjectEnabled: false,
-      autoReplyEnabled: false,
+      autoReplyTextEnabled: false,
+      autoReplyTextEnabledAt: undefined,
+      autoFileAttachmentEnabled: false,
+      autoFileAttachmentEnabledAt: undefined,
       botContextMessageLimit:
         typeof parsed.botContextMessageLimit === "number" &&
         parsed.botContextMessageLimit >= 1 &&
@@ -320,7 +330,10 @@ const toStoredState = (state: TerminalDockStore): StoredTerminalDockState => ({
   autoReceiveEnabled: state.autoReceiveEnabled,
   autoSendEnabled: state.autoSendEnabled,
   autoInjectEnabled: state.autoInjectEnabled,
-  autoReplyEnabled: state.autoReplyEnabled,
+  autoReplyTextEnabled: state.autoReplyTextEnabled,
+  autoReplyTextEnabledAt: state.autoReplyTextEnabledAt,
+  autoFileAttachmentEnabled: state.autoFileAttachmentEnabled,
+  autoFileAttachmentEnabledAt: state.autoFileAttachmentEnabledAt,
   botContextMessageLimit: state.botContextMessageLimit,
   captureSource: state.captureSource,
   activeAgentRunByWorkspace: state.activeAgentRunByWorkspace,
@@ -738,8 +751,21 @@ export const useTerminalDockStore = create<TerminalDockStore>()((set, get) => ({
   setAutoInjectEnabled: (autoInjectEnabled) => {
     set((state) => save(state, { autoInjectEnabled }));
   },
-  setAutoReplyEnabled: (autoReplyEnabled) => {
-    set((state) => save(state, { autoReplyEnabled }));
+  setAutoReplyTextEnabled: (autoReplyTextEnabled) => {
+    set((state) =>
+      save(state, {
+        autoReplyTextEnabled,
+        autoReplyTextEnabledAt: autoReplyTextEnabled ? Date.now() : undefined,
+      }),
+    );
+  },
+  setAutoFileAttachmentEnabled: (autoFileAttachmentEnabled) => {
+    set((state) =>
+      save(state, {
+        autoFileAttachmentEnabled,
+        autoFileAttachmentEnabledAt: autoFileAttachmentEnabled ? Date.now() : undefined,
+      }),
+    );
   },
   setBotContextMessageLimit: (botContextMessageLimit) => {
     set((state) => save(state, { botContextMessageLimit }));

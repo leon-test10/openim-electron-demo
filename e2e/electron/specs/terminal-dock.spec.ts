@@ -47,7 +47,7 @@ test("unsafe automation defaults reset and debug controls stay hidden", async ({
         autoReceiveEnabled: true,
         autoSendEnabled: true,
         autoInjectEnabled: true,
-        autoReplyEnabled: true,
+        autoReplyTextEnabled: true,
       }),
     );
     window.location.reload();
