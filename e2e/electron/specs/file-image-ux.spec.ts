@@ -90,6 +90,16 @@ test("run final answer preview and output files use image/file pending kinds", a
         mtimeMs: completedAt + 1,
       });
       writes.push({
+        relativePath: "output/test_folder/",
+        content: "",
+        mtimeMs: completedAt + 2,
+      });
+      writes.push({
+        relativePath: "output/test_folder/nested.txt",
+        content: "nested folder fixture",
+        mtimeMs: completedAt + 3,
+      });
+      writes.push({
         relativePath: finalAnswerPath,
         content: [
           "# Final Answer",
@@ -99,8 +109,9 @@ test("run final answer preview and output files use image/file pending kinds", a
           "## Output Files",
           "- output/test_image.png",
           "- output/test_file.md",
+          "- output/test_folder/",
         ].join("\n"),
-        mtimeMs: completedAt + 2,
+        mtimeMs: completedAt + 4,
       });
       writes.push({
         relativePath: manifestPath,
@@ -108,12 +119,12 @@ test("run final answer preview and output files use image/file pending kinds", a
           {
             ...baseManifest,
             status: "completed",
-            updatedAt: completedAt + 3,
+            updatedAt: completedAt + 5,
           },
           null,
           2,
         ),
-        mtimeMs: completedAt + 3,
+        mtimeMs: completedAt + 5,
       });
     },
     {
@@ -128,9 +139,7 @@ test("run final answer preview and output files use image/file pending kinds", a
     );
   });
 
-  await expect(appWindow.getByTestId("terminal-final-answer-preview")).toContainText(
-    "IM-ready answer from final_answer.md.",
-  );
+  await expect(appWindow.getByTestId("terminal-final-answer-preview")).toHaveCount(0);
 
   const readAutoFileAttachSnapshot = () =>
     appWindow.evaluate(() =>
@@ -156,6 +165,11 @@ test("run final answer preview and output files use image/file pending kinds", a
   await expect.poll(readAutoFileAttachSnapshot).toContain("test_file.md");
   await expect.poll(readAutoFileAttachSnapshot).toContain("output/test_file.md");
   await expect.poll(readAutoFileAttachSnapshot).toContain('"sendKind": "file"');
+  await expect.poll(readAutoFileAttachSnapshot).toContain("test_folder");
+  await expect
+    .poll(readAutoFileAttachSnapshot)
+    .toContain("output/test_folder/");
+  await expect.poll(readAutoFileAttachSnapshot).toContain('"sendKind": "folder"');
 });
 
 test("file card actions use desktop IPC instead of browser navigation", async ({
@@ -207,6 +221,82 @@ test("file card actions use desktop IPC instead of browser navigation", async ({
         () =>
           (window as E2EWindow).__e2eFileActions?.some(
             (action) => action.channel === "file:showItemInFolder",
+          ) ?? false,
+      ),
+    )
+    .toBeTruthy();
+});
+
+test("manual folder picker IPC can scan a selected folder", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow);
+
+  const folderScan = await appWindow.evaluate(async () => {
+    const folder = await window.electronAPI.ipcInvoke<{
+      folderPath: string;
+      folderName: string;
+    }>("file:selectFolder");
+    return window.electronAPI.ipcInvoke<{
+      folderName: string;
+      itemCount: number;
+      files: Array<{ relativePath: string; nativePath?: string }>;
+    }>("folder:scan", {
+      nativePath: folder.folderPath,
+      folderName: folder.folderName,
+    });
+  });
+
+  expect(folderScan.folderName).toBe("skills");
+  expect(folderScan.itemCount).toBe(1);
+  expect(folderScan.files[0].relativePath).toBe("nested.txt");
+  expect(JSON.stringify(folderScan.files.map((file) => file.relativePath))).not.toContain(
+    "C:\\",
+  );
+});
+
+test("folder shares render as one folder card without zip fallback", async ({
+  appWindow,
+}) => {
+  await setupTerminalHarness(appWindow);
+
+  const folderItem = appWindow.getByTestId(
+    `message-item-${e2eAttachmentMessageIDs.folder}`,
+  );
+  await expect(folderItem).toContainText("skills(1)");
+  await expect(folderItem).toContainText("67.1 KB");
+  await expect(folderItem.getByTestId("folder-message-open")).toHaveText(
+    "打开文件夹",
+  );
+  await expect(folderItem).not.toContainText(".zip");
+  await expect(folderItem).not.toContainText("添加到");
+
+  await folderItem.getByTestId("folder-message-open").click();
+  await expect(appWindow.getByText("SKILL.md")).toBeVisible();
+  await expect(appWindow.getByTestId("folder-message-download-all")).toBeVisible();
+  await expect(appWindow.getByTestId("folder-message-open-file")).toBeVisible();
+  await expect(appWindow.getByTestId("folder-message-download-file")).toBeVisible();
+  await expect(appWindow.getByRole("dialog")).not.toContainText("C:\\");
+
+  await appWindow.getByTestId("folder-message-download-file").click();
+  await expect
+    .poll(() =>
+      appWindow.evaluate(
+        () =>
+          (window as E2EWindow).__e2eFileActions?.some(
+            (action) => action.channel === "file:downloadToLocal",
+          ) ?? false,
+      ),
+    )
+    .toBeTruthy();
+
+  await appWindow.getByTestId("folder-message-download-all").click();
+  await expect
+    .poll(() =>
+      appWindow.evaluate(
+        () =>
+          (window as E2EWindow).__e2eFileActions?.some(
+            (action) => action.channel === "folder:downloadAllResources",
           ) ?? false,
       ),
     )

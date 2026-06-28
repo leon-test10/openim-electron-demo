@@ -35,6 +35,15 @@ const sendActionList = [
     placement: undefined as TooltipPlacement | undefined,
   },
   {
+    id: "folder" as const,
+    title: "文件夹",
+    icon: fileIconSvg,
+    accept: undefined,
+    kind: "folder" as const,
+    comp: null,
+    placement: undefined as TooltipPlacement | undefined,
+  },
+  {
     id: "rtc" as const,
     title: t("placeholder.call"),
     icon: rtc,
@@ -84,6 +93,27 @@ const SendActionBar = () => {
     }
   }, []);
 
+  const onNativeFolderPick = useCallback(async () => {
+    if (!window.electronAPI) return;
+    const folder = await window.electronAPI.ipcInvoke<
+      | {
+          folderPath: string;
+          folderName: string;
+        }
+      | undefined
+    >("file:selectFolder");
+    if (!folder) return;
+
+    emitter.emit("ADD_PENDING_CHAT_ATTACHMENT", {
+      source: "picker",
+      fileName: folder.folderName,
+      nativePath: folder.folderPath,
+      fileType: "folder",
+      fileSize: 0,
+      sendKind: "folder",
+    });
+  }, []);
+
   const fileHandle = (options: UploadRequestOption, kind: "image" | "file") => {
     const file = options.file as File & { path?: string };
     const sendKind = inferAttachmentKind(file.name, file.type || undefined);
@@ -128,6 +158,22 @@ const SendActionBar = () => {
               className="mr-5 flex cursor-pointer items-center"
               onClick={() => void onNativeFilePick()}
               title="选择文件"
+              data-testid="chat-action-select-files"
+            >
+              <img src={action.icon} width={20} alt={action.title} />
+            </div>
+          );
+        }
+
+        if (action.id === "folder") {
+          if (!window.electronAPI) return null;
+          return (
+            <div
+              key={action.id}
+              className="mr-5 flex cursor-pointer items-center"
+              onClick={() => void onNativeFolderPick()}
+              title="选择文件夹"
+              data-testid="chat-action-select-folder"
             >
               <img src={action.icon} width={20} alt={action.title} />
             </div>

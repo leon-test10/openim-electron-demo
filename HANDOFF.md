@@ -1,5 +1,51 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P11.6 Folder Send Without Chat Flooding (2026-06-28)
+
+Current branch: `feature/agent-run-contract`
+
+P11.6 implements Plan B folder sharing semantics: a folder is sent as one
+FolderShare custom message, not as a zip card and not as many FileMessages.
+
+### Implemented
+
+- `file:selectFolder` opens the native directory picker.
+- `folder:scan` scans either a workspace-relative output folder or a selected
+  native folder.
+- Folder scanning enforces limits (`300` files, `200MB`) and skips `.git`,
+  `node_modules`, and hidden entries except `.env`.
+- Folder resource upload uses the OpenIM SDK `uploadFile` API directly, without
+  sending per-file chat messages.
+- `FolderShareManifest` stores only relative paths, file names, sizes,
+  optional MIME types, `sourceUrl`, and `uuid`; local absolute paths are not
+  written to the sent manifest.
+- Sending a folder creates one `openim-agent.folder-share` CustomMessage.
+- `FolderMessageRender` displays one folder card with folder icon, folder name,
+  file count, total size, and `打开文件夹`.
+- Folder viewer lists original relative file paths and supports opening local
+  cached files, downloading one file, and downloading all files into a restored
+  folder under Downloads.
+- Folder output listed under `## Output Folders` is recognized; directory
+  entries listed under `## Output Files` are also recognized for compatibility.
+- `Final Answer Preview` was removed from TerminalDock.
+- Folder E2E coverage verifies picker scan, no final-answer preview, folder
+  pending kind, single folder card rendering, no zip fallback, no add-to UI, no
+  local absolute paths in the viewer, and single/all-file download actions.
+
+### Not Implemented
+
+- Add-to feature.
+- Cloud drive integration.
+- Workspace import from received folder shares.
+- Zip fallback UI.
+- Sending N FileMessages for a folder.
+
+### Validation
+
+- `npm.cmd run lint -- --quiet`: pass.
+- `npm.cmd run build`: pass.
+- `npx.cmd playwright test -c playwright.electron.config.ts e2e/electron/specs/file-image-ux.spec.ts`: 5 passed.
+
 ## Latest Update — Remove PendingAgentRequests Card + @mention Autocomplete + Safety (2026-06-26)
 
 Current branch: `feature/agent-run-contract`

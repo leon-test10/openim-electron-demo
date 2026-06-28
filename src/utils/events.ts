@@ -53,7 +53,7 @@ export type PendingChatAttachmentParams = {
   relativePath?: string;
   fileType: string;
   fileSize: number;
-  sendKind: "image" | "file";
+  sendKind: "image" | "file" | "folder";
   /** Browser File object (picker source, web fallback). */
   file?: File;
 };

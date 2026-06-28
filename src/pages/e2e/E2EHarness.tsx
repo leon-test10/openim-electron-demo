@@ -294,17 +294,76 @@ const installE2EElectronMock = () => {
           return Promise.resolve({
             exists: false,
             isFile: false,
+            isDirectory: false,
             size: 0,
             mtimeMs: 0,
           } as T);
         }
+        const isDirectory = Boolean(matchingWrite.relativePath?.endsWith("/"));
         return Promise.resolve({
           exists: true,
-          isFile: true,
+          isFile: !isDirectory,
+          isDirectory,
           size: matchingWrite.content?.length ?? 0,
           // Keep mtime stable per write index so auto-send de-duping is deterministic.
           mtimeMs: matchingWrite.mtimeMs ?? 1_700_000_000_000 + matchingIndex,
         } as T);
+      }
+
+      if (channel === "folder:scan") {
+        const params = args[0] as {
+          nativePath?: string;
+          folderName?: string;
+          relativePath?: string;
+        };
+        const folderPath =
+          params.relativePath?.replace(/[\\/]+$/, "") ?? params.folderName ?? "";
+        const nativeRoot = params.nativePath?.replace(/[\\/]+$/, "");
+        const files = params.nativePath
+          ? [
+              {
+                relativePath: "nested.txt",
+                fileName: "nested.txt",
+                nativePath: `${nativeRoot}\\nested.txt`,
+                size: 21,
+              },
+            ]
+          : (e2eWindow.__e2eWorkspaceWrites ?? [])
+              .filter(
+                (write) =>
+                  write.relativePath?.startsWith(`${folderPath}/`) &&
+                  !write.relativePath.endsWith("/"),
+              )
+              .map((write) => {
+                const relativePath = write.relativePath!.slice(folderPath.length + 1);
+                return {
+                  relativePath,
+                  fileName: relativePath.split("/").pop() ?? relativePath,
+                  nativePath: `C:\\OpenIM-E2E\\workspace\\${write.relativePath}`,
+                  size: write.content?.length ?? 0,
+                };
+              });
+        return Promise.resolve({
+          folderName: params.folderName ?? folderPath.split("/").pop() ?? "folder",
+          itemCount: files.length,
+          totalSize: files.reduce((sum, file) => sum + file.size, 0),
+          files,
+        } as T);
+      }
+
+      if (channel === "file:selectFolder") {
+        return Promise.resolve({
+          folderPath: "C:\\OpenIM-E2E\\fixtures\\skills",
+          folderName: "skills",
+        } as T);
+      }
+
+      if (channel === "folder:downloadAllResources") {
+        e2eWindow.__e2eFileActions?.push({
+          channel,
+          nativePath: "C:\\OpenIM-E2E\\downloads\\skills",
+        });
+        return Promise.resolve("C:\\OpenIM-E2E\\downloads\\skills" as T);
       }
 
       if (channel === "terminal:resize" || channel === "terminal:interrupt") {

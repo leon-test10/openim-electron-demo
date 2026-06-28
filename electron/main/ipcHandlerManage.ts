@@ -24,6 +24,8 @@ import {
   downloadFileToTerminalWorkspace,
   getConversationWorkspaceDir,
   getTerminalWorkspaceDir,
+  scanNativeFolder,
+  scanWorkspaceFolder,
   statWorkspaceFile,
   writeFileToConversationWorkspace,
   writeFileToTerminalWorkspace,
@@ -33,6 +35,64 @@ const store = getStore();
 
 const sanitizeDownloadFileName = (fileName: string) =>
   fileName.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").trim() || "download";
+
+const downloadUrlToPath = (
+  url: URL,
+  targetPath: string,
+  redirectCount = 0,
+): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const client = url.protocol === "https:" ? https : http;
+    const request = client.get(url, (response) => {
+      if (
+        response.statusCode &&
+        response.statusCode >= 300 &&
+        response.statusCode < 400 &&
+        response.headers.location
+      ) {
+        response.resume();
+        if (redirectCount >= 3) {
+          reject(new Error("Too many attachment redirects"));
+          return;
+        }
+        downloadUrlToPath(
+          new URL(response.headers.location, url),
+          targetPath,
+          redirectCount + 1,
+        )
+          .then(resolve)
+          .catch(reject);
+        return;
+      }
+
+      if (response.statusCode !== 200) {
+        response.resume();
+        reject(new Error(`Download failed with HTTP ${response.statusCode}`));
+        return;
+      }
+
+      fs.promises
+        .mkdir(path.dirname(targetPath), { recursive: true })
+        .then(() => {
+          const file = fs.createWriteStream(targetPath);
+          response.pipe(file);
+          file.on("finish", () => {
+            file.close((error) => {
+              if (error) reject(error);
+              else resolve(targetPath);
+            });
+          });
+          file.on("error", (error) => {
+            fs.promises.rm(targetPath, { force: true }).finally(() => reject(error));
+          });
+        })
+        .catch(reject);
+    });
+    request.on("error", reject);
+    request.setTimeout(60_000, () => {
+      request.destroy(new Error("Download timed out"));
+    });
+  });
 
 const downloadUrlToLocalFile = async (params: {
   sourceUrl: string;
@@ -61,49 +121,16 @@ const downloadUrlToLocalFile = async (params: {
     throw new Error("Save cancelled");
   }
   const targetPath = saveResult?.filePath ?? defaultPath;
-  const client = url.protocol === "https:" ? https : http;
+  return downloadUrlToPath(url, targetPath);
+};
 
-  return new Promise<string>((resolve, reject) => {
-    const request = client.get(url, (response) => {
-      if (
-        response.statusCode &&
-        response.statusCode >= 300 &&
-        response.statusCode < 400 &&
-        response.headers.location
-      ) {
-        response.resume();
-        downloadUrlToLocalFile({
-          sourceUrl: new URL(response.headers.location, url).toString(),
-          fileName: params.fileName,
-        })
-          .then(resolve)
-          .catch(reject);
-        return;
-      }
-
-      if (response.statusCode !== 200) {
-        response.resume();
-        reject(new Error(`Download failed with HTTP ${response.statusCode}`));
-        return;
-      }
-
-      const file = fs.createWriteStream(targetPath);
-      response.pipe(file);
-      file.on("finish", () => {
-        file.close((error) => {
-          if (error) reject(error);
-          else resolve(targetPath);
-        });
-      });
-      file.on("error", (error) => {
-        fs.promises.rm(targetPath, { force: true }).finally(() => reject(error));
-      });
-    });
-    request.on("error", reject);
-    request.setTimeout(60_000, () => {
-      request.destroy(new Error("Download timed out"));
-    });
-  });
+const sanitizeRelativeDownloadPath = (relativePath: string, fallbackName: string) => {
+  const safeParts = relativePath
+    .replaceAll("\\", "/")
+    .split("/")
+    .map((part) => sanitizeDownloadFileName(part))
+    .filter(Boolean);
+  return safeParts.length > 0 ? safeParts.join(path.sep) : sanitizeDownloadFileName(fallbackName);
 };
 
 export const setIpcMainListener = () => {
@@ -233,6 +260,17 @@ export const setIpcMainListener = () => {
       }),
     ).then((files) => files.filter((f): f is NonNullable<typeof f> => f !== null));
   });
+  ipcMain.handle(IpcRenderToMain.fileSelectFolder, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory"],
+    });
+    if (result.canceled || result.filePaths.length === 0) return undefined;
+    const folderPath = result.filePaths[0];
+    return {
+      folderPath,
+      folderName: path.basename(folderPath),
+    };
+  });
 
   ipcMain.handle(
     IpcRenderToMain.fileStatNativePath,
@@ -264,6 +302,36 @@ export const setIpcMainListener = () => {
     IpcRenderToMain.fileDownloadToLocal,
     async (_, params: { sourceUrl: string; fileName: string }) => {
       return downloadUrlToLocalFile(params);
+    },
+  );
+  ipcMain.handle(
+    IpcRenderToMain.folderDownloadAllResources,
+    async (
+      _,
+      params: {
+        folderName: string;
+        files: Array<{
+          relativePath: string;
+          fileName: string;
+          sourceUrl?: string;
+        }>;
+      },
+    ) => {
+      const downloadsDir = app.getPath("downloads");
+      const rootDir = path.join(
+        downloadsDir,
+        `${sanitizeDownloadFileName(params.folderName)}-${Date.now()}`,
+      );
+      for (const file of params.files) {
+        if (!file.sourceUrl) continue;
+        const sourceUrl = new URL(file.sourceUrl);
+        const relativePath = sanitizeRelativeDownloadPath(
+          file.relativePath,
+          file.fileName,
+        );
+        await downloadUrlToPath(sourceUrl, path.join(rootDir, relativePath));
+      }
+      return rootDir;
     },
   );
   ipcMain.handle(IpcRenderToMain.terminalGetWorkspaceDir, (_, workspaceID) => {
@@ -314,6 +382,12 @@ export const setIpcMainListener = () => {
       return statWorkspaceFile(workspaceID, relativePath);
     },
   );
+  ipcMain.handle(IpcRenderToMain.folderScan, (_, params) => {
+    if (params?.nativePath) {
+      return scanNativeFolder(params);
+    }
+    return scanWorkspaceFolder(params);
+  });
   ipcMain.on(IpcRenderToMain.getDataPath, (e, key: string) => {
     switch (key) {
       case "public":

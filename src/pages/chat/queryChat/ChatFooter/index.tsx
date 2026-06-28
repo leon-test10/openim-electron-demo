@@ -26,7 +26,9 @@ import {
   useUserStore,
 } from "@/store";
 import emitter, { PendingChatAttachmentParams } from "@/utils/events";
+import { parseFolderShareMessage } from "@/utils/folderShare";
 import { recordLocalFileForMessage } from "@/utils/localFileCache";
+import { recordLocalFolderShare } from "@/utils/localFolderShareCache";
 
 import BotMentionAutocomplete from "./BotMentionAutocomplete";
 import SendActionBar from "./SendActionBar";
@@ -98,7 +100,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   );
   const { fetchState: groupMemberState } = useGroupMembers();
 
-  const { getFileMessage, getImageMessage } = useFileMessage();
+  const { getFileMessage, getFolderMessage, getImageMessage } = useFileMessage();
   const { sendMessage } = useSendMessage();
 
   const automationReady = useMemo(() => {
@@ -354,6 +356,49 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
             return ws ? `${ws.rootPath}/${attachment.relativePath}` : undefined;
           })()
         : undefined);
+
+    if (attachment.sendKind === "folder") {
+      if (!nativePath) {
+        throw new Error("Cannot send folder without a local path");
+      }
+      const scan = await window.electronAPI?.ipcInvoke<{
+        folderName: string;
+        itemCount: number;
+        totalSize: number;
+        files: Array<{
+          relativePath: string;
+          fileName: string;
+          nativePath?: string;
+          size: number;
+          mimeType?: string;
+        }>;
+      }>("folder:scan", {
+        ...(attachment.source === "workspace" && activeWorkspaceID
+          ? {
+              workspaceID: activeWorkspaceID,
+              relativePath: attachment.relativePath,
+            }
+          : {
+              nativePath,
+              folderName: attachment.fileName,
+            }),
+      });
+      if (!scan) throw new Error("Cannot scan folder");
+      const message = await getFolderMessage({
+        nativePath,
+        folderName: scan.folderName || attachment.fileName,
+        itemCount: scan.itemCount,
+        totalSize: scan.totalSize,
+        files: scan.files,
+      });
+      const sentMessage = await sendMessage({ message });
+      if (!sentMessage) throw new Error("Failed to send folder");
+      const manifest = parseFolderShareMessage(message);
+      if (manifest?.shareID) {
+        recordLocalFolderShare(manifest.shareID, manifest.folderName, nativePath);
+      }
+      return;
+    }
 
     if (attachment.sendKind === "image") {
       const message = nativePath

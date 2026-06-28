@@ -33,6 +33,7 @@ export const IpcRenderToMain = {
   terminalOpenWorkspace: "terminal:openWorkspace",
 
   fileSelectFiles: "file:selectFiles",
+  fileSelectFolder: "file:selectFolder",
   fileStatNativePath: "file:statNativePath",
   fileOpenPath: "file:openPath",
   fileShowItemInFolder: "file:showItemInFolder",
@@ -51,4 +52,6 @@ export const IpcRenderToMain = {
   workspaceCopyWorkspaceFile: "workspace:copyWorkspaceFile",
   workspaceDownloadWorkspaceFile: "workspace:downloadWorkspaceFile",
   workspaceStatFile: "workspace:statFile",
+  folderScan: "folder:scan",
+  folderDownloadAllResources: "folder:downloadAllResources",
 };

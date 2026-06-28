@@ -32,6 +32,9 @@ const BLOCKED_ATTACHMENT_EXTENSIONS = new Set([
   ".vbs",
   ".wsf",
 ]);
+const IGNORED_FOLDER_NAMES = new Set([".git", "node_modules"]);
+const MAX_FOLDER_FILES = 300;
+const MAX_FOLDER_TOTAL_BYTES = 200 * 1024 * 1024;
 
 const sanitizeForPath = (value: string) =>
   value
@@ -71,22 +74,131 @@ export const statWorkspaceFile = async (
   const workspaceDir = await getTerminalWorkspaceDir(workspaceID);
   const resolved = path.resolve(workspaceDir, relativePath);
   if (!resolved.startsWith(path.resolve(workspaceDir) + path.sep)) {
-    return { exists: false, isFile: false, size: 0, mtimeMs: 0 };
+    return { exists: false, isFile: false, isDirectory: false, size: 0, mtimeMs: 0 };
   }
   try {
     const stat = await fs.promises.stat(resolved);
     return {
       exists: true,
       isFile: stat.isFile(),
+      isDirectory: stat.isDirectory(),
       size: stat.size,
       mtimeMs: stat.mtimeMs,
     };
   } catch {
-    return { exists: false, isFile: false, size: 0, mtimeMs: 0 };
+    return { exists: false, isFile: false, isDirectory: false, size: 0, mtimeMs: 0 };
   }
 };
 
-const ensurePathInsideRoot = (root: string, relativePath: string) => {
+const scanFolderPath = async (params: {
+  folderPath: string;
+  folderName?: string;
+  maxFiles?: number;
+  maxTotalBytes?: number;
+}) => {
+  const folderPath = path.resolve(params.folderPath);
+  const rootStat = await fs.promises.stat(folderPath);
+  if (!rootStat.isDirectory()) {
+    throw new Error("Path is not a folder");
+  }
+
+  const maxFiles = params.maxFiles ?? MAX_FOLDER_FILES;
+  const maxTotalBytes = params.maxTotalBytes ?? MAX_FOLDER_TOTAL_BYTES;
+  const files: Array<{
+    relativePath: string;
+    fileName: string;
+    nativePath: string;
+    size: number;
+    mimeType?: string;
+  }> = [];
+  let totalSize = 0;
+
+  const walk = async (currentDir: string) => {
+    const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".") && entry.name !== ".env") continue;
+      if (entry.isDirectory() && IGNORED_FOLDER_NAMES.has(entry.name)) continue;
+
+      const entryPath = path.join(currentDir, entry.name);
+      const stat = await fs.promises.stat(entryPath);
+      if (stat.isDirectory()) {
+        await walk(entryPath);
+        continue;
+      }
+      if (!stat.isFile()) continue;
+
+      totalSize += stat.size;
+      if (files.length >= maxFiles) {
+        throw new Error(`Folder contains more than ${maxFiles} files`);
+      }
+      if (totalSize > maxTotalBytes) {
+        throw new Error(
+          `Folder exceeds ${Math.round(maxTotalBytes / 1024 / 1024)}MB limit`,
+        );
+      }
+      const relativeFilePath = path
+        .relative(folderPath, entryPath)
+        .replaceAll("\\", "/");
+      files.push({
+        relativePath: relativeFilePath,
+        fileName: entry.name,
+        nativePath: entryPath,
+        size: stat.size,
+      });
+    }
+  };
+
+  await walk(folderPath);
+
+  return {
+    folderName: params.folderName || path.basename(folderPath),
+    itemCount: files.length,
+    totalSize,
+    files,
+  };
+};
+
+export const scanWorkspaceFolder = async (params: {
+  workspaceID: string;
+  relativePath: string;
+  maxFiles?: number;
+  maxTotalBytes?: number;
+}) => {
+  const workspaceDir = await getTerminalWorkspaceDir(params.workspaceID);
+  const folderPath = ensurePathInsideRoot(workspaceDir, params.relativePath);
+  const folderName =
+    path.basename(params.relativePath.replace(/[\\/]+$/, "")) ||
+    path.basename(folderPath);
+
+  return scanFolderPath({
+    folderPath,
+    folderName,
+    maxFiles: params.maxFiles,
+    maxTotalBytes: params.maxTotalBytes,
+  });
+};
+
+export const scanNativeFolder = async (params: {
+  nativePath: string;
+  folderName?: string;
+  maxFiles?: number;
+  maxTotalBytes?: number;
+}) => {
+  if (!params.nativePath.trim() || !path.isAbsolute(params.nativePath)) {
+    throw new Error("Folder path must be an absolute local path");
+  }
+  if (params.nativePath.startsWith("\\\\")) {
+    throw new Error("UNC folder paths are not allowed");
+  }
+  return scanFolderPath({
+    folderPath: params.nativePath,
+    folderName: params.folderName,
+    maxFiles: params.maxFiles,
+    maxTotalBytes: params.maxTotalBytes,
+  });
+};
+
+function ensurePathInsideRoot(root: string, relativePath: string) {
   if (!relativePath.trim()) {
     throw new Error("Invalid workspace path");
   }
@@ -108,16 +220,16 @@ const ensurePathInsideRoot = (root: string, relativePath: string) => {
   }
 
   return resolvedTarget;
-};
+}
 
-const ensureAttachmentExportTargetSafe = (resolvedTarget: string) => {
+function ensureAttachmentExportTargetSafe(resolvedTarget: string) {
   const extension = path.extname(resolvedTarget).toLowerCase();
   if (BLOCKED_ATTACHMENT_EXTENSIONS.has(extension)) {
     throw new Error(
       `Attachment export blocked by policy for executable/script files (${extension})`,
     );
   }
-};
+}
 
 export const writeFileToConversationWorkspace = async (params: {
   conversationID: string;
@@ -151,8 +263,9 @@ export const writeFileToTerminalWorkspace = async (params: {
   };
 };
 
-const getFileHash = (buffer: Buffer) =>
-  crypto.createHash("sha256").update(buffer).digest("hex");
+function getFileHash(buffer: Buffer) {
+  return crypto.createHash("sha256").update(buffer).digest("hex");
+}
 
 const ensureSourceFileReadable = async (sourcePath: string, maxBytes: number) => {
   if (!sourcePath.trim() || !path.isAbsolute(sourcePath)) {

@@ -4,6 +4,8 @@ import {
   MessageItem,
 } from "@openim/wasm-client-sdk/lib/types/entity";
 
+import { createFolderSharePayload, FOLDER_SHARE_SCHEMA } from "@/utils/folderShare";
+
 export const e2eConversationID = "si_e2e_user_peer";
 export const e2eGroupConversationID = "sg_e2e_group";
 
@@ -128,6 +130,42 @@ export const createE2EFileMessage = (clientMsgID: string, sendTimeOffset: number
     sendTime: Date.now() - sendTimeOffset,
   } as unknown as MessageItem);
 
+export const createE2EFolderMessage = (
+  clientMsgID: string,
+  sendTimeOffset: number,
+) => {
+  const payload = createFolderSharePayload({
+    schema: FOLDER_SHARE_SCHEMA,
+    shareID: "e2e-folder-share",
+    folderName: "skills",
+    itemCount: 1,
+    totalSize: 68_700,
+    createdAt: Date.now() - sendTimeOffset,
+    files: [
+      {
+        relativePath: "SKILL.md",
+        fileName: "SKILL.md",
+        size: 68_700,
+        sourceUrl: "mock://folder-share/skills/SKILL.md",
+      },
+    ],
+  });
+
+  return {
+    clientMsgID,
+    serverMsgID: clientMsgID,
+    conversationID: e2eConversationID,
+    sendID: "e2e_peer",
+    recvID: "e2e_self",
+    senderNickname: "E2E Peer",
+    senderFaceUrl: "",
+    sessionType: SessionType.Single,
+    contentType: MessageType.CustomMessage,
+    customElem: payload,
+    sendTime: Date.now() - sendTimeOffset,
+  } as unknown as MessageItem;
+};
+
 export const createE2EDangerousFileMessage = (
   clientMsgID: string,
   sendTimeOffset: number,
@@ -154,6 +192,7 @@ export const createE2EDangerousFileMessage = (
 
 export const e2eAttachmentMessageIDs = {
   image: "e2e_msg_image",
+  folder: "e2e_msg_folder",
   failedFile: "e2e_msg_failed_file",
   dangerousFile: "e2e_msg_dangerous_file",
 };
@@ -174,6 +213,7 @@ export const e2eMessages = [
   createE2ETextMessage("e2e_msg_2", "reply from e2e peer", 4000),
   createE2ETextMessage("e2e_msg_3", "searchable history message", 3000),
   createE2EPictureMessage(e2eAttachmentMessageIDs.image, 2000),
+  createE2EFolderMessage(e2eAttachmentMessageIDs.folder, 1800),
   createE2EDangerousFileMessage(e2eAttachmentMessageIDs.dangerousFile, 1500),
   createE2EFileMessage(e2eAttachmentMessageIDs.failedFile, 1000),
   createE2ETextMessage(

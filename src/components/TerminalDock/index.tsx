@@ -30,7 +30,6 @@ import { useParams } from "react-router-dom";
 
 import { IMSDK } from "@/layout/MainContentWrap";
 import {
-  AgentFinalAnswerEvent,
   resolveAgentFinalAnswer,
   resolveFromAgentRunContract,
 } from "@/services/agentOutput";
@@ -312,7 +311,6 @@ const TerminalDock = () => {
       text: "",
       source: "selection",
     });
-  const [finalAnswerPreview, setFinalAnswerPreview] = useState("");
   const terminalApisRef = useRef<Map<string, TerminalSurfaceApi>>(new Map());
   const recentTerminalSelectionsRef = useRef<
     Map<string, { text: string; updatedAt: number }>
@@ -365,9 +363,6 @@ const TerminalDock = () => {
     ? structuredEventsByWorkspace[activeWorkspaceID] ?? []
     : [];
   const lastStructuredEvent = structuredSidecarEvents.at(-1);
-  const lastStructuredFinalAnswer = [...structuredSidecarEvents]
-    .reverse()
-    .find((event): event is AgentFinalAnswerEvent => event.type === "final_answer");
   const activeAgentRun = activeWorkspaceID
     ? activeAgentRunByWorkspace[activeWorkspaceID]
     : undefined;
@@ -390,10 +385,13 @@ const TerminalDock = () => {
       const result = await window.electronAPI.ipcInvoke<{
         exists: boolean;
         isFile: boolean;
+        isDirectory?: boolean;
         size: number;
         mtimeMs: number;
       }>("workspace:statFile", activeWorkspace.id, relativePath);
-      return result?.exists && result.isFile ? result : undefined;
+      return result?.exists && (result.isFile || result.isDirectory)
+        ? result
+        : undefined;
     },
     [activeWorkspace],
   );
@@ -441,39 +439,6 @@ const TerminalDock = () => {
     },
     [activeWorkspace, readWorkspaceStat, readWorkspaceText],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (!activeTab) {
-      setFinalAnswerPreview("");
-      return;
-    }
-
-    getResolvedFinalAnswer(activeTab)
-      .then((resolution) => {
-        if (!cancelled) {
-          setFinalAnswerPreview(resolution?.text ?? "");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFinalAnswerPreview("");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    activeAgentRun?.runID,
-    activeTab,
-    activeTabOutputSignature,
-    getResolvedFinalAnswer,
-    lastStructuredFinalAnswer?.runID,
-    lastStructuredFinalAnswer?.sessionID,
-    lastStructuredFinalAnswer?.text,
-  ]);
 
   const captureTerminalFinalAnswer = useCallback(
     async (mode: "manual" | "auto") => {
@@ -874,7 +839,10 @@ const TerminalDock = () => {
         }
 
         // Auto File Attachment
-        const outputFiles = resolution.outputFiles ?? [];
+        const outputFiles = [
+          ...(resolution.outputFiles ?? []),
+          ...(resolution.outputFolders ?? []),
+        ];
         publishE2EAutoFileAttachDiagnostic({
           reason: "resolved",
           outputFiles,
@@ -917,12 +885,18 @@ const TerminalDock = () => {
               }
               emit("ADD_PENDING_CHAT_ATTACHMENT", {
                 source: "workspace" as const,
-                fileName: relativePath.split("/").pop() || relativePath,
+                fileName:
+                  relativePath
+                    .replace(/[\\/]+$/, "")
+                    .split("/")
+                    .pop() || relativePath,
                 nativePath: joinWorkspacePath(activeWorkspace.rootPath, relativePath),
                 relativePath,
                 fileType: "file",
                 fileSize: fileStat.size,
-                sendKind: inferAttachmentKind(relativePath),
+                sendKind: fileStat.isDirectory
+                  ? "folder"
+                  : inferAttachmentKind(relativePath),
               });
               queuedFileCount += 1;
               autoRepliedHashesRef.current.add(fileKey);
@@ -1801,21 +1775,6 @@ const TerminalDock = () => {
 
       {activeWorkspace ? (
         <>
-          <div
-            className="terminal-dock-final-answer-preview"
-            data-testid="terminal-final-answer-preview"
-          >
-            <div className="terminal-dock-final-answer-preview-title">
-              Final Answer Preview
-            </div>
-            {finalAnswerPreview ? (
-              <pre>{finalAnswerPreview}</pre>
-            ) : (
-              <span className="terminal-dock-final-answer-preview-empty">
-                No resolved final_answer.md yet
-              </span>
-            )}
-          </div>
           <TerminalTabs
             tabs={tabs}
             activeTabID={activeTab?.id}

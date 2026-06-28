@@ -27,6 +27,8 @@ export interface AgentOutputResolution {
   runID?: string;
   /** Workspace-relative file paths extracted from ## Output Files section. */
   outputFiles?: string[];
+  /** Workspace-relative folder paths extracted from ## Output Folders section. */
+  outputFolders?: string[];
   /** File mtime of manifest.json (milliseconds). */
   manifestFileMtimeMs?: number;
   /** File mtime of final_answer.md (milliseconds). */
@@ -46,10 +48,12 @@ interface ResolveAgentOutputParams {
 const isPathInsideRun = (runDir: string, path: string) =>
   path === runDir || path.startsWith(`${runDir}/`);
 
-/** Extract workspace-relative file paths from ## Output Files section. */
-const parseOutputFiles = (text: string): string[] | undefined => {
+const parseMarkdownListSection = (
+  text: string,
+  heading: string,
+): string[] | undefined => {
   const sectionMatch = text.match(
-    /## Output Files\s*\n((?:[\s\S]*?))(?:\n## |\n---|\n```|$)/,
+    new RegExp(`${heading}\\s*\\n((?:[\\s\\S]*?))(?:\\n## |\\n---|\\n\`\`\`|$)`),
   );
   if (!sectionMatch) return undefined;
 
@@ -66,6 +70,14 @@ const parseOutputFiles = (text: string): string[] | undefined => {
   }
   return paths.length > 0 ? paths : undefined;
 };
+
+/** Extract workspace-relative file paths from ## Output Files section. */
+const parseOutputFiles = (text: string): string[] | undefined =>
+  parseMarkdownListSection(text, "## Output Files");
+
+/** Extract workspace-relative folder paths from ## Output Folders section. */
+const parseOutputFolders = (text: string): string[] | undefined =>
+  parseMarkdownListSection(text, "## Output Folders");
 
 export const resolveFromAgentRunContract = (args: {
   contract: AgentRunContract | undefined;
@@ -96,6 +108,7 @@ export const resolveFromAgentRunContract = (args: {
     source: "run_file",
     runID: contract.runID,
     outputFiles: parseOutputFiles(finalAnswerText ?? ""),
+    outputFolders: parseOutputFolders(finalAnswerText ?? ""),
     manifestFileMtimeMs: manifestFileMtimeMs ?? manifest.updatedAt,
     finalAnswerFileMtimeMs: finalAnswerFileMtimeMs ?? manifest.updatedAt,
     manifestStatus: manifest.status,
