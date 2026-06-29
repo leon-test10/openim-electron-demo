@@ -19,6 +19,7 @@ import { runtimeManager } from "./runtimeManage";
 import { terminalManager } from "./terminalManage";
 import { agentWatchManager } from "./agentWatchManage";
 import { opencodeManager } from "./opencodeManage";
+import { downloadFolderShare, FolderShareDownloadManifest } from "./folderShareDownload";
 import {
   copyFileToTerminalWorkspace,
   downloadFileToTerminalWorkspace,
@@ -332,6 +333,22 @@ export const setIpcMainListener = () => {
         await downloadUrlToPath(sourceUrl, path.join(rootDir, relativePath));
       }
       return rootDir;
+    },
+  );
+  ipcMain.handle(
+    IpcRenderToMain.folderDownloadShare,
+    async (_, manifest: FolderShareDownloadManifest) => {
+      return downloadFolderShare(manifest, {
+        chooseTargetRoot: async () => {
+          const result = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow(), {
+            properties: ["openDirectory", "createDirectory"],
+            title: "Select folder download location",
+          });
+          if (result.canceled || result.filePaths.length === 0) return undefined;
+          return result.filePaths[0];
+        },
+        downloadUrlToPath,
+      });
     },
   );
   ipcMain.handle(IpcRenderToMain.terminalGetWorkspaceDir, (_, workspaceID) => {

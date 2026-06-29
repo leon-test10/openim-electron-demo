@@ -1,11 +1,19 @@
 import { Button, message as antdMessage, Modal } from "antd";
-import { FC, useState } from "react";
+import { FC, useRef, useState } from "react";
 
 import { parseFolderShareMessage } from "@/utils/folderShare";
 import { getLocalFolderShare } from "@/utils/localFolderShareCache";
 
 import { IMessageItemProps } from ".";
 import styles from "./message-item.module.scss";
+
+type FolderShareDownloadSummary = {
+  canceled: boolean;
+  folderPath?: string;
+  successCount: number;
+  failedCount: number;
+  failedFiles: Array<{ relativePath: string; reason: string }>;
+};
 
 const formatBytes = (bytes: number) => {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -23,6 +31,8 @@ const joinLocalFolderPath = (rootPath: string, relativePath: string) => {
 
 const FolderMessageRender: FC<IMessageItemProps> = ({ message }) => {
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+  const downloadInFlightRef = useRef(false);
   const manifest = parseFolderShareMessage(message);
 
   if (!manifest) {
@@ -74,25 +84,47 @@ const FolderMessageRender: FC<IMessageItemProps> = ({ message }) => {
   };
 
   const downloadAll = async () => {
-    const downloadableFiles = manifest.files.filter((file) => file.sourceUrl);
-    if (downloadableFiles.length === 0) {
-      antdMessage.warning("This folder has no downloadable resources.");
-      return;
-    }
+    if (downloadInFlightRef.current) return;
+    downloadInFlightRef.current = true;
     if (!window.electronAPI) {
-      await Promise.all(downloadableFiles.map((file) => downloadFile(file)));
+      const downloadableFiles = manifest.files.filter((file) => file.sourceUrl);
+      if (downloadableFiles.length === 0) {
+        downloadInFlightRef.current = false;
+        antdMessage.warning("This folder has no downloadable resources.");
+        return;
+      }
+      try {
+        await Promise.all(downloadableFiles.map((file) => downloadFile(file)));
+      } finally {
+        downloadInFlightRef.current = false;
+      }
       return;
     }
-    const folderPath = await window.electronAPI.ipcInvoke<string>(
-      "folder:downloadAllResources",
-      {
-        folderName: manifest.folderName,
-        files: downloadableFiles,
-      },
-    );
-    antdMessage.success("Folder downloaded");
-    if (folderPath) {
-      await window.electronAPI.ipcInvoke("file:openPath", folderPath);
+    setDownloadLoading(true);
+    try {
+      const summary = await window.electronAPI.ipcInvoke<FolderShareDownloadSummary>(
+        "folder:downloadShare",
+        manifest,
+      );
+      if (summary.canceled) return;
+      if (summary.failedCount > 0) {
+        console.warn("[folder-share] download partial failures", summary.failedFiles);
+        antdMessage.warning(
+          `Folder downloaded with ${summary.failedCount} failure(s).`,
+        );
+        return;
+      }
+      antdMessage.success("Folder downloaded successfully");
+      if (summary.folderPath) {
+        await window.electronAPI.ipcInvoke("file:openPath", summary.folderPath);
+      }
+    } catch (error) {
+      antdMessage.error(
+        error instanceof Error ? error.message : "Folder download failed",
+      );
+    } finally {
+      downloadInFlightRef.current = false;
+      setDownloadLoading(false);
     }
   };
 
@@ -127,6 +159,16 @@ const FolderMessageRender: FC<IMessageItemProps> = ({ message }) => {
           >
             打开文件夹
           </Button>
+          <Button
+            shape="round"
+            size="large"
+            loading={downloadLoading}
+            disabled={downloadLoading}
+            onClick={() => void downloadAll()}
+            data-testid="folder-message-download-share"
+          >
+            Download Folder
+          </Button>
         </div>
       </div>
       <Modal
@@ -140,6 +182,8 @@ const FolderMessageRender: FC<IMessageItemProps> = ({ message }) => {
         </div>
         <div className="mb-3 flex justify-end">
           <Button
+            loading={downloadLoading}
+            disabled={downloadLoading}
             onClick={() => void downloadAll()}
             data-testid="folder-message-download-all"
           >

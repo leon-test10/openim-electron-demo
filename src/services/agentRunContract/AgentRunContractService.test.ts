@@ -22,6 +22,10 @@ assert.match(
 assert.match(finalAnswerSkill, /Do not write debug notes/i);
 assert.match(finalAnswerSkill, /Do not create a separate terminal summary/i);
 assert.match(finalAnswerSkill, /Final reply has been written to final_answer\.md/i);
+assert.match(finalAnswerSkill, /## Output Files/i);
+assert.match(finalAnswerSkill, /## Output Folders/i);
+assert.match(finalAnswerSkill, /Do not also list that directory's child files/i);
+assert.match(finalAnswerSkill, /Output Folders takes priority/i);
 
 console.log("AgentRunContractService tests passed");
 

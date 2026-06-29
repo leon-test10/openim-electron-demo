@@ -1,5 +1,50 @@
 # Session Handoff - Terminal Dock Redesign
 
+## Latest Update - P11.7 Folder Share Download Folder (2026-06-29)
+
+Current branch: `feature/agent-run-contract`
+
+P11.7 adds whole-folder download for received `openim-agent.folder-share`
+CustomMessages. It only touches folder-share download behavior; Auto File
+Attach, context message counts, bot trigger behavior, and normal FileMessage
+download behavior remain out of scope.
+
+### Implemented
+
+- `FolderMessageRender` now shows a `Download Folder` entry on the folder card
+  and uses the same action from the folder viewer.
+- New Electron IPC: `folder:downloadShare`.
+- Renderer passes the folder-share manifest to the main process.
+- Main process asks the user to choose a destination directory, creates
+  `targetRoot / folderName`, and restores `manifest.files[].relativePath`.
+- Empty folder shares create the destination folder even when there are no
+  files.
+- Downloads stream through the existing HTTP(S) downloader instead of loading
+  whole files into renderer memory.
+- Download summary reports `successCount`, `failedCount`, and `failedFiles`.
+- Missing `sourceUrl`, unsupported URL schemes, and unsafe relative paths are
+  recorded as per-file failures instead of crashing the entire folder download.
+- Path traversal is blocked: absolute paths, `..` segments, and final paths
+  outside the selected folder root are rejected.
+
+### Manual Validation
+
+1. Open a folder-share message.
+2. Click `Download Folder`.
+3. Pick a destination directory in the native dialog.
+4. Confirm the app creates `<destination>/<folderName>/`.
+5. Confirm nested paths such as `sub/deep/c.json` are restored under that
+   folder.
+6. For manifests with bad files, confirm the toast reports partial failures and
+   the console logs `failedFiles`.
+7. Cancel the directory picker and confirm there is no error toast.
+
+### Validation
+
+- `npm.cmd run build`: pass.
+- `npm.cmd test`: pass.
+- `npm.cmd run test:e2e -- e2e/electron/specs/file-image-ux.spec.ts`: 5 passed.
+
 ## Latest Update - P11.6 Folder Send Without Chat Flooding (2026-06-28)
 
 Current branch: `feature/agent-run-contract`

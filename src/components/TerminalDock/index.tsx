@@ -121,6 +121,44 @@ const joinWorkspacePath = (rootPath: string, relativePath: string) => {
   return `${rootPath.replace(/[\\/]+$/, "")}\\${relativePath.replaceAll("/", "\\")}`;
 };
 
+const normalizeOutputPath = (path: string) =>
+  path.replaceAll("\\", "/").replace(/^\/+|\/+$/g, "");
+
+const isDescendantOfFolder = (filePath: string, folderPath: string) => {
+  const file = normalizeOutputPath(filePath);
+  const folder = normalizeOutputPath(folderPath);
+  return Boolean(file && folder) && (file === folder || file.startsWith(`${folder}/`));
+};
+
+const uniqueOutputPaths = (paths: string[] = []) => {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const path of paths) {
+    const normalized = normalizeOutputPath(path);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    output.push(path);
+  }
+  return output;
+};
+
+const getAtomicOutputAttachments = (resolution: {
+  outputFiles?: string[];
+  outputFolders?: string[];
+}) => {
+  const outputFolders = uniqueOutputPaths(resolution.outputFolders ?? []);
+  const outputFiles = uniqueOutputPaths(resolution.outputFiles ?? []).filter(
+    (file) => !outputFolders.some((folder) => isDescendantOfFolder(file, folder)),
+  );
+
+  const outputAttachments = [
+    ...outputFolders.map((path) => ({ path, kind: "folder" as const })),
+    ...outputFiles.map((path) => ({ path, kind: "file" as const })),
+  ];
+
+  return { outputFiles, outputFolders, outputAttachments };
+};
+
 const getFileNameFromPath = (filePath: string) =>
   filePath.split(/[\\/]/).filter(Boolean).pop() ?? filePath;
 
@@ -839,13 +877,13 @@ const TerminalDock = () => {
         }
 
         // Auto File Attachment
-        const outputFiles = [
-          ...(resolution.outputFiles ?? []),
-          ...(resolution.outputFolders ?? []),
-        ];
+        const { outputFiles, outputFolders, outputAttachments } =
+          getAtomicOutputAttachments(resolution);
         publishE2EAutoFileAttachDiagnostic({
           reason: "resolved",
           outputFiles,
+          outputFolders,
+          outputAttachments,
           autoFileAttachmentEnabled,
           manifestUpdatedAt,
           fileGate,
@@ -853,12 +891,13 @@ const TerminalDock = () => {
         });
         if (
           autoFileAttachmentEnabled &&
-          outputFiles.length > 0 &&
+          outputAttachments.length > 0 &&
           manifestUpdatedAt > fileGate &&
           activeWorkspace
         ) {
           let queuedFileCount = 0;
-          for (const relativePath of outputFiles) {
+          for (const attachment of outputAttachments) {
+            const relativePath = attachment.path;
             const fileKey = [
               "file",
               conversationID,
@@ -894,9 +933,10 @@ const TerminalDock = () => {
                 relativePath,
                 fileType: "file",
                 fileSize: fileStat.size,
-                sendKind: fileStat.isDirectory
-                  ? "folder"
-                  : inferAttachmentKind(relativePath),
+                sendKind:
+                  attachment.kind === "folder" || fileStat.isDirectory
+                    ? "folder"
+                    : inferAttachmentKind(relativePath),
               });
               queuedFileCount += 1;
               autoRepliedHashesRef.current.add(fileKey);

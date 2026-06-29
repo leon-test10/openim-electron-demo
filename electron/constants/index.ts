@@ -54,4 +54,5 @@ export const IpcRenderToMain = {
   workspaceStatFile: "workspace:statFile",
   folderScan: "folder:scan",
   folderDownloadAllResources: "folder:downloadAllResources",
+  folderDownloadShare: "folder:downloadShare",
 };

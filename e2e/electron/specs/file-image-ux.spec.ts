@@ -100,6 +100,11 @@ test("run final answer preview and output files use image/file pending kinds", a
         mtimeMs: completedAt + 3,
       });
       writes.push({
+        relativePath: "output/empty_folder/",
+        content: "",
+        mtimeMs: completedAt + 4,
+      });
+      writes.push({
         relativePath: finalAnswerPath,
         content: [
           "# Final Answer",
@@ -109,9 +114,13 @@ test("run final answer preview and output files use image/file pending kinds", a
           "## Output Files",
           "- output/test_image.png",
           "- output/test_file.md",
+          "- output/test_folder/nested.txt",
+          "",
+          "## Output Folders",
           "- output/test_folder/",
+          "- output/empty_folder/",
         ].join("\n"),
-        mtimeMs: completedAt + 4,
+        mtimeMs: completedAt + 5,
       });
       writes.push({
         relativePath: manifestPath,
@@ -119,12 +128,12 @@ test("run final answer preview and output files use image/file pending kinds", a
           {
             ...baseManifest,
             status: "completed",
-            updatedAt: completedAt + 5,
+            updatedAt: completedAt + 6,
           },
           null,
           2,
         ),
-        mtimeMs: completedAt + 5,
+        mtimeMs: completedAt + 6,
       });
     },
     {
@@ -170,6 +179,14 @@ test("run final answer preview and output files use image/file pending kinds", a
     .poll(readAutoFileAttachSnapshot)
     .toContain("output/test_folder/");
   await expect.poll(readAutoFileAttachSnapshot).toContain('"sendKind": "folder"');
+  await expect.poll(readAutoFileAttachSnapshot).toContain("empty_folder");
+  await expect
+    .poll(readAutoFileAttachSnapshot)
+    .toContain("output/empty_folder/");
+  await expect.poll(readAutoFileAttachSnapshot).not.toContain("nested.txt");
+  await expect
+    .poll(readAutoFileAttachSnapshot)
+    .not.toContain("output/test_folder/nested.txt");
 });
 
 test("file card actions use desktop IPC instead of browser navigation", async ({
@@ -271,6 +288,21 @@ test("folder shares render as one folder card without zip fallback", async ({
   await expect(folderItem).not.toContainText(".zip");
   await expect(folderItem).not.toContainText("添加到");
 
+  await expect(folderItem.getByTestId("folder-message-download-share")).toHaveText(
+    "Download Folder",
+  );
+  await folderItem.getByTestId("folder-message-download-share").click();
+  await expect
+    .poll(() =>
+      appWindow.evaluate(
+        () =>
+          (window as E2EWindow).__e2eFileActions?.some(
+            (action) => action.channel === "folder:downloadShare",
+          ) ?? false,
+      ),
+    )
+    .toBeTruthy();
+
   await folderItem.getByTestId("folder-message-open").click();
   await expect(appWindow.getByText("SKILL.md")).toBeVisible();
   await expect(appWindow.getByTestId("folder-message-download-all")).toBeVisible();
@@ -296,7 +328,7 @@ test("folder shares render as one folder card without zip fallback", async ({
       appWindow.evaluate(
         () =>
           (window as E2EWindow).__e2eFileActions?.some(
-            (action) => action.channel === "folder:downloadAllResources",
+            (action) => action.channel === "folder:downloadShare",
           ) ?? false,
       ),
     )

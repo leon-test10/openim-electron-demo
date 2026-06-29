@@ -366,6 +366,22 @@ const installE2EElectronMock = () => {
         return Promise.resolve("C:\\OpenIM-E2E\\downloads\\skills" as T);
       }
 
+      if (channel === "folder:downloadShare") {
+        e2eWindow.__e2eFileActions?.push({
+          channel,
+          nativePath: "C:\\OpenIM-E2E\\downloads\\skills",
+        });
+        return Promise.resolve({
+          canceled: false,
+          targetRoot: "C:\\OpenIM-E2E\\downloads",
+          folderPath: "C:\\OpenIM-E2E\\downloads\\skills",
+          folderName: "skills",
+          successCount: 1,
+          failedCount: 0,
+          failedFiles: [],
+        } as T);
+      }
+
       if (channel === "terminal:resize" || channel === "terminal:interrupt") {
         result = { ok: true };
         return Promise.resolve(result as T);
