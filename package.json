@@ -1,5 +1,5 @@
 {
-  "name": "OpenCorp-Base",
+  "name": "openim-agent",
   "version": "1.0.0",
   "main": "dist-electron/main/index.js",
   "description": "OpenIM PC Client.",
@@ -12,7 +12,12 @@
   },
   "scripts": {
     "dev": "vite --force --host",
-    "build": "vite build",
+    "build": "npm run build:renderer",
+    "build:renderer": "vite build",
+    "build:main": "vite build --mode production",
+    "package:win": "npm run build && electron-builder --win nsis",
+    "package:win:portable": "npm run build && electron-builder --win portable",
+    "dist:win": "npm run build && electron-builder --win nsis portable",
     "preview": "vite preview",
     "pree2e": "vite build",
     "e2e": "playwright test -c playwright.electron.config.ts",

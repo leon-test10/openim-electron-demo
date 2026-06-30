@@ -19,6 +19,7 @@ import { runtimeManager } from "./runtimeManage";
 import { terminalManager } from "./terminalManage";
 import { agentWatchManager } from "./agentWatchManage";
 import { opencodeManager } from "./opencodeManage";
+import { getCurrentAppConfig } from "./appConfig";
 import { downloadFolderShare, FolderShareDownloadManifest } from "./folderShareDownload";
 import {
   copyFileToTerminalWorkspace,
@@ -177,6 +178,12 @@ export const setIpcMainListener = () => {
   });
   ipcMain.on(IpcRenderToMain.getKeyStoreSync, (e, { key }) => {
     e.returnValue = store.get(key);
+  });
+  ipcMain.on(IpcRenderToMain.appGetConfigSync, (e) => {
+    e.returnValue = getCurrentAppConfig();
+  });
+  ipcMain.handle(IpcRenderToMain.appGetConfigPath, () => {
+    return global.pathConfig.userConfigPath;
   });
   ipcMain.handle(IpcRenderToMain.showInputContextMenu, () => {
     const menu = Menu.buildFromTemplate([

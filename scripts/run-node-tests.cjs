@@ -3,6 +3,7 @@ const { spawnSync } = require("node:child_process");
 const tests = [
   "src/services/agentRunContract/AgentRunContractService.test.ts",
   "tests/folderShareDownload.test.ts",
+  "tests/appConfig.test.ts",
 ];
 
 const compilerOptions = JSON.stringify({

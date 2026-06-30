@@ -4,6 +4,7 @@ import http from "node:http";
 import https from "node:https";
 import path from "node:path";
 import { app } from "electron";
+import { getCurrentAppConfig, resolveConfiguredPath } from "./appConfig";
 
 const BLOCKED_ATTACHMENT_EXTENSIONS = new Set([
   ".appx",
@@ -43,7 +44,10 @@ const sanitizeForPath = (value: string) =>
     .slice(0, 128);
 
 export const getWorkspaceRoot = () =>
-  path.join(app.getPath("userData"), "OpenIMData", "workspaces");
+  resolveConfiguredPath(
+    getCurrentAppConfig().terminal.defaultWorkspacePath ||
+      path.join(app.getPath("userData"), "OpenIMData", "workspaces"),
+  );
 
 export const ensureDir = async (dir: string) => {
   await fs.promises.mkdir(dir, { recursive: true });

@@ -4,6 +4,7 @@ import { WebContents } from "electron";
 import { spawn as spawnPty, type IPty } from "node-pty";
 
 import { IpcMainToRender } from "../constants";
+import { getCurrentAppConfig } from "./appConfig";
 import { getConversationWorkspaceDir } from "./workspaceManage";
 
 export type RuntimeInstanceStatus =
@@ -62,10 +63,13 @@ interface ManagedRuntime {
 
 const getTerminalProfile = (cwd: string): RuntimeProfile => {
   const isWin = process.platform === "win32";
-  const shell = isWin ? "powershell.exe" : "bash";
-  const args = isWin
-    ? ["-NoLogo", "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass"]
-    : ["-l"];
+  const configuredProfile = getCurrentAppConfig().terminal.profiles[0];
+  const shell = configuredProfile?.shell || (isWin ? "powershell.exe" : "bash");
+  const args =
+    configuredProfile?.args ||
+    (isWin
+      ? ["-NoLogo", "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass"]
+      : ["-l"]);
 
   return {
     id: "terminal",
@@ -74,7 +78,7 @@ const getTerminalProfile = (cwd: string): RuntimeProfile => {
     shell,
     args,
     cwd,
-    env: {},
+    env: configuredProfile?.env || {},
     description:
       "VS Code-like terminal host. OpenIM does not manage agent runtime internals; users can run any CLI here.",
   };
@@ -151,6 +155,8 @@ export const runtimeManager = {
           env: {
             ...process.env,
             ...profile.env,
+            OPENAI_BASE_URL: getCurrentAppConfig().llm.baseUrl,
+            OPENAI_API_KEY: getCurrentAppConfig().llm.apiKey,
           },
           cols: 120,
           rows: 30,

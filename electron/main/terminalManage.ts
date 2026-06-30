@@ -4,6 +4,7 @@ import type { WebContents } from "electron";
 import { spawn as spawnPty, type IPty } from "node-pty";
 
 import { IpcMainToRender } from "../constants";
+import { getCurrentAppConfig } from "./appConfig";
 
 export type TerminalStatus =
   | "detached"
@@ -49,16 +50,27 @@ interface ManagedTerminal {
 const terminals = new Map<string, ManagedTerminal>();
 
 const getDefaultShell = () => {
+  const configuredProfile = getCurrentAppConfig().terminal.profiles[0];
+  if (configuredProfile?.shell) {
+    return {
+      shell: configuredProfile.shell,
+      args: Array.isArray(configuredProfile.args) ? configuredProfile.args : [],
+      env: configuredProfile.env || {},
+    };
+  }
+
   if (process.platform === "win32") {
     return {
       shell: "powershell.exe",
       args: ["-NoLogo", "-NoProfile", "-NoExit", "-ExecutionPolicy", "Bypass"],
+      env: {},
     };
   }
 
   return {
     shell: process.env.SHELL || "bash",
     args: ["-l"],
+    env: {},
   };
 };
 
@@ -99,7 +111,7 @@ export const terminalManager = {
 
     const now = Date.now();
     const cwd = existsSync(params.cwd) ? params.cwd : process.cwd();
-    const { shell, args } = getDefaultShell();
+    const { shell, args, env } = getDefaultShell();
     const instance: TerminalInstance = {
       id: params.tabID,
       workspaceID: params.workspaceID,
@@ -113,7 +125,12 @@ export const terminalManager = {
     try {
       const child = spawnPty(shell, args, {
         cwd,
-        env: process.env,
+        env: {
+          ...process.env,
+          ...env,
+          OPENAI_BASE_URL: getCurrentAppConfig().llm.baseUrl,
+          OPENAI_API_KEY: getCurrentAppConfig().llm.apiKey,
+        },
         cols: Math.max(params.cols ?? 120, 20),
         rows: Math.max(params.rows ?? 30, 5),
         name: "xterm-color",

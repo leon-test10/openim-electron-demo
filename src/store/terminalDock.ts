@@ -1,5 +1,6 @@
 import { create } from "zustand";
 
+import { getRuntimeConfig } from "@/config/appConfig";
 import { DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE } from "@/services/agentRunContract";
 
 import {
@@ -24,8 +25,8 @@ const DEFAULT_COMMAND_TEMPLATES: TerminalCommandTemplate[] = [
   {
     id: "opencode",
     title: "Run opencode",
-    command: "npx.cmd -y opencode-ai@1.17.9",
-    description: "Start opencode TUI in this workspace via pinned npx command",
+    command: getRuntimeConfig().opencode.command,
+    description: "Start opencode TUI in this workspace via configured command",
     enabled: true,
   },
 ];

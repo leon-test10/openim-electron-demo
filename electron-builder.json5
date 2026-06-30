@@ -2,13 +2,13 @@
  * @see https://www.electron.build/configuration/configuration
  */
 {
-  appId: "io.opencorp.desktop.base",
-  productName: "OpenCorp-Base",
+  appId: "com.openim.agent",
+  productName: "OpenIM Agent",
   asar: true,
   asarUnpack: ["**/*.node"],
   extends: null,
   directories: {
-    output: "release/Base/${version}",
+    output: "release/OpenIM-Agent/${version}",
   },
   files: [
     "dist",
@@ -51,8 +51,11 @@
       {
         target: "nsis",
       },
+      {
+        target: "portable",
+      },
     ],
-    artifactName: "${productName}_${version}.${ext}",
+    artifactName: "OpenIM-Agent-${version}.${ext}",
     icon: "./dist/icons/icon.ico",
     extraResources: [
       {
@@ -89,6 +92,10 @@
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
     deleteAppDataOnUninstall: true,
-    shortcutName: "OpenCorp-Base",
-  }
+    shortcutName: "OpenIM Agent",
+    artifactName: "OpenIM-Agent-Setup-${version}.${ext}",
+  },
+  portable: {
+    artifactName: "OpenIM-Agent-Portable-${version}.${ext}",
+  },
 }

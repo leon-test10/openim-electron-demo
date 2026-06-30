@@ -321,14 +321,14 @@ automation expansion.
   - non-self and non-agent-generated message,
   - a running active terminal tab,
   - an explicit workspace/conversation binding.
-  Otherwise it leaves the request in pending review.
+    Otherwise it leaves the request in pending review.
 - Auto Reply now requires:
   - `autoReplyEnabled`,
   - a running active tab in the active workspace,
   - current conversation still active,
   - current conversation linked to the active workspace,
   - a structured `final_answer` event from `.agent/events.ndjson`.
-  It does not auto-send raw/screen fallback text.
+    It does not auto-send raw/screen fallback text.
 - Manual `Capture Final Answer` now accepts only structured sources
   (`structured` or `structured_heuristic`). Raw terminal text and xterm screen
   capture are no longer treated as final answers.
@@ -452,6 +452,7 @@ Phase 2 of the roadmap is implemented and verified.
 ### Completed
 
 **2.1 Trigger format: `@bot @targetUserID`** (`detectBotTrigger.ts`):
+
 - New format: `@bot @targetUserID instruction` (or `/bot @targetUserID instruction`)
 - Extracts `targetUserID` via `@mention` regex after the bot alias
 - In group chats, strips leading `@currentUserID` mention first
@@ -460,33 +461,39 @@ Phase 2 of the roadmap is implemented and verified.
 - Backward compatible: if no `@targetUserID` is specified, the request is still created
 
 **2.2 Types** (`types.ts`):
+
 - `BotTriggerResult.targetUserID?: string`
 - `PendingAgentRequest.targetUserID?: string`
 - Passed through `createPendingAgentRequest`
 
 **2.3 Auto-Inject toggle** (TerminalDock "IM → Agent" toolbar):
+
 - `autoInjectEnabled` — persisted to localStorage (safety-reset to false on reload)
 - When ON: `@bot @selfUserID` messages auto-inject into terminal (skip pending review)
 - When OFF: normal pending request flow with manual "Send to Agent" button
 - Toggle is in the "IM → Agent" group alongside "Bot Requests"
 
 **2.4 Auto-Reply toggle** (TerminalDock "Agent → IM" toolbar):
+
 - `autoReplyEnabled` — persisted to localStorage (safety-reset to false on reload)
 - When ON: structured `final_answer` events auto-send to the current IM conversation
 - Deduplication via text hash (won't re-send the same answer)
 - Uses Phase 1's `agent:structuredOutput` IPC channel
 
 **2.5 ChatContent detection logic**:
+
 - Filters by `targetUserID === selfUserID` (only process messages targeting ME)
 - When `autoInjectEnabled`: creates request with `status: "sent"`, emits `BOT_AGENT_REQUEST_ACTION` immediately
 - `promoteToAutoInject` effect: when auto-inject is toggled ON after detection, promotes existing pending requests to sent
 
 **2.6 Store**:
+
 - `autoInjectEnabled`/`autoReplyEnabled` in `TerminalDockStore` (persisted)
 - `promoteToAutoInject(conversationID)` in `PendingAgentRequestStore`
 - `addStructuredEvent`/`clearStructuredEvents` actions
 
 **2.7 E2E tests** (`bot-trigger.spec.ts`):
+
 - Updated all 4 existing tests for new `@bot @e2e_self` format
 - New: auto-inject skips pending review and sends directly to terminal
 - New: auto-reply sends structured final_answer to IM
@@ -495,6 +502,7 @@ Phase 2 of the roadmap is implemented and verified.
 ### @User mention display
 
 OpenIM raw message text contains userIDs in `@mentions` (e.g., `@3297174239`). The UI renders these as nicknames via the contact store. So:
+
 - Raw text: unique userID (e.g., `@e2e_self`)
 - UI display: nickname (e.g., "E2E Self")
 - Detection extracts the userID for comparison with `selfUserID`
@@ -531,6 +539,7 @@ Phase 1 of the structured-output roadmap is implemented and verified.
 ### Completed
 
 **1.1 Typed AgentOutputEvent definitions** (`src/services/agentOutput/types.ts`):
+
 - `AgentProgressEvent` — progress during agent execution (stage, message, percent)
 - `AgentFinalAnswerEvent` — final answer (text, format, sessionID)
 - `AgentArtifactEvent` — file artifact (path, mime, size, label)
@@ -540,6 +549,7 @@ Phase 1 of the structured-output roadmap is implemented and verified.
 - `StructuredEventBuffer` type + `createStructuredEventBuffer()` factory
 
 **1.2 NDJSON file protocol + Electron Main watcher** (`electron/main/agentWatchManage.ts`):
+
 - Convention: agent writes events to `$WORKSPACE/.agent/events.ndjson` (one JSON object per line)
 - `agentWatchManager.start(webContents, workspaceID)` — creates `.agent/` dir, starts `fs.watch` on events file
 - `agentWatchManager.stop(workspaceID)` — tears down watcher
@@ -549,6 +559,7 @@ Phase 1 of the structured-output roadmap is implemented and verified.
 **1.3 Preload** — no changes needed; existing generic `subscribe()`/`ipcInvoke()` cover the new channels.
 
 **1.4 Refactored AgentOutputResolver** (`src/services/agentOutput/AgentOutputResolver.ts`):
+
 - Tier 1: `resolveFromStructuredEvents()` — consumes structured AgentOutputEvent[] from IPC (reliable)
 - Tier 2: `resolveStructuredOutput()` — heuristic JSON scanning of raw PTY output (was "structured", now "structured_heuristic")
 - Tier 3: raw terminal text
@@ -556,17 +567,20 @@ Phase 1 of the structured-output roadmap is implemented and verified.
 - Updated `AgentOutputSource` type: `"structured" | "structured_heuristic" | "raw" | "screen"`
 
 **1.5 TerminalDock wiring** (`src/components/TerminalDock/index.tsx`):
+
 - Subscribes to `agent:structuredOutput` IPC and adds events to store
 - Starts `agent:startWatch` when a terminal tab starts running
 - Stops `agent:stopWatch` on tab stop/cleanup
 - `getResolvedFinalAnswer()` passes `structuredEvents` to the resolver
 
 **1.6 Store** (`src/store/terminalDock.ts`, `src/store/type.d.ts`):
+
 - `structuredEventsByWorkspace: Record<string, AgentOutputEvent[]>` (not persisted)
 - `addStructuredEvent(workspaceID, event)` action
 - `clearStructuredEvents(workspaceID)` action
 
 **1.7 E2E tests** (`e2e/electron/specs/structured-output.spec.ts`):
+
 - Harness active when terminal starts
 - `agent:startWatch` invoked on terminal start
 - Structured `final_answer` resolves as Tier 1 (overrides raw terminal garbage)
@@ -599,6 +613,7 @@ Phase 1 of the structured-output roadmap is implemented and verified.
 ### Next: Phase 2 — @bot Auto-Inject to Terminal
 
 Phase 1 provides the reliable structured data channel. Phase 2 can now:
+
 1. Add `BotRoutingPolicy` ("off" | "manual" | "auto")
 2. Auto-route `@bot`-triggered messages to terminal (skip `PendingAgentRequests` review when policy = "auto")
 3. Create `BotSession` records to track lifecycle
@@ -643,15 +658,15 @@ ChatContent scans messages
 
 ### Key Gaps
 
-| Gap | Severity | Detail |
-|-----|----------|--------|
+| Gap                          | Severity | Detail                                                                                                                                                                                                                             |
+| ---------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | No structured output channel | Critical | All output arrives as raw PTY bytes. `AgentOutputResolver` is a heuristic JSON scanner — if the agent doesn't emit JSON, fallback is raw text or screen scraping. There is no dedicated structured IPC channel from Electron Main. |
-| @bot auto-inject missing | Critical | `@bot` detection works, but the flow stops at `PendingAgentRequests`. User must manually click "Send to Agent". No auto-routing. |
-| Auto-reply missing | Critical | Terminal results cannot be automatically sent back to the IM conversation that triggered the bot. |
-| Output not persisted | Medium | `outputByTab` and `lastCapturedTextByTab` are in-memory only. Lost on reload. |
-| No artifact detection | Medium | Agent-generated workspace files are not automatically detected or offered for IM attachment. |
-| No streaming progress | Medium | Only debounced 1200ms "final answer" capture exists. No incremental progress events to chat. |
-| No bot session concept | Medium | No lifecycle tracking of `@bot` → Agent → Reply interactions. |
+| @bot auto-inject missing     | Critical | `@bot` detection works, but the flow stops at `PendingAgentRequests`. User must manually click "Send to Agent". No auto-routing.                                                                                                   |
+| Auto-reply missing           | Critical | Terminal results cannot be automatically sent back to the IM conversation that triggered the bot.                                                                                                                                  |
+| Output not persisted         | Medium   | `outputByTab` and `lastCapturedTextByTab` are in-memory only. Lost on reload.                                                                                                                                                      |
+| No artifact detection        | Medium   | Agent-generated workspace files are not automatically detected or offered for IM attachment.                                                                                                                                       |
+| No streaming progress        | Medium   | Only debounced 1200ms "final answer" capture exists. No incremental progress events to chat.                                                                                                                                       |
+| No bot session concept       | Medium   | No lifecycle tracking of `@bot` → Agent → Reply interactions.                                                                                                                                                                      |
 
 ### Recommended Roadmap
 
@@ -667,25 +682,29 @@ type AgentOutputEvent =
   | { type: "final_answer"; text: string; format: "markdown" | "text" | "json" }
   | { type: "artifact"; path: string; mime: string; size: number; label?: string }
   | { type: "error"; message: string; code?: string }
-  | { type: "session"; id: string; status: "started" | "completed" | "failed" }
+  | { type: "session"; id: string; status: "started" | "completed" | "failed" };
 ```
 
 **1.2 File-based NDJSON protocol:**
+
 - Convention: agent writes structured events to `$WORKSPACE/.agent/events.ndjson`
 - opencode already supports `--format json`; we can redirect or tee structured output to this file
 - Even in TUI mode, the agent can write a sidecar structured log
 
 **1.3 Electron Main file watcher + new IPC channel:**
+
 - `terminalManage.ts`: after workspace starts, `fs.watch` on `.agent/events.ndjson`
 - New IPC channel: `agent:structuredOutput` — sends typed events to renderer
 - Backward compatible: no file → fall back to current heuristic parsing
 
 **1.4 Refactor AgentOutputResolver:**
+
 - Tier 1: consume structured IPC events (reliable, type-safe)
 - Tier 2: JSON scanning of PTY output (current heuristic, for agents without the protocol)
 - Tier 3: raw/screen fallback (last resort)
 
 **Files to create/modify:**
+
 - `src/services/agentOutput/types.ts` (new)
 - `src/services/agentOutput/AgentOutputResolver.ts` (refactor)
 - `electron/main/terminalManage.ts` (add file watcher + IPC)
@@ -696,30 +715,34 @@ type AgentOutputEvent =
 #### Phase 2: @bot Auto-Inject to Terminal
 
 **2.1 Bot routing policy** (per-conversation setting):
+
 ```ts
-type BotRoutingPolicy = "off" | "manual" | "auto"
+type BotRoutingPolicy = "off" | "manual" | "auto";
 ```
 
 **2.2 Auto-inject flow:**
+
 - `@bot` detected + policy = `auto` → skip `PendingAgentRequests` review card
 - Auto-call `IMContextService.createContextBundle` → `writeToTab(prompt)`
 - Create `BotSession` record tracking this interaction
 
 **2.3 Bot session lifecycle:**
+
 ```ts
 interface BotSession {
-  id: string
-  conversationID: string
-  triggerMessageID: string
-  status: "pending" | "processing" | "completed" | "failed"
-  startedAt: number
-  completedAt?: number
-  resultText?: string
-  artifacts?: string[]
+  id: string;
+  conversationID: string;
+  triggerMessageID: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  startedAt: number;
+  completedAt?: number;
+  resultText?: string;
+  artifacts?: string[];
 }
 ```
 
 **Files to create/modify:**
+
 - `src/services/botTrigger/types.ts` (add BotSession, BotRoutingPolicy)
 - `src/store/pendingAgentRequests.ts` (add auto-routing logic)
 - `src/pages/chat/queryChat/ChatContent.tsx` (auto-inject path)
@@ -730,29 +753,35 @@ interface BotSession {
 Depends on Phase 1 structured output.
 
 **3.1 Auto-reply flow:**
+
 - Agent emits `final_answer` via structured channel
 - If `autoSendEnabled` + conversation has active `BotSession` → auto `emit("SEND_CHAT_INPUT", text)` back to the triggering conversation
 - Include artifact references if agent generated files
 
 **3.2 Streaming progress (optional):**
+
 - Agent emits `progress` → optionally send status messages to IM ("Analyzing...", "Generating...")
 - Configurable verbosity
 
 **Files to create/modify:**
+
 - `src/components/TerminalDock/index.tsx` (auto-reply on structured final_answer)
 - `src/store/terminalDock.ts` (BotSession association)
 
 #### Phase 4: Persistence & Artifact Management
 
 **4.1 Terminal transcript persistence:**
+
 - `outputByTab` periodically flushed to disk
 - Restore on reload
 
 **4.2 Artifact auto-detection:**
+
 - Watch workspace for new files
 - Auto-offer to attach to IM chat
 
 **4.3 Bot Session history:**
+
 - Persist bot sessions
 - UI to review past bot interactions
 
@@ -1071,6 +1100,7 @@ Spec source: `.trae/specs/simplify-im-agent-ux/spec.md`
 Scope completed:
 
 **IM-native UX cleanup:**
+
 - Multi-select toolbar now shows only `Copy`, `Forward`, `Send to Agent`, `More`, `Clear` as primary actions. No `Preview Selected Context`, `Copy Selected Prompt`, or `Copy Manifest` in the main row.
 - `Send to Agent` directly writes selected-message context to the active terminal without opening the Context Library.
 - All debug actions (`Preview Selected Context`, `Copy Selected Prompt`, `Export MD`, `Copy Manifest`, `Copy Full Path`) moved to `More -> Advanced / Debug`.
@@ -1079,12 +1109,14 @@ Scope completed:
 - Image/file message menus show `View`, `Download`, `Forward`, `Favorite`, `Multi-select` as primary IM-native actions.
 
 **Terminal UX simplification:**
+
 - Terminal main toolbar reduced to `Run / Stop`, `Clear`, `Bot Requests`, `More`.
 - `Send Last Context` and `Context Library` removed from primary toolbar.
 - `Context Library` renamed to `Advanced / Debug Context Files` and accessible only from `More -> Advanced`.
 - Context history records now show summary info (source kind, time, counts, status, paths) plus `Open` / `More`. `Send Again`, `Copy Prompt`, `Copy MD`, `Copy Manifest`, `Attach Manifest` moved into `More`.
 
 **Agent -> IM safety:**
+
 - `Selection -> Draft` renamed to `Use Selection as Reply`, now requires user confirmation before inserting into input box, and never auto-sends.
 - `Capture Output -> Draft`, `Auto Capture Output -> Draft`, `Draft -> Chat experimental` demoted to debug tools under `More -> Advanced -> Reply Debug Tools`.
 - `Auto Capture Output -> Draft` forced to off by default. localStorage migration resets it on startup if previously on.
@@ -1092,11 +1124,13 @@ Scope completed:
 - Capture Output labeled as screen/output capture, not final answer.
 
 **Bot Requests:**
+
 - `Bot Requests` remains pending-only: `Review` and `Send to Agent` are the only visible actions.
 - `@bot` / `/bot` detection only creates pending requests. No auto-send, no auto-reply.
 - Group-chat requests continue to show review warning.
 
 **E2E coverage:**
+
 - Send to Agent directly writes to terminal without opening Context Library.
 - Primary UI surfaces do not expose `Copy Prompt`, `Preview Context`, `Copy Manifest`, `Send Last Context`, or `Context Library`.
 - Auto Capture and Draft -> Chat default off, terminal output does not auto-populate input box.
@@ -2681,3 +2715,55 @@ Not implemented:
 - Add-to feature.
 - Cloud drive.
 - Native OpenCode same-session extraction.
+
+## 2026-06-30 Windows Production Packaging Handoff
+
+### Packaging tool
+
+- Uses the existing `electron-builder` setup.
+- App identity is now `appId: com.openim.agent`, `productName: OpenIM Agent`.
+
+### Scripts
+
+- `npm run build`
+- `npm run build:renderer`
+- `npm run build:main`
+- `npm run package:win`
+- `npm run package:win:portable`
+- `npm run dist:win`
+
+### Outputs
+
+- Installer: `release/OpenIM-Agent/1.0.0/OpenIM-Agent-Setup-1.0.0.exe`
+- Portable: `release/OpenIM-Agent/1.0.0/OpenIM-Agent-Portable-1.0.0.exe`
+- Copied into the root offline package:
+  - `../离线部署/windows-client/OpenIM-Agent-Setup-1.0.0.exe`
+  - `../离线部署/windows-client/OpenIM-Agent-Portable-1.0.0.exe`
+
+### Production config
+
+- Default template: `extraResources/default-config.json`
+- Runtime user config: `%APPDATA%/OpenIM Agent/config.json`
+- First launch copies/merges defaults into `config.json`.
+- OpenIM defaults:
+  - API: `http://10.96.253.9:10002`
+  - WS: `ws://10.96.253.9:10001`
+  - Chat API: `http://10.96.253.9:10008`
+- LLM API default: `http://10.96.248.17:8000/v1`
+- OpenCode command default: `opencode`
+
+### How to change addresses
+
+Close the app, edit `%APPDATA%/OpenIM Agent/config.json`, then reopen.
+
+- Change OpenIM server under `openim.apiUrl`, `openim.wsUrl`, and `openim.chatUrl`.
+- Change OpenCode path under `opencode.command`, for example:
+  `C:\\Users\\leon\\AppData\\Local\\OpenIM-Agent\\opencode\\bin\\opencode.exe`
+- Change workspace root under `terminal.defaultWorkspacePath`.
+
+### Verification
+
+- `npm.cmd test` passed.
+- `npm.cmd run build` passed.
+- `npm.cmd run package:win` produced the installer.
+- `npm.cmd run package:win:portable` produced the portable exe.

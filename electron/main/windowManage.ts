@@ -30,7 +30,7 @@ export function createMainWindow() {
     createSplashWindow();
   }
   mainWindow = new BrowserWindow({
-    title: "Dev-ER",
+    title: "OpenIM Agent",
     icon: join(global.pathConfig.publicPath, "favicon.ico"),
     frame: false,
     show: isE2EMode,
@@ -47,7 +47,7 @@ export function createMainWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
-      devTools: true,
+      devTools: Boolean(process.env.VITE_DEV_SERVER_URL),
       webSecurity: false,
     },
   });

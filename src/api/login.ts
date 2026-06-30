@@ -2,13 +2,16 @@ import type { MessageReceiveOptType } from "@openim/wasm-client-sdk";
 import { useMutation } from "react-query";
 import { v4 as uuidv4 } from "uuid";
 
+import { getRuntimeConfig } from "@/config/appConfig";
 import { useUserStore } from "@/store";
 import createAxiosInstance from "@/utils/request";
 import { getChatToken } from "@/utils/storage";
 
 import { errorHandle } from "./errorHandle";
 
-const request = createAxiosInstance(import.meta.env.VITE_CHAT_URL as string);
+const request = createAxiosInstance(
+  getRuntimeConfig().openim.chatUrl || (import.meta.env.VITE_CHAT_URL as string),
+);
 
 const platform = window.electronAPI?.getPlatform() ?? 5;
 

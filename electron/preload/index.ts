@@ -111,6 +111,7 @@ const Api: IElectronAPI = {
   unsubscribeAll,
   ipcInvoke,
   ipcSendSync,
+  getAppConfig: () => ipcRenderer.sendSync("app:getConfigSync"),
   getFileByPath,
   saveFileToDisk,
 };

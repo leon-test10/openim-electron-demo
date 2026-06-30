@@ -18,6 +18,7 @@ import { t } from "i18next";
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { getRuntimeConfig } from "@/config/appConfig";
 import { CustomType } from "@/constants";
 import {
   pushNewMessage,
@@ -124,8 +125,9 @@ export function useGlobalEvent() {
     const IMToken = (await getIMToken()) as string;
     const IMUserID = (await getIMUserID()) as string;
     try {
-      const apiAddr = import.meta.env.VITE_API_URL;
-      const wsAddr = import.meta.env.VITE_WS_URL;
+      const runtimeConfig = getRuntimeConfig();
+      const apiAddr = runtimeConfig.openim.apiUrl || import.meta.env.VITE_API_URL;
+      const wsAddr = runtimeConfig.openim.wsUrl || import.meta.env.VITE_WS_URL;
       if (window.electronAPI) {
         await IMSDK.initSDK({
           platformID: window.electronAPI?.getPlatform() ?? 5,

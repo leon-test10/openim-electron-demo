@@ -15,6 +15,8 @@ export const IpcRenderToMain = {
   setKeyStore: "setKeyStore",
   getKeyStore: "getKeyStore",
   getKeyStoreSync: "getKeyStoreSync",
+  appGetConfigSync: "app:getConfigSync",
+  appGetConfigPath: "app:getConfigPath",
   showInputContextMenu: "showInputContextMenu",
   getDataPath: "getDataPath",
   runtimeListProfiles: "runtime:listProfiles",

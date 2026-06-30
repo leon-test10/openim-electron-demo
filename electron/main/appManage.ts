@@ -8,6 +8,7 @@ import { IpcMainToRender } from "../constants";
 import { logger } from ".";
 import { agentWatchManager } from "./agentWatchManage";
 import { opencodeManager } from "./opencodeManage";
+import { getUserConfigPath, loadAppConfig } from "./appConfig";
 
 const store = getStore();
 
@@ -59,6 +60,16 @@ export const setAppGlobalData = () => {
   const distPath = join(electronDistPath, "../dist");
   const publicPath = isProd ? distPath : join(electronDistPath, "../public");
   const asarPath = process.resourcesPath;
+  const defaultConfigPath = isProd
+    ? join(asarPath, "extraResources", "default-config.json")
+    : join(electronDistPath, "../extraResources/default-config.json");
+  const userConfigPath = getUserConfigPath(app.getPath("userData"));
+
+  app.setName("OpenIM Agent");
+  loadAppConfig({
+    userDataPath: app.getPath("userData"),
+    defaultConfigPath,
+  });
 
   global.pathConfig = {
     electronDistPath,
@@ -78,6 +89,8 @@ export const setAppGlobalData = () => {
     indexHtml: join(distPath, "index.html"),
     splashHtml: join(distPath, "splash.html"),
     preload: join(__dirname, "../preload/index.js"),
+    defaultConfigPath,
+    userConfigPath,
   };
 
   if (isProd) {

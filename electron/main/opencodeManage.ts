@@ -1,4 +1,5 @@
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
+import { getCurrentAppConfig } from "./appConfig";
 import { getTerminalWorkspaceDir } from "./workspaceManage";
 
 type RuntimeBindingMode =
@@ -224,8 +225,9 @@ export const opencodeManager = {
     hostname?: string;
   }): Promise<RuntimeProbeReport> {
     const workspaceRoot = await getTerminalWorkspaceDir(params.workspaceID);
-    const hostname = params.hostname || defaultHost;
-    const port = params.port || defaultPort;
+    const appConfig = getCurrentAppConfig();
+    const hostname = params.hostname || appConfig.opencode.serverHost || defaultHost;
+    const port = params.port || appConfig.opencode.serverPort || defaultPort;
     const baseUrl = `http://${hostname}:${port}`;
 
     if (hostname !== defaultHost) {
@@ -320,8 +322,9 @@ export const opencodeManager = {
     port?: number;
     hostname?: string;
   }) {
-    const hostname = params.hostname || defaultHost;
-    const port = params.port || defaultPort;
+    const appConfig = getCurrentAppConfig();
+    const hostname = params.hostname || appConfig.opencode.serverHost || defaultHost;
+    const port = params.port || appConfig.opencode.serverPort || defaultPort;
     if (hostname !== defaultHost) {
       throw new Error("OpenCode server is limited to 127.0.0.1 in P10.0.");
     }
@@ -336,20 +339,26 @@ export const opencodeManager = {
     }
 
     const workspaceRoot = await getTerminalWorkspaceDir(params.workspaceID);
+    const opencodeArgs = [
+      ...(appConfig.opencode.args || []),
+      "serve",
+      "--port",
+      String(port),
+      "--hostname",
+      hostname,
+    ];
     const child = spawn(
-      "npx.cmd",
-      [
-        "-y",
-        "opencode-ai@1.17.9",
-        "serve",
-        "--port",
-        String(port),
-        "--hostname",
-        hostname,
-      ],
+      appConfig.opencode.command || "opencode",
+      opencodeArgs,
       {
         cwd: workspaceRoot,
         windowsHide: true,
+        shell: process.platform === "win32",
+        env: {
+          ...process.env,
+          OPENAI_BASE_URL: appConfig.llm.baseUrl,
+          OPENAI_API_KEY: appConfig.llm.apiKey,
+        },
       },
     );
     const baseUrl = `http://${hostname}:${port}`;
