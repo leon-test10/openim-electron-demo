@@ -28,6 +28,12 @@ export interface AppRuntimeConfig {
     args: string[];
     serverHost: string;
     serverPort: number;
+    workspaceConfig: {
+      enabled: boolean;
+      mode: "create-if-missing" | "overwrite";
+      fileName: string;
+      templatePath: string;
+    };
   };
   llm: {
     baseUrl: string;

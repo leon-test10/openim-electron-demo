@@ -27,6 +27,12 @@ export interface AppConfig {
     args: string[];
     serverHost: string;
     serverPort: number;
+    workspaceConfig: {
+      enabled: boolean;
+      mode: "create-if-missing" | "overwrite";
+      fileName: string;
+      templatePath: string;
+    };
   };
   llm: {
     baseUrl: string;
@@ -64,6 +70,12 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
     args: [],
     serverHost: "127.0.0.1",
     serverPort: 4096,
+    workspaceConfig: {
+      enabled: true,
+      mode: "create-if-missing",
+      fileName: "opencode.jsonc",
+      templatePath: "",
+    },
   },
   llm: {
     baseUrl: "http://10.96.248.17:8000/v1",
@@ -116,9 +128,22 @@ export const resolveConfiguredPath = (
 export const getUserConfigPath = (userDataPath: string) =>
   path.join(userDataPath, "config.json");
 
+const withBundledOpencodePath = (
+  defaults: AppConfig,
+  bundledOpencodePath?: string,
+) => {
+  if (!bundledOpencodePath || !fs.existsSync(bundledOpencodePath)) return defaults;
+  return mergeRecord(defaults as unknown as Record<string, unknown>, {
+    opencode: {
+      command: bundledOpencodePath,
+    },
+  }) as unknown as AppConfig;
+};
+
 export const loadAppConfig = (params: {
   userDataPath: string;
   defaultConfigPath?: string;
+  bundledOpencodePath?: string;
 }) => {
   const configPath = getUserConfigPath(params.userDataPath);
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
@@ -131,6 +156,7 @@ export const loadAppConfig = (params: {
       rawDefaults,
     ) as unknown as AppConfig;
   }
+  defaults = withBundledOpencodePath(defaults, params.bundledOpencodePath);
 
   if (!fs.existsSync(configPath)) {
     fs.writeFileSync(configPath, `${JSON.stringify(defaults, null, 2)}\n`, "utf8");
@@ -143,6 +169,17 @@ export const loadAppConfig = (params: {
     defaults as unknown as Record<string, unknown>,
     rawUserConfig,
   ) as unknown as AppConfig;
+  const userOpencode = isRecord(rawUserConfig.opencode)
+    ? rawUserConfig.opencode
+    : undefined;
+  const userCommand = userOpencode?.command;
+  if (
+    params.bundledOpencodePath &&
+    fs.existsSync(params.bundledOpencodePath) &&
+    (typeof userCommand !== "string" || userCommand === "opencode")
+  ) {
+    merged.opencode.command = params.bundledOpencodePath;
+  }
   fs.writeFileSync(configPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
   currentAppConfig = merged;
   return merged;

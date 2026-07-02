@@ -4,6 +4,8 @@ const tests = [
   "src/services/agentRunContract/AgentRunContractService.test.ts",
   "tests/folderShareDownload.test.ts",
   "tests/appConfig.test.ts",
+  "tests/opencodeBundleManage.test.ts",
+  "tests/opencodeConfigManage.test.ts",
 ];
 
 const compilerOptions = JSON.stringify({

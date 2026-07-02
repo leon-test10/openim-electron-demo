@@ -1,0 +1,4 @@
+source=GitHub release anomalyco/opencode
+asset=opencode-windows-x64.zip
+version=v1.17.11
+baseline=false

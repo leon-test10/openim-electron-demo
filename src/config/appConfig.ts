@@ -28,6 +28,12 @@ export const DEFAULT_RUNTIME_CONFIG: AppRuntimeConfig = {
     args: [],
     serverHost: "127.0.0.1",
     serverPort: 4096,
+    workspaceConfig: {
+      enabled: true,
+      mode: "create-if-missing",
+      fileName: "opencode.jsonc",
+      templatePath: "",
+    },
   },
   llm: {
     baseUrl: "http://10.96.248.17:8000/v1",

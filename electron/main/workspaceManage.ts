@@ -5,6 +5,7 @@ import https from "node:https";
 import path from "node:path";
 import { app } from "electron";
 import { getCurrentAppConfig, resolveConfiguredPath } from "./appConfig";
+import { ensureOpencodeConfigFile } from "./opencodeConfigManage";
 
 const BLOCKED_ATTACHMENT_EXTENSIONS = new Set([
   ".appx",
@@ -53,12 +54,32 @@ export const ensureDir = async (dir: string) => {
   await fs.promises.mkdir(dir, { recursive: true });
 };
 
+const getDefaultOpencodeConfigPath = () => {
+  const prodPath = path.join(
+    process.resourcesPath,
+    "extraResources",
+    "opencode",
+    "default-opencode.jsonc",
+  );
+  if (fs.existsSync(prodPath)) return prodPath;
+  return path.resolve(__dirname, "../../extraResources/opencode/default-opencode.jsonc");
+};
+
+const ensureWorkspaceOpencodeConfig = (workspaceDir: string) => {
+  ensureOpencodeConfigFile({
+    targetDir: workspaceDir,
+    defaultTemplatePath: getDefaultOpencodeConfigPath(),
+    config: getCurrentAppConfig().opencode.workspaceConfig,
+  });
+};
+
 export const getConversationWorkspaceDir = async (conversationID: string) => {
   const root = getWorkspaceRoot();
   await ensureDir(root);
   const safe = sanitizeForPath(conversationID || "unknown");
   const conversationDir = path.join(root, safe);
   await ensureDir(conversationDir);
+  ensureWorkspaceOpencodeConfig(conversationDir);
   return conversationDir;
 };
 
@@ -68,6 +89,7 @@ export const getTerminalWorkspaceDir = async (workspaceID: string) => {
   const safe = sanitizeForPath(workspaceID || "default");
   const workspaceDir = path.join(root, safe);
   await ensureDir(workspaceDir);
+  ensureWorkspaceOpencodeConfig(workspaceDir);
   return workspaceDir;
 };
 

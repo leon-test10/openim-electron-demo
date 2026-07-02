@@ -9,6 +9,8 @@ import { logger } from ".";
 import { agentWatchManager } from "./agentWatchManage";
 import { opencodeManager } from "./opencodeManage";
 import { getUserConfigPath, loadAppConfig } from "./appConfig";
+import { ensureBundledOpencodeCommand } from "./opencodeBundleManage";
+import { ensureOpencodeConfigFile } from "./opencodeConfigManage";
 
 const store = getStore();
 
@@ -63,12 +65,28 @@ export const setAppGlobalData = () => {
   const defaultConfigPath = isProd
     ? join(asarPath, "extraResources", "default-config.json")
     : join(electronDistPath, "../extraResources/default-config.json");
+  const defaultOpencodeConfigPath = isProd
+    ? join(asarPath, "extraResources", "opencode", "default-opencode.jsonc")
+    : join(electronDistPath, "../extraResources/opencode/default-opencode.jsonc");
+  const bundledOpencodeArchivePath = isProd
+    ? join(asarPath, "extraResources", "opencode", "opencode-windows-x64.zip")
+    : join(electronDistPath, "../extraResources/opencode/opencode-windows-x64.zip");
+  const bundledOpencodePath = ensureBundledOpencodeCommand({
+    archivePath: bundledOpencodeArchivePath,
+    installDir: join(app.getPath("userData"), "OpenCode", "bin"),
+  });
   const userConfigPath = getUserConfigPath(app.getPath("userData"));
 
   app.setName("OpenIM Agent");
-  loadAppConfig({
+  const appConfig = loadAppConfig({
     userDataPath: app.getPath("userData"),
     defaultConfigPath,
+    bundledOpencodePath,
+  });
+  ensureOpencodeConfigFile({
+    targetDir: join(app.getPath("appData"), "opencode"),
+    defaultTemplatePath: defaultOpencodeConfigPath,
+    config: appConfig.opencode.workspaceConfig,
   });
 
   global.pathConfig = {

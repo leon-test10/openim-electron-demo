@@ -1,0 +1,49 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // ==================== 离线/内网配置 ====================
+  // 关闭自动更新（离线环境不需要）
+  "autoupdate": false,
+
+  // 关闭遥测/分享（纯离线）
+  "share": "disabled",
+
+  // LSP 按需开启（如果不需要语言服务器协议，保持 false）
+  "lsp": false,
+
+  // 插件列表（可在此添加本地插件路径）
+  "plugin": [],
+
+  // MCP 服务器配置（根据需要添加本地 MCP 服务）
+  "mcp": {},
+
+  // ==================== 模型和 Provider 配置 ====================
+  // model 格式: providerKey/modelKey
+  // providerKey = "local-llm", modelKey 对应 models 下的 key
+  "model": "local-llm/DeepSeek-V4-Flash",
+
+  "provider": {
+    "local-llm": {
+      "name": "Internal OpenAI-Compatible LLM",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "apiKey": "p638775",
+        // 内网 API 地址（从 .env 读取）
+        "baseURL": "http://10.96.248.17:8000/v1"
+      },
+      "models": {
+        // key 必须与 model 字段中 "/" 后的名称一致
+        "DeepSeek-V4-Flash": {
+          "name": "DeepSeek-V4-Flash",
+          // 支持工具调用（function calling）
+          "tool_call": true,
+          "limit": {
+            // 上下文窗口 256K tokens
+            "context": 262144,
+            // 输出限制，与 .env 中 MAX_COMPLETION_TOKENS=16384 对齐
+            "output": 16384
+          }
+        }
+      }
+    }
+  }
+}

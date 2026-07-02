@@ -1,9 +1,12 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const {
   DEFAULT_APP_CONFIG,
+  loadAppConfig,
   mergeAppConfig,
   resolveConfiguredPath,
 } = require("../electron/main/appConfig");
@@ -37,6 +40,21 @@ const {
     USERPROFILE: "C:\\Users\\alice",
   });
   assert.equal(resolved, path.normalize("C:\\Users\\alice\\OpenIM-Agent\\workspaces"));
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "app-config-"));
+  const bundledOpencodePath = path.join(tempDir, "opencode.exe");
+  fs.writeFileSync(bundledOpencodePath, "");
+  const loaded = loadAppConfig({
+    userDataPath: path.join(tempDir, "userData"),
+    bundledOpencodePath,
+  });
+  assert.equal(loaded.opencode.command, bundledOpencodePath);
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(tempDir, "userData", "config.json"), "utf8"))
+      .opencode.command,
+    bundledOpencodePath,
+  );
+  fs.rmSync(tempDir, { recursive: true, force: true });
 
   console.log("appConfig tests passed");
 })();
