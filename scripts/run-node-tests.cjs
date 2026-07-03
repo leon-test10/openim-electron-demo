@@ -2,6 +2,7 @@ const { spawnSync } = require("node:child_process");
 
 const tests = [
   "src/services/agentRunContract/AgentRunContractService.test.ts",
+  "src/services/offlineIM/OfflineIMService.test.ts",
   "tests/folderShareDownload.test.ts",
   "tests/appConfig.test.ts",
   "tests/opencodeBundleManage.test.ts",

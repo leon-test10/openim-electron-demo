@@ -12,6 +12,12 @@ export const setPhoneNumber = (account: string) =>
 export const setEmail = (email: string) => localStorage.setItem("IM_EMAIL", email);
 export const setLoginMethod = (method: string) =>
   localStorage.setItem("IM_LOGIN_METHOD", method);
+export type AuthMode = "im" | "offline";
+export const setAuthMode = (mode: AuthMode) =>
+  localStorage.setItem("IM_AUTH_MODE", mode);
+export const getAuthMode = (): AuthMode =>
+  (localStorage.getItem("IM_AUTH_MODE") as AuthMode | null) ?? "im";
+export const isOfflineMode = () => getAuthMode() === "offline";
 export const setTMToken = (token: string) => localForage.setItem("IM_TOKEN", token);
 export const setChatToken = (token: string) =>
   localForage.setItem("IM_CHAT_TOKEN", token);
@@ -25,14 +31,22 @@ export const setIMProfile = ({
   imToken: string;
   userID: string;
 }) => {
+  setAuthMode("im");
   setTMToken(imToken);
   setChatToken(chatToken);
   setTMUserID(userID);
+};
+export const setOfflineProfile = () => {
+  setAuthMode("offline");
+  localForage.removeItem("IM_TOKEN");
+  localForage.removeItem("IM_CHAT_TOKEN");
+  return localForage.setItem("IM_USERID", "offline_self");
 };
 
 export const setLocale = (locale: string) => localStorage.setItem("IM_LOCALE", locale);
 
 export const clearIMProfile = () => {
+  localStorage.removeItem("IM_AUTH_MODE");
   localForage.removeItem("IM_TOKEN");
   localForage.removeItem("IM_CHAT_TOKEN");
   localForage.removeItem("IM_USERID");

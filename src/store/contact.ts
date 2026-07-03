@@ -10,8 +10,11 @@ import { t } from "i18next";
 import { create } from "zustand";
 
 import { IMSDK } from "@/layout/MainContentWrap";
+import { offlineFriendToFriendUserItem, offlineIMService } from "@/services/offlineIM";
 import { feedbackToast } from "@/utils/common";
+import { getAuthMode } from "@/utils/storage";
 
+import { useConversationStore } from "./conversation";
 import { ContactStore } from "./type";
 
 export const useContactStore = create<ContactStore>()((set, get) => ({
@@ -25,6 +28,22 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
   unHandleFriendApplicationCount: 0,
   unHandleGroupApplicationCount: 0,
   getFriendListByReq: async () => {
+    if (getAuthMode() === "offline") {
+      const friends = await offlineIMService.listFriends();
+      set(() => ({
+        friendList: friends.map(offlineFriendToFriendUserItem),
+        blackList: [],
+        groupList: [],
+        recvFriendApplicationList: [],
+        sendFriendApplicationList: [],
+        recvGroupApplicationList: [],
+        sendGroupApplicationList: [],
+        unHandleFriendApplicationCount: 0,
+        unHandleGroupApplicationCount: 0,
+      }));
+      return;
+    }
+
     try {
       let offset = 0;
       let tmpList = [] as FriendUserItem[];
@@ -48,6 +67,19 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
     } catch (error) {
       feedbackToast({ error, msg: t("toast.getFriendListFailed") });
     }
+  },
+  createOfflineVirtualFriend: async ({ nickname, remark }) => {
+    if (getAuthMode() !== "offline") return undefined;
+    const { friend, conversation } = await offlineIMService.createVirtualFriend({
+      nickname,
+      remark,
+    });
+    const friendItem = offlineFriendToFriendUserItem(friend);
+    set((state) => ({
+      friendList: [...state.friendList, friendItem],
+    }));
+    useConversationStore.getState().updateConversationList([conversation], "push");
+    return conversation;
   },
   setFriendList: (list: FriendUserItem[]) => {
     set(() => ({ friendList: list }));

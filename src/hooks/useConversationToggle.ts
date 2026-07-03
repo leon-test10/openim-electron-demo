@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
+import { getAuthMode } from "@/utils/storage";
 
 export type ToSpecifiedConversationParams = {
   sourceID: string;
@@ -32,6 +33,9 @@ export function useConversationToggle() {
       .conversationList.find(
         (item) => item.userID === sourceID || item.groupID === sourceID,
       );
+    if (getAuthMode() === "offline") {
+      return conversation;
+    }
     if (!conversation) {
       try {
         conversation = (

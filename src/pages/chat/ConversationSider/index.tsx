@@ -1,13 +1,15 @@
+import { PlusOutlined } from "@ant-design/icons";
+import { Button, Input, Modal } from "antd";
 import clsx from "clsx";
 import { t } from "i18next";
-import { useRef } from "react";
-import { useParams } from "react-router-dom";
+import { useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
 import sync from "@/assets/images/common/sync.png";
 import sync_error from "@/assets/images/common/sync_error.png";
 import FlexibleSider from "@/components/FlexibleSider";
-import { useConversationStore, useUserStore } from "@/store";
+import { useContactStore, useConversationStore, useUserStore } from "@/store";
 
 import ConversationItemComp from "./ConversationItem";
 import styles from "./index.module.scss";
@@ -55,19 +57,41 @@ const ConnectBar = () => {
 
 const ConversationSider = () => {
   const { conversationID } = useParams();
+  const navigate = useNavigate();
+  const authMode = useUserStore((state) => state.authMode);
   const conversationList = useConversationStore((state) => state.conversationList);
   const getConversationListByReq = useConversationStore(
     (state) => state.getConversationListByReq,
   );
+  const updateCurrentConversation = useConversationStore(
+    (state) => state.updateCurrentConversation,
+  );
+  const createOfflineVirtualFriend = useContactStore(
+    (state) => state.createOfflineVirtualFriend,
+  );
+  const [offlineModalOpen, setOfflineModalOpen] = useState(false);
+  const [offlineNickname, setOfflineNickname] = useState("");
   const virtuoso = useRef<VirtuosoHandle>(null);
   const hasmore = useRef(true);
   const loading = useRef(false);
+  const offline = authMode === "offline";
 
   const endReached = async () => {
     if (!hasmore.current || loading.current) return;
     loading.current = true;
     hasmore.current = await getConversationListByReq(true);
     loading.current = false;
+  };
+
+  const createOfflineFriend = async () => {
+    const conversation = await createOfflineVirtualFriend({
+      nickname: offlineNickname,
+    });
+    setOfflineModalOpen(false);
+    setOfflineNickname("");
+    if (!conversation) return;
+    await updateCurrentConversation(conversation);
+    navigate(`/chat/${conversation.conversationID}`);
   };
 
   return (
@@ -77,6 +101,19 @@ const ConversationSider = () => {
         needHidden={Boolean(conversationID)}
         wrapClassName="left-2 right-2 top-1.5 flex flex-col"
       >
+        {offline && (
+          <div className="mb-2 px-1">
+            <Button
+              block
+              type="primary"
+              icon={<PlusOutlined rev={undefined} />}
+              onClick={() => setOfflineModalOpen(true)}
+              data-testid="offline-create-friend-button"
+            >
+              Create Virtual Friend
+            </Button>
+          </div>
+        )}
         <Virtuoso
           className="flex-1"
           data={conversationList}
@@ -91,6 +128,25 @@ const ConversationSider = () => {
           )}
         />
       </FlexibleSider>
+      <Modal
+        title="Create Virtual Friend"
+        open={offlineModalOpen}
+        onCancel={() => setOfflineModalOpen(false)}
+        onOk={() => void createOfflineFriend()}
+        okButtonProps={{
+          disabled: !offlineNickname.trim(),
+          "data-testid": "offline-friend-create-confirm",
+        }}
+      >
+        <Input
+          autoFocus
+          placeholder="Friend nickname"
+          value={offlineNickname}
+          onChange={(event) => setOfflineNickname(event.target.value)}
+          onPressEnter={() => offlineNickname.trim() && void createOfflineFriend()}
+          data-testid="offline-friend-nickname"
+        />
+      </Modal>
     </div>
   );
 };

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useLogin, useSendSms } from "@/api/login";
+import { useUserStore } from "@/store";
 import {
   getEmail,
   getPhoneNumber,
@@ -36,6 +37,7 @@ const LoginForm = ({ loginMethod, setFormType, updateLoginMethod }: LoginFormPro
   const [loginType, setLoginType] = useState<LoginType>(LoginType.Password);
   const { mutate: login, isLoading: loginLoading } = useLogin();
   const { mutate: semdSms } = useSendSms();
+  const enterOfflineMode = useUserStore((state) => state.enterOfflineMode);
 
   const [countdown, setCountdown] = useState(0);
   useEffect(() => {
@@ -96,6 +98,11 @@ const LoginForm = ({ loginMethod, setFormType, updateLoginMethod }: LoginFormPro
 
   const onLoginMethodChange = (key: string) => {
     updateLoginMethod(key as "phone" | "email");
+  };
+
+  const enterOffline = async () => {
+    await enterOfflineMode();
+    navigate("/chat");
   };
 
   return (
@@ -194,6 +201,12 @@ const LoginForm = ({ loginMethod, setFormType, updateLoginMethod }: LoginFormPro
         <Form.Item className="mb-4">
           <Button type="primary" htmlType="submit" block loading={loginLoading}>
             {t("placeholder.login")}
+          </Button>
+        </Form.Item>
+
+        <Form.Item className="mb-4">
+          <Button block onClick={enterOffline} data-testid="offline-terminal-login">
+            Offline Mode
           </Button>
         </Form.Item>
 

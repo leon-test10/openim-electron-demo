@@ -26,6 +26,7 @@ import RtcCallModal from "@/pages/common/RtcCallModal";
 import { InviteData } from "@/pages/common/RtcCallModal/data";
 import UserCardModal, { CardInfo } from "@/pages/common/UserCardModal";
 import { consumePendingForwardSelection } from "@/services/messageForward";
+import { offlineIMService } from "@/services/offlineIM";
 import {
   useContactStore,
   useConversationStore,
@@ -35,6 +36,7 @@ import {
 } from "@/store";
 import emitter, { OpenUserCardParams } from "@/utils/events";
 import { formatMessageByType } from "@/utils/imCommon";
+import { getAuthMode } from "@/utils/storage";
 
 import { IMSDK } from "../MainContentWrap";
 import SearchUserOrGroup from "./SearchUserOrGroup";
@@ -105,7 +107,9 @@ const TopSearchBar = () => {
   const location = useLocation();
   const toggleTerminalDock = useTerminalDockStore((state) => state.togglePanel);
   const terminalDockOpen = useTerminalDockStore((state) => state.panelOpen);
+  const authMode = useUserStore((state) => state.authMode);
   const isChatRoute = location.pathname.startsWith("/chat");
+  const offline = authMode === "offline";
 
   // ───── Event listeners ─────
   useEffect(() => {
@@ -167,16 +171,20 @@ const TopSearchBar = () => {
     emitter.on("OPEN_CHOOSE_MODAL", chooseModalHandler);
     emitter.on("SELECT_USER", selectUserHandler);
     emitter.on("OPEN_RTC_MODAL", callRtcHandler);
-    IMSDK.on(CbEvents.OnRecvNewMessages, newMessageHandler);
+    if (!offline) {
+      IMSDK.on(CbEvents.OnRecvNewMessages, newMessageHandler);
+    }
     return () => {
       emitter.off("OPEN_USER_CARD", userCardHandler);
       emitter.off("OPEN_GROUP_CARD", openGroupCardWithData);
       emitter.off("OPEN_CHOOSE_MODAL", chooseModalHandler);
       emitter.off("SELECT_USER", selectUserHandler);
       emitter.off("OPEN_RTC_MODAL", callRtcHandler);
-      IMSDK.off(CbEvents.OnRecvNewMessages, newMessageHandler);
+      if (!offline) {
+        IMSDK.off(CbEvents.OnRecvNewMessages, newMessageHandler);
+      }
     };
-  }, []);
+  }, [offline]);
 
   // Close search panel on outside click
   useEffect(() => {
@@ -228,12 +236,34 @@ const TopSearchBar = () => {
 
     const prevResults = isLoadMore ? searchResults : [];
     const results: SearchItem[] = [...prevResults];
+    const offlineMode = getAuthMode() === "offline";
     const friendUserIDs = new Set(
       useContactStore.getState().friendList.map((f) => f.userID),
     );
 
     // ── 1. Local friends (fast, from SQLite) ──
-    if (!isLoadMore) {
+    if (offlineMode && !isLoadMore) {
+      const kwLower = keyword.toLowerCase();
+      useContactStore
+        .getState()
+        .friendList.filter((friend) =>
+          [friend.userID, friend.nickname, friend.remark]
+            .filter(Boolean)
+            .some((value) => value.toLowerCase().includes(kwLower)),
+        )
+        .forEach((friend) => {
+          results.push({
+            kind: "contact",
+            data: {
+              userID: friend.userID,
+              nickname: friend.nickname || friend.userID,
+              faceURL: friend.faceURL || "",
+              remark: friend.remark,
+              isFriend: true,
+            },
+          });
+        });
+    } else if (!isLoadMore) {
       try {
         const friendRes = await IMSDK.searchFriends({
           keywordList: [keyword],
@@ -267,7 +297,7 @@ const TopSearchBar = () => {
     }
 
     // ── 2. Business API search (nickname / phone / email on server) ──
-    if (!isLoadMore) {
+    if (!offlineMode && !isLoadMore) {
       try {
         const bizRes = await searchBusinessUserInfo(keyword, 10);
         const bizUsers = bizRes.data?.users ?? [];
@@ -306,7 +336,7 @@ const TopSearchBar = () => {
     }
 
     // ── 3. Groups (local) ──
-    if (!isLoadMore) {
+    if (!offlineMode && !isLoadMore) {
       try {
         const groupRes = await IMSDK.searchGroups({
           keywordList: [keyword],
@@ -339,12 +369,20 @@ const TopSearchBar = () => {
       if (results.filter((r) => r.kind === "message").length >= MAX_MSG_RESULTS) break;
 
       try {
-        const { data: historyData } = await IMSDK.getAdvancedHistoryMessageList({
-          conversationID: conv.conversationID,
-          count: 50,
-          startClientMsgID: "",
-          viewType: 0, // ViewType.History
-        });
+        const historyData = offlineMode
+          ? await offlineIMService.listMessages({
+              conversationID: conv.conversationID,
+              count: 50,
+              startClientMsgID: "",
+            })
+          : (
+              await IMSDK.getAdvancedHistoryMessageList({
+                conversationID: conv.conversationID,
+                count: 50,
+                startClientMsgID: "",
+                viewType: 0, // ViewType.History
+              })
+            ).data;
 
         const matches: MessageItem[] = [];
         for (const msg of historyData.messageList) {
@@ -400,6 +438,16 @@ const TopSearchBar = () => {
 
     if (item.kind === "contact") {
       const c = item.data as ContactResult;
+      if (getAuthMode() === "offline") {
+        const conversation = useConversationStore
+          .getState()
+          .conversationList.find((item) => item.userID === c.userID);
+        if (conversation) {
+          useConversationStore.getState().updateCurrentConversation(conversation);
+          navigate(`/chat/${conversation.conversationID}`);
+        }
+        return;
+      }
       setUserCardState({
         userID: c.userID,
         isSelf: c.userID === useUserStore.getState().selfInfo.userID,
@@ -684,22 +732,24 @@ const TopSearchBar = () => {
           </Tooltip>
         )}
 
-        <Popover
-          content={<ActionPopContent actionClick={actionClick} />}
-          arrow={false}
-          title={null}
-          trigger="click"
-          placement="bottom"
-          open={actionVisible}
-          onOpenChange={(vis) => setActionVisible(vis)}
-        >
-          <img
-            className="app-no-drag ml-8 cursor-pointer"
-            width={20}
-            src={show_more}
-            alt=""
-          />
-        </Popover>
+        {!offline && (
+          <Popover
+            content={<ActionPopContent actionClick={actionClick} />}
+            arrow={false}
+            title={null}
+            trigger="click"
+            placement="bottom"
+            open={actionVisible}
+            onOpenChange={(vis) => setActionVisible(vis)}
+          >
+            <img
+              className="app-no-drag ml-8 cursor-pointer"
+              width={20}
+              src={show_more}
+              alt=""
+            />
+          </Popover>
+        )}
       </div>
       <WindowControlBar />
       <UserCardModal ref={userCardRef} {...userCardState} />

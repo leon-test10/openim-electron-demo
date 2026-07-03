@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { IMSDK } from "@/layout/MainContentWrap";
+import { offlineIMService } from "@/services/offlineIM";
 import emitter, { emit } from "@/utils/events";
+import { getAuthMode } from "@/utils/storage";
 
 const START_INDEX = 10000;
 const SPLIT_COUNT = 20;
@@ -91,6 +93,30 @@ export function useHistoryMessageList() {
   const { loading: moreOldLoading, runAsync: getMoreOldMessages } = useRequest(
     async (loadMore = true) => {
       const reqConversationID = conversationID;
+      if (getAuthMode() === "offline") {
+        const data = await offlineIMService.listMessages({
+          count: SPLIT_COUNT,
+          startClientMsgID: loadMore
+            ? latestLoadState.current?.messageList[0]?.clientMsgID ?? ""
+            : "",
+          conversationID: conversationID ?? "",
+        });
+        if (conversationID !== reqConversationID) return;
+        setTimeout(() =>
+          setLoadState((preState) => ({
+            ...preState,
+            initLoading: false,
+            hasMoreOld: !data.isEnd,
+            messageList: [
+              ...data.messageList,
+              ...(loadMore ? preState.messageList : []),
+            ],
+            firstItemIndex: preState.firstItemIndex - data.messageList.length,
+          })),
+        );
+        return;
+      }
+
       const { data } = await IMSDK.getAdvancedHistoryMessageList({
         count: SPLIT_COUNT,
         startClientMsgID: loadMore

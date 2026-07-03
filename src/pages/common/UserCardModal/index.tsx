@@ -31,6 +31,7 @@ import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisib
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useContactStore, useUserStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
+import { getAuthMode } from "@/utils/storage";
 
 import EditSelfInfo from "./EditSelfInfo";
 import SendRequest from "./SendRequest";
@@ -86,8 +87,19 @@ const UserCardModal: ForwardRefRenderFunction<
     if (friendInfo) {
       userInfo = { ...friendInfo };
     } else {
+      if (getAuthMode() === "offline") {
+        return {
+          cardInfo: {},
+        };
+      }
       const { data } = await IMSDK.getUsersInfo([userID!]);
       userInfo = { ...(data[0] ?? {}) };
+    }
+
+    if (getAuthMode() === "offline") {
+      return {
+        cardInfo: userInfo ?? {},
+      };
     }
 
     try {
@@ -131,14 +143,18 @@ const UserCardModal: ForwardRefRenderFunction<
         refetch();
       }
     };
-    IMSDK.on(CbEvents.OnFriendAdded, friendAddedHandler);
+    if (getAuthMode() !== "offline") {
+      IMSDK.on(CbEvents.OnFriendAdded, friendAddedHandler);
+    }
     refreshData(
       props.cardInfo
         ? { cardInfo: props.cardInfo }
         : latestFullCardInfo.current ?? undefined,
     );
     return () => {
-      IMSDK.off(CbEvents.OnFriendAdded, friendAddedHandler);
+      if (getAuthMode() !== "offline") {
+        IMSDK.off(CbEvents.OnFriendAdded, friendAddedHandler);
+      }
     };
   }, [isOverlayOpen, props.cardInfo]);
 

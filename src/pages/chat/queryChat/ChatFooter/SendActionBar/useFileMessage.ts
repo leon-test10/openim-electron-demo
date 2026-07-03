@@ -4,7 +4,8 @@ import { IMSDK } from "@/layout/MainContentWrap";
 import {
   createFolderSharePayload,
   FOLDER_SHARE_SCHEMA,
-  FolderShareFile,
+  type FolderShareFile,
+  type FolderShareManifest,
 } from "@/utils/folderShare";
 
 export interface FileWithPath extends File {
@@ -132,7 +133,7 @@ export function useFileMessage() {
         };
       }),
     );
-    const manifest = {
+    const manifest: FolderShareManifest = {
       schema: FOLDER_SHARE_SCHEMA,
       shareID,
       folderName: input.folderName,

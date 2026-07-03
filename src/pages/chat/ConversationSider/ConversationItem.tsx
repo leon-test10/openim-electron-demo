@@ -45,7 +45,7 @@ const ConversationItem = ({ isActive, conversation }: IConversationProps) => {
         JSON.parse(conversation.latestMsg) as MessageItem,
       );
     } catch (error) {
-      content = t("messageDescription.catchMessage");
+      content = escapeHtml(conversation.latestMsg);
     }
     return content;
   }, [conversation.draftText, conversation.latestMsg, isActive, currentUser]);
@@ -91,3 +91,11 @@ const ConversationItem = ({ isActive, conversation }: IConversationProps) => {
 };
 
 export default memo(ConversationItem);
+
+const escapeHtml = (text: string) =>
+  text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");

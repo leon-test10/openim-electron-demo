@@ -26,8 +26,10 @@ import {
 import { MessageForwardMode } from "./messageForward";
 
 export type IMConnectState = "success" | "loading" | "failed";
+export type AuthMode = "im" | "offline";
 
 export interface UserStore {
+  authMode: AuthMode;
   syncState: IMConnectState;
   progress: number;
   reinstall: boolean;
@@ -40,7 +42,9 @@ export interface UserStore {
   updateReinstallState: (reinstall: boolean) => void;
   updateIsLogining: (isLogining: boolean) => void;
   updateConnectState: (connectState: IMConnectState) => void;
+  updateAuthMode: (authMode: AuthMode) => void;
   updateSelfInfo: (info: Partial<BusinessUserInfo>) => void;
+  enterOfflineMode: () => Promise<void>;
   getSelfInfoByReq: () => void;
   updateAppSettings: (settings: Partial<AppSettings>) => void;
   userLogout: (force?: boolean) => Promise<void>;
@@ -91,6 +95,10 @@ export interface ContactStore {
   unHandleFriendApplicationCount: number;
   unHandleGroupApplicationCount: number;
   getFriendListByReq: () => Promise<void>;
+  createOfflineVirtualFriend: (params: {
+    nickname: string;
+    remark?: string;
+  }) => Promise<ConversationItem | undefined>;
   setFriendList: (list: FriendUserItem[]) => void;
   updateFriend: (friend: FriendUserItem, remove?: boolean) => void;
   pushNewFriend: (friend: FriendUserItem) => void;

@@ -8,8 +8,10 @@ import { t } from "i18next";
 import { create } from "zustand";
 
 import { IMSDK } from "@/layout/MainContentWrap";
+import { offlineIMService } from "@/services/offlineIM";
 import { feedbackToast } from "@/utils/common";
 import { conversationSort, isGroupSession } from "@/utils/imCommon";
+import { getAuthMode } from "@/utils/storage";
 
 import { ConversationListUpdateType, ConversationStore } from "./type";
 import { useUserStore } from "./user";
@@ -23,6 +25,13 @@ export const useConversationStore = create<ConversationStore>()((set, get) => ({
   currentGroupInfo: undefined,
   currentMemberInGroup: undefined,
   getConversationListByReq: async (isOffset?: boolean) => {
+    if (getAuthMode() === "offline") {
+      if (isOffset) return false;
+      const conversationList = await offlineIMService.listConversations();
+      set(() => ({ conversationList }));
+      return false;
+    }
+
     let tmpConversationList = [] as ConversationItem[];
     try {
       const { data } = await IMSDK.getConversationListSplit({
@@ -85,13 +94,22 @@ export const useConversationStore = create<ConversationStore>()((set, get) => ({
 
     const toggleNewConversation =
       conversation.conversationID !== prevConversation?.conversationID;
-    if (toggleNewConversation && isGroupSession(conversation.conversationType)) {
+    if (
+      getAuthMode() !== "offline" &&
+      toggleNewConversation &&
+      isGroupSession(conversation.conversationType)
+    ) {
       get().getCurrentGroupInfoByReq(conversation.groupID);
       await get().getCurrentMemberInGroupByReq(conversation.groupID);
     }
     set(() => ({ currentConversation: { ...conversation } }));
   },
   getUnReadCountByReq: async () => {
+    if (getAuthMode() === "offline") {
+      set(() => ({ unReadCount: 0 }));
+      return 0;
+    }
+
     try {
       const { data } = await IMSDK.getTotalUnreadMsgCount();
       set(() => ({ unReadCount: data }));

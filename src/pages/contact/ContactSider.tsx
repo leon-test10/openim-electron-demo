@@ -9,7 +9,7 @@ import my_friends from "@/assets/images/contact/my_friends.png";
 import my_groups from "@/assets/images/contact/my_groups.png";
 import new_friends from "@/assets/images/contact/new_friends.png";
 import FlexibleSider from "@/components/FlexibleSider";
-import { useContactStore } from "@/store";
+import { useContactStore, useUserStore } from "@/store";
 
 const Links = [
   {
@@ -43,6 +43,7 @@ i18n.on("languageChanged", () => {
 
 const ContactSider = () => {
   const [selectIndex, setSelectIndex] = useState(2);
+  const authMode = useUserStore((state) => state.authMode);
   const unHandleFriendApplicationCount = useContactStore(
     (state) => state.unHandleFriendApplicationCount,
   );
@@ -50,8 +51,16 @@ const ContactSider = () => {
     (state) => state.unHandleGroupApplicationCount,
   );
   const navigate = useNavigate();
+  const visibleLinks = authMode === "offline" ? [Links[2]] : Links;
 
   useEffect(() => {
+    if (authMode === "offline") {
+      setSelectIndex(0);
+      if (location.hash !== "#/contact") {
+        navigate("/contact", { replace: true });
+      }
+      return;
+    }
     if (location.hash.includes("/contact/newFriends")) {
       setSelectIndex(0);
     }
@@ -61,7 +70,7 @@ const ContactSider = () => {
     if (location.hash.includes("/contact/myGroups")) {
       setSelectIndex(3);
     }
-  }, []);
+  }, [authMode, navigate]);
 
   const getBadge = (index: number) => {
     if (index === 0) {
@@ -80,7 +89,7 @@ const ContactSider = () => {
           {t("placeholder.contact")}
         </div>
         <ul>
-          {Links.map((item, index) => {
+          {visibleLinks.map((item, index) => {
             return (
               <li
                 key={item.path}

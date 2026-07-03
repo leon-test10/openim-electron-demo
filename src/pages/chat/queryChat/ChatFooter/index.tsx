@@ -1,5 +1,6 @@
 import { CloseOutlined } from "@ant-design/icons";
-import { SessionType } from "@openim/wasm-client-sdk";
+import { MessageType, SessionType } from "@openim/wasm-client-sdk";
+import { MessageItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { useLatest } from "ahooks";
 import { Button, message as antdMessage, Modal, Switch, Tooltip } from "antd";
 import { t } from "i18next";
@@ -29,6 +30,7 @@ import emitter, { PendingChatAttachmentParams } from "@/utils/events";
 import { parseFolderShareMessage } from "@/utils/folderShare";
 import { recordLocalFileForMessage } from "@/utils/localFileCache";
 import { recordLocalFolderShare } from "@/utils/localFolderShareCache";
+import { getAuthMode } from "@/utils/storage";
 
 import BotMentionAutocomplete from "./BotMentionAutocomplete";
 import SendActionBar from "./SendActionBar";
@@ -281,6 +283,14 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const textToDraftHtml = (text: string) =>
     text.trim() ? `<pre><code>${escapeHtml(text.trim())}</code></pre>` : "";
 
+  const createTextMessage = async (text: string) =>
+    getAuthMode() === "offline"
+      ? ({
+          contentType: MessageType.TextMessage,
+          textElem: { content: text },
+        } as MessageItem)
+      : (await IMSDK.createTextMessage(text)).data;
+
   useEffect(() => {
     const onAppend = (text: string) => {
       if (!text) return;
@@ -304,9 +314,12 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       }
 
       if (cleanText) {
-        const message = (await IMSDK.createTextMessage(cleanText)).data;
+        const message = await createTextMessage(cleanText);
         setHtml("");
-        await sendMessage({ message });
+        await sendMessage({
+          message,
+          offlineSender: getAuthMode() === "offline" ? "peer" : undefined,
+        });
       }
 
       for (const attachment of attachmentsToSend) {
@@ -456,7 +469,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     setPendingAttachments([]);
 
     if (cleanText) {
-      const message = (await IMSDK.createTextMessage(cleanText)).data;
+      const message = await createTextMessage(cleanText);
       await sendMessage({ message });
     }
 
@@ -595,7 +608,12 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
             <CKEditor value={html} onEnter={enterToSend} onChange={onChange} />
           </div>
           <div className="flex items-center justify-end py-2 pr-3">
-            <Button className="w-fit px-6 py-1" type="primary" onClick={enterToSend}>
+            <Button
+              className="w-fit px-6 py-1"
+              type="primary"
+              onClick={enterToSend}
+              data-testid="chat-footer-send"
+            >
               {t("placeholder.send")}
             </Button>
           </div>

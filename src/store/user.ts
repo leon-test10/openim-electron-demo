@@ -4,14 +4,22 @@ import { create } from "zustand";
 import { BusinessUserInfo, getBusinessUserInfo } from "@/api/login";
 import { IMSDK } from "@/layout/MainContentWrap";
 import router from "@/routes";
+import { createOfflineSelfInfo } from "@/services/offlineIM";
 import { feedbackToast } from "@/utils/common";
-import { clearIMProfile, getLocale, setLocale } from "@/utils/storage";
+import {
+  clearIMProfile,
+  getAuthMode,
+  getLocale,
+  setLocale,
+  setOfflineProfile,
+} from "@/utils/storage";
 
 import { useContactStore } from "./contact";
 import { useConversationStore } from "./conversation";
 import { AppSettings, IMConnectState, UserStore } from "./type";
 
 export const useUserStore = create<UserStore>()((set, get) => ({
+  authMode: getAuthMode(),
   syncState: "success",
   progress: 0,
   reinstall: true,
@@ -37,6 +45,9 @@ export const useUserStore = create<UserStore>()((set, get) => ({
   updateConnectState: (connectState: IMConnectState) => {
     set({ connectState });
   },
+  updateAuthMode: (authMode) => {
+    set({ authMode });
+  },
   getSelfInfoByReq: () => {
     IMSDK.getSelfUserInfo()
       .then(({ data }) => {
@@ -53,6 +64,18 @@ export const useUserStore = create<UserStore>()((set, get) => ({
   updateSelfInfo: (info: Partial<BusinessUserInfo>) => {
     set((state) => ({ selfInfo: { ...state.selfInfo, ...info } }));
   },
+  enterOfflineMode: async () => {
+    await setOfflineProfile();
+    set({
+      authMode: "offline",
+      selfInfo: createOfflineSelfInfo(),
+      syncState: "success",
+      connectState: "success",
+      reinstall: false,
+      progress: 0,
+      isLogining: false,
+    });
+  },
   updateAppSettings: (settings: Partial<AppSettings>) => {
     if (settings.locale) {
       setLocale(settings.locale);
@@ -60,9 +83,9 @@ export const useUserStore = create<UserStore>()((set, get) => ({
     set((state) => ({ appSettings: { ...state.appSettings, ...settings } }));
   },
   userLogout: async (force?: boolean) => {
-    if (!force) await IMSDK.logout();
+    if (!force && get().authMode !== "offline") await IMSDK.logout();
     clearIMProfile();
-    set({ selfInfo: {} as BusinessUserInfo, progress: 0 });
+    set({ authMode: "im", selfInfo: {} as BusinessUserInfo, progress: 0 });
     useContactStore.getState().clearContactStore();
     useConversationStore.getState().clearConversationStore();
     router.navigate("/login");

@@ -1,10 +1,11 @@
 import { useRequest } from "ahooks";
-import { Empty, Spin } from "antd";
-import { useCallback, useEffect, useRef } from "react";
+import { Button, Empty, Input, Modal, Spin } from "antd";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { GroupedVirtuoso, GroupedVirtuosoHandle } from "react-virtuoso";
 
-import { useContactStore } from "@/store";
+import { useContactStore, useConversationStore, useUserStore } from "@/store";
 import { formatContactsByWorker } from "@/utils/contactsFormat";
 import { emit } from "@/utils/events";
 
@@ -13,9 +14,21 @@ import FriendListItem from "./FriendListItem";
 
 export const MyFriends = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const authMode = useUserStore((state) => state.authMode);
   const friendList = useContactStore((state) => state.friendList);
+  const createOfflineVirtualFriend = useContactStore(
+    (state) => state.createOfflineVirtualFriend,
+  );
+  const conversationList = useConversationStore((state) => state.conversationList);
+  const updateCurrentConversation = useConversationStore(
+    (state) => state.updateCurrentConversation,
+  );
+  const [offlineModalOpen, setOfflineModalOpen] = useState(false);
+  const [offlineNickname, setOfflineNickname] = useState("");
   const virtuoso = useRef<GroupedVirtuosoHandle>(null);
   const alphabetRef = useRef<{ updateCurrentLetter: (letter: string) => void }>(null);
+  const offline = authMode === "offline";
 
   const { data: sectionData, cancel } = useRequest(
     () => formatContactsByWorker(friendList),
@@ -43,11 +56,32 @@ export const MyFriends = () => {
     [sectionData?.groupCounts],
   );
 
-  const showUserCard = useCallback((userID: string) => {
-    emit("OPEN_USER_CARD", {
-      userID,
+  const showUserCard = useCallback(
+    (userID: string) => {
+      if (offline) {
+        const conversation = conversationList.find((item) => item.userID === userID);
+        if (!conversation) return;
+        updateCurrentConversation(conversation);
+        navigate(`/chat/${conversation.conversationID}`);
+        return;
+      }
+      emit("OPEN_USER_CARD", {
+        userID,
+      });
+    },
+    [conversationList, navigate, offline, updateCurrentConversation],
+  );
+
+  const createOfflineFriend = async () => {
+    const conversation = await createOfflineVirtualFriend({
+      nickname: offlineNickname,
     });
-  }, []);
+    setOfflineModalOpen(false);
+    setOfflineNickname("");
+    if (!conversation) return;
+    await updateCurrentConversation(conversation);
+    navigate(`/chat/${conversation.conversationID}`);
+  };
 
   const determineCurrentGroup = (startIndex: number) => {
     if (!sectionData) return;
@@ -72,7 +106,18 @@ export const MyFriends = () => {
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-white">
-      <div className="m-5.5 text-base font-extrabold">{t("placeholder.myFriend")}</div>
+      <div className="m-5.5 flex items-center justify-between">
+        <div className="text-base font-extrabold">{t("placeholder.myFriend")}</div>
+        {offline && (
+          <Button
+            type="primary"
+            onClick={() => setOfflineModalOpen(true)}
+            data-testid="offline-contact-create-friend-button"
+          >
+            Create Virtual Friend
+          </Button>
+        )}
+      </div>
       {!sectionData ? (
         <Spin />
       ) : !sectionData.groupCounts.length ? (
@@ -110,6 +155,25 @@ export const MyFriends = () => {
           />
         </div>
       )}
+      <Modal
+        title="Create Virtual Friend"
+        open={offlineModalOpen}
+        onCancel={() => setOfflineModalOpen(false)}
+        onOk={() => void createOfflineFriend()}
+        okButtonProps={{
+          disabled: !offlineNickname.trim(),
+          "data-testid": "offline-contact-friend-create-confirm",
+        }}
+      >
+        <Input
+          autoFocus
+          placeholder="Friend nickname"
+          value={offlineNickname}
+          onChange={(event) => setOfflineNickname(event.target.value)}
+          onPressEnter={() => offlineNickname.trim() && void createOfflineFriend()}
+          data-testid="offline-contact-friend-nickname"
+        />
+      </Modal>
     </div>
   );
 };

@@ -4,6 +4,7 @@ import { t } from "i18next";
 import { Outlet, useMatches, useNavigate } from "react-router-dom";
 
 import { useUserStore } from "@/store";
+import { getAuthMode } from "@/utils/storage";
 
 import LeftNavBar from "./LeftNavBar";
 import TopSearchBar from "./TopSearchBar";
@@ -22,7 +23,7 @@ export const MainContentLayout = () => {
   useMount(() => {
     const isRoot = !matches.find((item) => item.pathname !== "/");
     const inConversation = matches.some((item) => item.params.conversationID);
-    if (isRoot || inConversation) {
+    if (isRoot || (inConversation && getAuthMode() !== "offline")) {
       navigate("chat", {
         replace: true,
       });

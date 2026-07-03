@@ -24,12 +24,13 @@ import {
   pushNewMessage,
   updateOneMessage,
 } from "@/pages/chat/queryChat/useHistoryMessageList";
+import { createOfflineSelfInfo } from "@/services/offlineIM";
 import { useConversationStore, useUserStore } from "@/store";
 import { useContactStore } from "@/store/contact";
 import { feedbackToast } from "@/utils/common";
 import { initStore } from "@/utils/imCommon";
 import { exportMessage } from "@/utils/messageExporter";
-import { clearIMProfile, getIMToken, getIMUserID } from "@/utils/storage";
+import { clearIMProfile, getAuthMode, getIMToken, getIMUserID } from "@/utils/storage";
 
 import { IMSDK } from "./MainContentWrap";
 
@@ -94,22 +95,40 @@ export function useGlobalEvent() {
   );
 
   useEffect(() => {
+    const offline = getAuthMode() === "offline";
     loginCheck();
-    setIMListener();
+    if (!offline) {
+      setIMListener();
+    }
     setIpcListener();
 
     window.addEventListener("online", () => {
+      if (getAuthMode() === "offline") return;
       IMSDK.networkStatusChanged();
     });
     window.addEventListener("offline", () => {
+      if (getAuthMode() === "offline") return;
       IMSDK.networkStatusChanged();
     });
     return () => {
-      disposeIMListener();
+      if (!offline) {
+        disposeIMListener();
+      }
     };
   }, []);
 
   const loginCheck = async () => {
+    if (getAuthMode() === "offline") {
+      useUserStore.getState().updateAuthMode("offline");
+      updateSelfInfo(createOfflineSelfInfo());
+      updateConnectState("success");
+      updateSyncState("success");
+      updateReinstallState(false);
+      await getFriendListByReq();
+      await getConversationListByReq(false);
+      navigate("/chat", { replace: true });
+      return;
+    }
     const IMToken = (await getIMToken()) as string;
     const IMUserID = (await getIMUserID()) as string;
     if (!IMToken || !IMUserID) {

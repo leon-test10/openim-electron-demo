@@ -3,6 +3,7 @@ import { Modal, Switch } from "antd";
 import { useEffect, useMemo, useState } from "react";
 
 import TerminalDock from "@/components/TerminalDock";
+import { DEFAULT_RUNTIME_CONFIG } from "@/config/appConfig";
 import { DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE } from "@/services/agentRunContract";
 import {
   type BotTargetCandidate,
@@ -172,6 +173,7 @@ const installE2EElectronMock = () => {
     getVersion: () => "e2e",
     getPlatform: () => Platform.Windows,
     getSystemVersion: () => "e2e",
+    getAppConfig: () => DEFAULT_RUNTIME_CONFIG,
     subscribe: (channel: string, callback: (...args: unknown[]) => void) => {
       const callbacks = subscribers.get(channel) ?? new Set();
       callbacks.add(callback);

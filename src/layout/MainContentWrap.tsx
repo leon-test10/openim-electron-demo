@@ -5,7 +5,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useConversationStore, useUserStore } from "@/store";
 import { emit } from "@/utils/events";
-import { getIMToken, getIMUserID } from "@/utils/storage";
+import { getAuthMode, getIMToken, getIMUserID } from "@/utils/storage";
 
 // const isElectronProd = import.meta.env.MODE !== "development" && window.electronAPI;
 
@@ -27,6 +27,9 @@ export const MainContentWrap = () => {
 
   useEffect(() => {
     const loginCheck = async () => {
+      if (getAuthMode() === "offline") {
+        return;
+      }
       const IMToken = await getIMToken();
       const IMUserID = await getIMUserID();
       if (!IMToken || !IMUserID) {
