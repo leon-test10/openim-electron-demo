@@ -1,4 +1,92 @@
-# Session Handoff - Terminal Dock Redesign
+# Session Handoff - Contact-scoped Persistent Agent Sessions
+
+## Latest Update - Persistent Agent Workspace Milestone (2026-07-11)
+
+Current branch: `feature/agent-run-contract`
+
+This milestone replaces the global Terminal Dock automation contract with a
+contact-scoped Agent workspace. The Electron main process owns session and
+runtime lifecycle, so changing contacts or hiding panels does not stop work.
+
+### Implemented
+
+- Added a persistent global `AgentSessionManager` with per-contact last-session
+  selection, FIFO turns, independent concurrent sessions, unread aggregation,
+  archive/pin/rename/recover actions, and atomic message snapshots under each
+  workspace's `.openim-agent/` directory.
+- Added `AgentRuntimeAdapter` and the OpenCode implementation. One reusable
+  local `opencode serve` process supplies Session HTTP APIs and global SSE;
+  only a service started by this app is stopped on true application exit.
+- Added structured Agent message rendering, safe Markdown, interaction cards,
+  IM insertion/attachment actions, resizable Agent and terminal panels, and a
+  session-attached `opencode attach` PTY with main-process ring buffering.
+- Contact switching immediately selects that contact's last Agent session and
+  terminal target. Other sessions remain active and notify on completion,
+  failure, or required interaction.
+- Moved Bot detection into the global bridge with persisted client-message
+  checkpoints and deduplication. `review` is the default, offline backfill never
+  auto-runs, and each conversation reuses one Bot Agent session.
+- Added auditable IM context snapshots and a token-scoped, localhost-only,
+  read-only `openim_history` bridge. Tokens bind a runtime session to exactly
+  one IM conversation and are revoked when live history is disabled.
+- Added recovery behavior for missing OpenCode sessions without replaying old
+  prompts. Auto-approve remains per-process and replies with `once` only.
+- Removed active-chat Bot scanning from `ChatContent`; legacy Terminal Dock
+  auto-inject/auto-reply E2E contracts are explicitly skipped because the new
+  global router and confirmation-only Agent-to-IM flow supersede them.
+
+### Primary Files
+
+- Main lifecycle: `electron/main/agentSessionManage.ts`,
+  `electron/main/opencodeManage.ts`, `electron/main/agentRuntimeAdapter.ts`
+- History capability: `electron/main/agentHistoryCapability.ts`,
+  `src/layout/useAgentSessionBridge.ts`
+- Renderer state/UI: `src/store/agentSessions.ts`,
+  `src/components/AgentPanel/`, `src/components/AgentTerminalPanel/`
+- Shared contracts: `src/types/agentSession.ts`,
+  `src/services/agentSessions/`
+- Current Electron contract: `e2e/electron/specs/agent-sessions.spec.ts`
+
+### Operational Notes
+
+- OpenCode is the only complete runtime adapter in v1.
+- A true app quit aborts in-flight sessions owned by the app and stops the
+  app-owned OpenCode service. Restart restores IDs and messages but never
+  replays interrupted prompts.
+- Archiving hides a session and preserves its workspace and OpenCode history.
+- Agent output is never automatically sent to IM; the user must insert or
+  attach it and confirm sending.
+- Legacy keys `openim_terminal_dock_state` and `openim_runtime_dock_state` are
+  removed once when the new bridge initializes; existing workspace files are
+  left untouched.
+
+### Validation
+
+- `npm.cmd test`: pass.
+- Renderer and Electron-main TypeScript checks: pass.
+- `npm.cmd run lint -- --quiet`: pass.
+- `npm.cmd run build:renderer`: pass.
+- Focused Electron Agent session E2E: pass.
+- Electron E2E passed by current suite: Agent sessions (1), file/image/folder
+  UX (5), history drawer (3), message selection (5), and structured output (5).
+- A single-process aggregate run and the standalone `offline-im.spec.ts` exit
+  with Playwright status 1 but report no failed test IDs. They leave orphaned
+  test OpenCode processes after the runner aborts; this is recorded as test
+  infrastructure follow-up rather than a product assertion failure.
+
+### Follow-up Risk Areas
+
+- Exercise notification-click navigation and real permission/question cards
+  against a packaged OpenCode binary on Windows before release signing.
+- Run a long-lived soak test with several simultaneous sessions and forced SSE
+  disconnects; unit coverage validates reconnection/state transitions but does
+  not replace an overnight runtime soak.
+- Other runtimes must implement `AgentRuntimeAdapter`; no compatibility shim is
+  provided by this milestone.
+
+---
+
+# Previous Handoff - Terminal Dock Redesign
 
 ## Latest Update - P11.7 Folder Share Download Folder (2026-06-29)
 

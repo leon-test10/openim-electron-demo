@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 type HarnessOptions = {
   terminal?: boolean;
   group?: boolean;
+  agent?: boolean;
 };
 
 export const getHarnessURL = (options: HarnessOptions = {}) => {
@@ -12,6 +13,7 @@ export const getHarnessURL = (options: HarnessOptions = {}) => {
   const params = new URLSearchParams();
   if (options.terminal) params.set("terminal", "1");
   if (options.group) params.set("group", "1");
+  if (options.agent) params.set("agent", "1");
   const query = params.toString();
 
   return `${indexURL.toString()}#/e2e-harness${query ? `?${query}` : ""}`;

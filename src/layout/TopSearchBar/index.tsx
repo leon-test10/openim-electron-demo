@@ -1,4 +1,4 @@
-import { ApiOutlined, SearchOutlined } from "@ant-design/icons";
+import { ApiOutlined, RobotOutlined, SearchOutlined } from "@ant-design/icons";
 import { CbEvents, MessageType } from "@openim/wasm-client-sdk";
 import {
   GroupItem,
@@ -28,10 +28,10 @@ import UserCardModal, { CardInfo } from "@/pages/common/UserCardModal";
 import { consumePendingForwardSelection } from "@/services/messageForward";
 import { offlineIMService } from "@/services/offlineIM";
 import {
+  useAgentSessionStore,
   useContactStore,
   useConversationStore,
   useMessageForwardStore,
-  useTerminalDockStore,
   useUserStore,
 } from "@/store";
 import emitter, { OpenUserCardParams } from "@/utils/events";
@@ -105,8 +105,8 @@ const TopSearchBar = () => {
 
   const navigate = useNavigate();
   const location = useLocation();
-  const toggleTerminalDock = useTerminalDockStore((state) => state.togglePanel);
-  const terminalDockOpen = useTerminalDockStore((state) => state.panelOpen);
+  const agentPanelOpen = useAgentSessionStore((state) => state.agentPanelOpen);
+  const terminalPanelOpen = useAgentSessionStore((state) => state.terminalPanelOpen);
   const authMode = useUserStore((state) => state.authMode);
   const isChatRoute = location.pathname.startsWith("/chat");
   const offline = authMode === "offline";
@@ -719,17 +719,38 @@ const TopSearchBar = () => {
         </div>
 
         {isChatRoute && (
-          <Tooltip title="Terminal">
-            <Button
-              type="text"
-              size="small"
-              className="app-no-drag ml-3 flex h-7 w-7 items-center justify-center text-white hover:text-white"
-              icon={<ApiOutlined rev={undefined} />}
-              aria-pressed={terminalDockOpen}
-              onClick={toggleTerminalDock}
-              data-testid="terminal-dock-toggle"
-            />
-          </Tooltip>
+          <div className="app-no-drag ml-3 flex items-center">
+            <Tooltip title="Agent panel">
+              <Button
+                type="text"
+                size="small"
+                className="flex h-7 w-7 items-center justify-center text-white hover:text-white"
+                icon={<RobotOutlined rev={undefined} />}
+                aria-pressed={agentPanelOpen}
+                onClick={() =>
+                  void useAgentSessionStore
+                    .getState()
+                    .setPanelState({ agentPanelOpen: !agentPanelOpen })
+                }
+                data-testid="agent-panel-toggle"
+              />
+            </Tooltip>
+            <Tooltip title="Attached OpenCode terminal">
+              <Button
+                type="text"
+                size="small"
+                className="flex h-7 w-7 items-center justify-center text-white hover:text-white"
+                icon={<ApiOutlined rev={undefined} />}
+                aria-pressed={terminalPanelOpen}
+                onClick={() =>
+                  void useAgentSessionStore
+                    .getState()
+                    .setPanelState({ terminalPanelOpen: !terminalPanelOpen })
+                }
+                data-testid="terminal-dock-toggle"
+              />
+            </Tooltip>
+          </div>
         )}
 
         {!offline && (

@@ -4,7 +4,7 @@ import { Button, Dropdown, MenuProps, message as antdMessage } from "antd";
 import { FC, PropsWithChildren, useState } from "react";
 
 import { openMessageForwardChooser } from "@/services/messageForward";
-import { useMessageSelectionStore, useTerminalDockStore } from "@/store";
+import { useAgentSessionStore, useMessageSelectionStore } from "@/store";
 import emitter from "@/utils/events";
 import {
   getLocalFileForMessage,
@@ -35,7 +35,6 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
   const selectOnlyMessage = useMessageSelectionStore(
     (state) => state.selectOnlyMessage,
   );
-  const setTerminalPanelOpen = useTerminalDockStore((state) => state.setPanelOpen);
   const isTextMessage = message.contentType === MessageType.TextMessage;
   const isPictureMessage = message.contentType === MessageType.PictureMessage;
   const isFileMessage = message.contentType === MessageType.FileMessage;
@@ -79,7 +78,7 @@ const MessageActionMenu: FC<MessageActionMenuProps> = ({
     if (!conversationID) return;
 
     selectOnlyMessage(conversationID, message);
-    setTerminalPanelOpen(true);
+    void useAgentSessionStore.getState().setPanelState({ agentPanelOpen: true });
     emitter.emit("IM_CONTEXT_ACTION", {
       source: {
         kind: "selectedMessages",

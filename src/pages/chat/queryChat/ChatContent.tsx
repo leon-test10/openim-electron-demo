@@ -1,25 +1,10 @@
-import { SessionType } from "@openim/wasm-client-sdk";
 import { Layout, Spin } from "antd";
 import clsx from "clsx";
 import { memo, useEffect, useMemo, useRef } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
 import { SystemMessageTypes } from "@/constants/im";
-import useGroupMembers from "@/hooks/useGroupMembers";
-import {
-  BotTargetCandidate,
-  createPendingAgentRequest,
-  detectBotTrigger,
-  extractTextMessageContent,
-  isAgentGeneratedMessage,
-} from "@/services/botTrigger";
-import {
-  useConversationStore,
-  useMessageSelectionStore,
-  usePendingAgentRequestStore,
-  useTerminalDockStore,
-  useUserStore,
-} from "@/store";
+import { useMessageSelectionStore, useUserStore } from "@/store";
 import emitter from "@/utils/events";
 
 import MessageItem from "./MessageItem";
@@ -30,29 +15,10 @@ import { useHistoryMessageList } from "./useHistoryMessageList";
 
 const ChatContent = () => {
   const virtuoso = useRef<VirtuosoHandle>(null);
-  const sessionStartTimeRef = useRef(Date.now());
   const selfUserID = useUserStore((state) => state.selfInfo.userID);
-  const selfNickname = useUserStore((state) => state.selfInfo.nickname);
-  const currentConversation = useConversationStore(
-    (state) => state.currentConversation,
-  );
-  const currentMemberInGroup = useConversationStore(
-    (state) => state.currentMemberInGroup,
-  );
-  const botDetectionEnabled = usePendingAgentRequestStore(
-    (state) => state.botDetectionEnabled,
-  );
-  const addPendingAgentRequest = usePendingAgentRequestStore(
-    (state) => state.addRequest,
-  );
-  const promoteToAutoInject = usePendingAgentRequestStore(
-    (state) => state.promoteToAutoInject,
-  );
-  const autoInjectEnabled = useTerminalDockStore((state) => state.autoInjectEnabled);
   const activeSelectionConversationID = useMessageSelectionStore(
     (state) => state.activeConversationID,
   );
-  const { fetchState: groupMemberState } = useGroupMembers();
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -71,10 +37,6 @@ const ChatContent = () => {
       ? state.selectionAnchorMessageIDByConversation[conversationID]
       : undefined,
   );
-  const messageIDSignature = useMemo(
-    () => loadState.messageList.map((message) => message.clientMsgID).join("|"),
-    [loadState.messageList],
-  );
   const selectionActive =
     Boolean(conversationID) && activeSelectionConversationID === conversationID;
   const selectionAnchorIndex = useMemo(() => {
@@ -88,43 +50,6 @@ const ChatContent = () => {
       ),
     );
   }, [loadState.messageList, selectionActive, selectionAnchorMessageID]);
-  const botTargetCandidates = useMemo<BotTargetCandidate[]>(() => {
-    const candidates: BotTargetCandidate[] = [
-      {
-        userID: selfUserID,
-        nickname: currentMemberInGroup?.nickname || selfNickname,
-      },
-    ];
-
-    if (currentConversation?.conversationType === SessionType.Single) {
-      candidates.push({
-        userID: currentConversation.userID,
-        nickname: currentConversation.showName,
-      });
-    } else {
-      for (const member of groupMemberState.groupMemberList) {
-        if (member.userID === selfUserID) continue;
-        if (candidates.some((c) => c.userID === member.userID)) continue;
-        candidates.push({
-          userID: member.userID,
-          nickname: member.nickname,
-        });
-      }
-    }
-
-    return candidates.filter((candidate): candidate is BotTargetCandidate =>
-      Boolean(candidate?.userID),
-    );
-  }, [
-    currentConversation?.conversationType,
-    currentConversation?.showName,
-    currentConversation?.userID,
-    currentMemberInGroup?.nickname,
-    groupMemberState.groupMemberList,
-    selfNickname,
-    selfUserID,
-  ]);
-
   useEffect(() => {
     emitter.on("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
     return () => {
@@ -137,153 +62,6 @@ const ChatContent = () => {
 
     getMoreOldMessages();
   };
-
-  useEffect(() => {
-    if (!botDetectionEnabled || !conversationID || !selfUserID) return;
-
-    const terminalDockState = useTerminalDockStore.getState();
-    const recentLimit = terminalDockState.botContextMessageLimit;
-    const conversationType =
-      currentConversation?.conversationType === SessionType.Group ? "group" : "single";
-
-    // Scan backwards to find the latest unhandled trigger.
-    // Only process messages that arrived after this session started.
-    for (let index = loadState.messageList.length - 1; index >= 0; index -= 1) {
-      const message = loadState.messageList[index];
-      if (message.sendTime < sessionStartTimeRef.current) continue;
-      if (isAgentGeneratedMessage(message)) continue;
-
-      const text = extractTextMessageContent(message);
-      const trigger = detectBotTrigger({
-        text,
-        currentUserID: selfUserID,
-        conversationType,
-        targetCandidates: botTargetCandidates,
-      });
-
-      if (!trigger) continue;
-
-      // Only process triggers explicitly targeting this user.
-      if (trigger.targetUserID && trigger.targetUserID !== selfUserID) continue;
-
-      const triggerKey = `${conversationID}|${message.clientMsgID}`;
-      if (terminalDockState.hasHandledBotTrigger(triggerKey)) continue;
-
-      const contextMessages = loadState.messageList.slice(
-        Math.max(0, index - recentLimit + 1),
-        index + 1,
-      );
-
-      const request = createPendingAgentRequest({
-        conversationID,
-        triggerMessage: message,
-        trigger,
-        contextMessages,
-        isGroup: conversationType === "group",
-        recentLimit,
-      });
-
-      if (autoInjectEnabled) {
-        const activeWorkspaceID = terminalDockState.activeWorkspaceID;
-        const activeWorkspace = terminalDockState.workspaces.find(
-          (workspace) => workspace.id === activeWorkspaceID,
-        );
-        const activeTabID = activeWorkspaceID
-          ? terminalDockState.activeTabByWorkspace[activeWorkspaceID]
-          : undefined;
-        const activeTab = activeWorkspaceID
-          ? terminalDockState.tabsByWorkspace[activeWorkspaceID]?.find(
-              (tab) => tab.id === activeTabID,
-            )
-          : undefined;
-        const canAutoInject =
-          Boolean(activeWorkspace?.linkedConversationIDs.includes(conversationID)) &&
-          Boolean(activeTab && activeTab.status === "running");
-
-        if (!canAutoInject) {
-          terminalDockState.markBotTriggerHandled(triggerKey);
-          addPendingAgentRequest(request);
-          break;
-        }
-
-        terminalDockState.markBotTriggerHandled(triggerKey);
-        addPendingAgentRequest({ ...request, status: "sent" });
-        emitter.emit("BOT_AGENT_REQUEST_ACTION", {
-          request,
-          action: "send",
-        });
-      } else {
-        terminalDockState.markBotTriggerHandled(triggerKey);
-        addPendingAgentRequest(request);
-      }
-
-      // Only process the latest unhandled trigger per scan.
-      break;
-    }
-  }, [
-    addPendingAgentRequest,
-    autoInjectEnabled,
-    botTargetCandidates,
-    botDetectionEnabled,
-    conversationID,
-    currentConversation?.conversationType,
-    loadState.messageList,
-    messageIDSignature,
-    selfUserID,
-  ]);
-
-  // When auto-inject is enabled, promote any existing pending requests to sent
-  // and emit BOT_AGENT_REQUEST_ACTION for each.
-  useEffect(() => {
-    if (!autoInjectEnabled || !botDetectionEnabled || !conversationID) return;
-    const terminalDockState = useTerminalDockStore.getState();
-    const activeWorkspaceID = terminalDockState.activeWorkspaceID;
-    const activeWorkspace = terminalDockState.workspaces.find(
-      (workspace) => workspace.id === activeWorkspaceID,
-    );
-    const activeTabID = activeWorkspaceID
-      ? terminalDockState.activeTabByWorkspace[activeWorkspaceID]
-      : undefined;
-    const activeTab = activeWorkspaceID
-      ? terminalDockState.tabsByWorkspace[activeWorkspaceID]?.find(
-          (tab) => tab.id === activeTabID,
-        )
-      : undefined;
-    const canAutoInject =
-      Boolean(activeWorkspace?.linkedConversationIDs.includes(conversationID)) &&
-      Boolean(activeTab && activeTab.status === "running");
-
-    if (!canAutoInject) return;
-
-    const pendingRequests =
-      usePendingAgentRequestStore.getState().requestsByConversation[conversationID] ??
-      [];
-
-    const pendingForSelf = pendingRequests.filter(
-      (r) =>
-        r.status === "pending" && (!r.targetUserID || r.targetUserID === selfUserID),
-    );
-
-    if (pendingForSelf.length === 0) return;
-
-    promoteToAutoInject(conversationID);
-
-    for (const request of pendingForSelf) {
-      useTerminalDockStore
-        .getState()
-        .markBotTriggerHandled(`${conversationID}|${request.triggerMessageID}`);
-      emitter.emit("BOT_AGENT_REQUEST_ACTION", {
-        request,
-        action: "send",
-      });
-    }
-  }, [
-    autoInjectEnabled,
-    botDetectionEnabled,
-    conversationID,
-    selfUserID,
-    promoteToAutoInject,
-  ]);
 
   return (
     <Layout.Content

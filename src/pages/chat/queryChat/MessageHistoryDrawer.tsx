@@ -15,7 +15,7 @@ import type { Dayjs } from "dayjs";
 import { FC, useCallback, useEffect, useMemo, useState } from "react";
 
 import { IMSDK } from "@/layout/MainContentWrap";
-import { useMessageSelectionStore, useTerminalDockStore } from "@/store";
+import { useAgentSessionStore, useMessageSelectionStore } from "@/store";
 import { e2eMessages } from "@/utils/e2eMockData";
 import emitter from "@/utils/events";
 import {
@@ -98,7 +98,6 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
     (state) => state.toggleMessageSelection,
   );
   const clearSelection = useMessageSelectionStore((state) => state.clearSelection);
-  const setTerminalPanelOpen = useTerminalDockStore((state) => state.setPanelOpen);
 
   const selectedMessages = useMemo(
     () =>
@@ -255,7 +254,7 @@ const MessageHistoryDrawer: FC<MessageHistoryDrawerProps> = ({
 
   const runContextActionFromSelection = (action: "preview" | "copy" | "send") => {
     if (selectedMessages.length === 0) return;
-    setTerminalPanelOpen(true);
+    void useAgentSessionStore.getState().setPanelState({ agentPanelOpen: true });
     emitter.emit("IM_CONTEXT_ACTION", {
       source: {
         kind: mode === "search" ? "searchResults" : "historyMessages",

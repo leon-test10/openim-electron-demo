@@ -8,10 +8,12 @@ import { getAuthMode } from "@/utils/storage";
 
 import LeftNavBar from "./LeftNavBar";
 import TopSearchBar from "./TopSearchBar";
+import { useAgentSessionBridge } from "./useAgentSessionBridge";
 import { useGlobalEvent } from "./useGlobalEvents";
 
 export const MainContentLayout = () => {
   useGlobalEvent();
+  useAgentSessionBridge();
   const matches = useMatches();
   const navigate = useNavigate();
 

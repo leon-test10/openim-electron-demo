@@ -3,10 +3,14 @@ const { spawnSync } = require("node:child_process");
 const tests = [
   "src/services/agentRunContract/AgentRunContractService.test.ts",
   "src/services/offlineIM/OfflineIMService.test.ts",
+  "src/services/agentSessions/sessionModel.test.ts",
+  "src/services/agentSessions/botCheckpoint.test.ts",
   "tests/folderShareDownload.test.ts",
   "tests/appConfig.test.ts",
   "tests/opencodeBundleManage.test.ts",
   "tests/opencodeConfigManage.test.ts",
+  "tests/agentHistoryCapability.test.ts",
+  "tests/opencodeHttp.test.ts",
 ];
 
 const compilerOptions = JSON.stringify({

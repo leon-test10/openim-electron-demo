@@ -19,8 +19,12 @@ import { runtimeManager } from "./runtimeManage";
 import { terminalManager } from "./terminalManage";
 import { agentWatchManager } from "./agentWatchManage";
 import { opencodeManager } from "./opencodeManage";
+import { agentSessionManager } from "./agentSessionManage";
 import { getCurrentAppConfig } from "./appConfig";
-import { downloadFolderShare, FolderShareDownloadManifest } from "./folderShareDownload";
+import {
+  downloadFolderShare,
+  FolderShareDownloadManifest,
+} from "./folderShareDownload";
 import {
   copyFileToTerminalWorkspace,
   downloadFileToTerminalWorkspace,
@@ -132,7 +136,9 @@ const sanitizeRelativeDownloadPath = (relativePath: string, fallbackName: string
     .split("/")
     .map((part) => sanitizeDownloadFileName(part))
     .filter(Boolean);
-  return safeParts.length > 0 ? safeParts.join(path.sep) : sanitizeDownloadFileName(fallbackName);
+  return safeParts.length > 0
+    ? safeParts.join(path.sep)
+    : sanitizeDownloadFileName(fallbackName);
 };
 
 export const setIpcMainListener = () => {
@@ -213,8 +219,8 @@ export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.runtimeListProfiles, () => {
     return runtimeManager.listProfiles();
   });
-  ipcMain.handle(IpcRenderToMain.runtimeHealthCheck, (_, profileID) => {
-    return runtimeManager.healthCheck(profileID);
+  ipcMain.handle(IpcRenderToMain.runtimeHealthCheck, () => {
+    return runtimeManager.healthCheck();
   });
   ipcMain.handle(IpcRenderToMain.runtimeStart, (event, params) => {
     return runtimeManager.start(event.sender, params);
@@ -280,22 +286,19 @@ export const setIpcMainListener = () => {
     };
   });
 
-  ipcMain.handle(
-    IpcRenderToMain.fileStatNativePath,
-    async (_, nativePath: string) => {
-      try {
-        const stat = await fs.promises.stat(nativePath);
-        return {
-          exists: true,
-          isFile: stat.isFile(),
-          size: stat.size,
-          mtimeMs: stat.mtimeMs,
-        };
-      } catch {
-        return { exists: false, isFile: false, size: 0, mtimeMs: 0 };
-      }
-    },
-  );
+  ipcMain.handle(IpcRenderToMain.fileStatNativePath, async (_, nativePath: string) => {
+    try {
+      const stat = await fs.promises.stat(nativePath);
+      return {
+        exists: true,
+        isFile: stat.isFile(),
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+      };
+    } catch {
+      return { exists: false, isFile: false, size: 0, mtimeMs: 0 };
+    }
+  });
   ipcMain.handle(IpcRenderToMain.fileOpenPath, async (_, nativePath: string) => {
     return shell.openPath(nativePath);
   });
@@ -384,6 +387,151 @@ export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.opencodeGetBinding, (_, workspaceID) => {
     return opencodeManager.getBinding(workspaceID);
   });
+  ipcMain.handle(IpcRenderToMain.agentSessionList, () => {
+    return agentSessionManager.getSnapshot();
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionCreate, (_, params) => {
+    return agentSessionManager.createSession(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionUpdate, (_, params) => {
+    return agentSessionManager.updateSession(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionArchive, (_, sessionID) => {
+    return agentSessionManager.archiveSession(sessionID);
+  });
+  ipcMain.handle(
+    IpcRenderToMain.agentSessionSelect,
+    (_, params: { conversationID: string; sessionID?: string }) => {
+      return agentSessionManager.selectSession(params.conversationID, params.sessionID);
+    },
+  );
+  ipcMain.handle(IpcRenderToMain.agentSessionSend, (_, params) => {
+    return agentSessionManager.sendMessage(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionAbort, (_, sessionID) => {
+    return agentSessionManager.abort(sessionID);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionRecover, (_, sessionID) => {
+    return agentSessionManager.recover(sessionID);
+  });
+  ipcMain.handle(
+    IpcRenderToMain.agentSessionReplyPermission,
+    (
+      _,
+      params: {
+        sessionID: string;
+        requestID: string;
+        reply: "once" | "always" | "reject";
+        message?: string;
+      },
+    ) => {
+      return agentSessionManager.replyPermission(
+        params.sessionID,
+        params.requestID,
+        params.reply,
+        params.message,
+      );
+    },
+  );
+  ipcMain.handle(
+    IpcRenderToMain.agentSessionReplyQuestion,
+    (
+      _,
+      params: {
+        sessionID: string;
+        requestID: string;
+        answers?: string[][];
+        reject?: boolean;
+      },
+    ) => {
+      return agentSessionManager.replyQuestion(
+        params.sessionID,
+        params.requestID,
+        params.answers,
+        params.reject,
+      );
+    },
+  );
+  ipcMain.handle(
+    IpcRenderToMain.agentSessionSetAutoApprove,
+    (_, params: { sessionID: string; enabled: boolean }) => {
+      return agentSessionManager.setAutoApprove(params.sessionID, params.enabled);
+    },
+  );
+  ipcMain.handle(IpcRenderToMain.agentSessionGetAutoApprove, (_, sessionID) => {
+    return agentSessionManager.isAutoApproveEnabled(sessionID);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionMarkRead, (_, sessionID) => {
+    return agentSessionManager.markRead(sessionID);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionSetViewport, (_, params) => {
+    return agentSessionManager.setViewport(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionSetPanelState, (_, params) => {
+    return agentSessionManager.setPanelState(params);
+  });
+  ipcMain.handle(
+    IpcRenderToMain.agentSessionSetBotPolicy,
+    (
+      _,
+      params: {
+        conversationID: string;
+        policy: "off" | "review" | "auto";
+        contextLimit?: number;
+      },
+    ) => {
+      return agentSessionManager.setBotPolicy(
+        params.conversationID,
+        params.policy,
+        params.contextLimit,
+      );
+    },
+  );
+  ipcMain.handle(
+    IpcRenderToMain.agentSessionSetBotCheckpoint,
+    (_, params: { conversationID: string; clientMsgID?: string }) =>
+      agentSessionManager.setBotCheckpoint(params.conversationID, params.clientMsgID),
+  );
+  ipcMain.handle(IpcRenderToMain.agentSessionAddBotRequest, (_, request) => {
+    return agentSessionManager.addBotRequest(request);
+  });
+  ipcMain.handle(
+    IpcRenderToMain.agentSessionEnsureBotSession,
+    (_, conversationID: string) => agentSessionManager.ensureBotSession(conversationID),
+  );
+  ipcMain.handle(IpcRenderToMain.agentSessionIgnoreBotRequest, (_, requestID) => {
+    return agentSessionManager.ignoreBotRequest(requestID);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionRunBotRequest, (_, params) => {
+    return agentSessionManager.runBotRequest(params);
+  });
+  ipcMain.handle(
+    IpcRenderToMain.agentSessionWriteFiles,
+    (
+      _,
+      params: {
+        sessionID: string;
+        files: Array<{ relativePath: string; content: string }>;
+      },
+    ) => {
+      return agentSessionManager.writeSessionFiles(params.sessionID, params.files);
+    },
+  );
+  ipcMain.handle(IpcRenderToMain.agentSessionHistoryResponse, (_, response) => {
+    agentSessionManager.handleHistoryResponse(response);
+    return true;
+  });
+  ipcMain.handle(
+    IpcRenderToMain.agentSessionOpenTerminal,
+    async (event, params: { sessionID: string; cols?: number; rows?: number }) => {
+      const launch = await agentSessionManager.getTerminalLaunch(params.sessionID);
+      return terminalManager.ensureAgentAttachment(event.sender, {
+        ...launch,
+        cols: params.cols,
+        rows: params.rows,
+      });
+    },
+  );
 
   ipcMain.handle(IpcRenderToMain.workspaceGetConversationDir, (_, conversationID) => {
     return getConversationWorkspaceDir(conversationID);

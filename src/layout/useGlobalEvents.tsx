@@ -24,6 +24,10 @@ import {
   pushNewMessage,
   updateOneMessage,
 } from "@/pages/chat/queryChat/useHistoryMessageList";
+import {
+  backfillBotRequests,
+  queueIncomingBotMessage,
+} from "@/services/agentSessions/botRouter";
 import { createOfflineSelfInfo } from "@/services/offlineIM";
 import { useConversationStore, useUserStore } from "@/store";
 import { useContactStore } from "@/store/contact";
@@ -126,6 +130,7 @@ export function useGlobalEvent() {
       updateReinstallState(false);
       await getFriendListByReq();
       await getConversationListByReq(false);
+      void backfillBotRequests();
       navigate("/chat", { replace: true });
       return;
     }
@@ -270,7 +275,7 @@ export function useGlobalEvent() {
     updateSyncState("success");
     getFriendListByReq();
     getGroupListByReq();
-    getConversationListByReq(false);
+    void getConversationListByReq(false).then(() => backfillBotRequests());
     getUnReadCountByReq();
   };
   const syncFailedHandler = () => {
@@ -285,6 +290,9 @@ export function useGlobalEvent() {
     }
     data.map((message) => {
       exportMessage(message); // → 发送到 Agent Relay
+      void queueIncomingBotMessage(message).catch((error) =>
+        console.error("Failed to route Bot message", error),
+      );
       handleNewMessage(message);
     });
   };

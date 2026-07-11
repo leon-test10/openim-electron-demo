@@ -4,6 +4,11 @@ import { expect, test } from "../fixtures/electronApp";
 import { setupTerminalHarness } from "../helpers/terminal";
 import { gotoHarness } from "../helpers/wait";
 
+test.skip(
+  true,
+  "Superseded by the global AgentSession Bot router; legacy Terminal Dock automation is no longer a supported contract.",
+);
+
 const enableBotDetection = async (appWindow: Page) => {
   await appWindow.getByTestId("terminal-bot-detection-toggle").click();
 };
@@ -100,20 +105,14 @@ test("@bot @e2e_self detection sends context to terminal via auto-inject", async
 
   const terminalWritesText = await getTerminalWritesText(appWindow);
   expect(terminalWritesText).toContain(".agent/skills/openim-final-answer.md");
-  expect(terminalWritesText).toContain(
-    "Do not send messages back to OpenIM yourself.",
-  );
+  expect(terminalWritesText).toContain("Do not send messages back to OpenIM yourself.");
 
   const requestMarkdown = await getLatestRequestMarkdown(appWindow);
   expect(requestMarkdown).toContain("Context source: botTrigger");
-  expect(requestMarkdown).toContain(
-    "@bot @e2e_self summarize this conversation.",
-  );
+  expect(requestMarkdown).toContain("@bot @e2e_self summarize this conversation.");
 });
 
-test("/bot @e2e_self detection creates context in terminal", async ({
-  appWindow,
-}) => {
+test("/bot @e2e_self detection creates context in terminal", async ({ appWindow }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
   await linkActiveConversationToWorkspace(appWindow);
   await enableAutoInject(appWindow);
@@ -128,9 +127,7 @@ test("/bot @e2e_self detection creates context in terminal", async ({
   expect(allRequests).toContain("/bot @e2e_self explain the previous error.");
 });
 
-test("bare @bot and agent-generated messages do not inject", async ({
-  appWindow,
-}) => {
+test("bare @bot and agent-generated messages do not inject", async ({ appWindow }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
   await linkActiveConversationToWorkspace(appWindow);
   await enableAutoInject(appWindow);
@@ -169,22 +166,14 @@ test("@mention autocomplete popup filters candidates and selects via click", asy
   await appWindow.locator('[contenteditable="true"]').click();
   await appWindow.locator('[contenteditable="true"]').fill("@bot @E2");
 
-  await expect(
-    appWindow.getByTestId("bot-mention-autocomplete"),
-  ).toBeVisible();
+  await expect(appWindow.getByTestId("bot-mention-autocomplete")).toBeVisible();
   await expect(appWindow.getByTestId("bot-mention-autocomplete")).toContainText(
     "E2E Self",
   );
 
-  await appWindow
-    .getByTestId("bot-mention-autocomplete")
-    .locator("li")
-    .first()
-    .click();
+  await appWindow.getByTestId("bot-mention-autocomplete").locator("li").first().click();
 
-  await expect(
-    appWindow.getByTestId("bot-mention-autocomplete"),
-  ).not.toBeVisible();
+  await expect(appWindow.getByTestId("bot-mention-autocomplete")).not.toBeVisible();
   await expect(appWindow.getByTestId("e2e-draft-preview")).toContainText(
     "@bot @E2E Self",
   );
@@ -206,9 +195,7 @@ test("self-sent @bot targeted at own nickname can inject own agent", async ({
   expect(requestMarkdown).toContain("Context source: botTrigger");
 });
 
-test("compact @bot@nickname resolves a unique local target", async ({
-  appWindow,
-}) => {
+test("compact @bot@nickname resolves a unique local target", async ({ appWindow }) => {
   await setupTerminalHarness(appWindow, { startTerminal: true });
   await linkActiveConversationToWorkspace(appWindow);
   await enableAutoInject(appWindow);
@@ -219,9 +206,7 @@ test("compact @bot@nickname resolves a unique local target", async ({
     .toContain("@bot@E2E Self compact nickname target");
 });
 
-test("group @bot @e2e_self injects with group context", async ({
-  appWindow,
-}) => {
+test("group @bot @e2e_self injects with group context", async ({ appWindow }) => {
   await gotoHarness(appWindow, { terminal: true, group: true });
   await expect(appWindow.getByTestId("terminal-dock")).toBeVisible();
   await appWindow.getByTestId("terminal-new-workspace").click();
@@ -257,14 +242,10 @@ test("auto-inject skips pending review and sends directly to terminal", async ({
 
   const terminalWritesText = await getTerminalWritesText(appWindow);
   expect(terminalWritesText).toContain(".agent/runs/");
-  expect(terminalWritesText).toContain(
-    "Do not send messages back to OpenIM yourself.",
-  );
+  expect(terminalWritesText).toContain("Do not send messages back to OpenIM yourself.");
   const requestMarkdown = await getLatestRequestMarkdown(appWindow);
   expect(requestMarkdown).toContain("Context source: botTrigger");
-  expect(requestMarkdown).toContain(
-    "@bot @e2e_self summarize this conversation.",
-  );
+  expect(requestMarkdown).toContain("@bot @e2e_self summarize this conversation.");
 });
 
 test("auto-inject does not duplicate the same trigger on repeated scans", async ({
@@ -424,8 +405,7 @@ test("auto-reply dedupes per session but allows same text from a new session", a
           .getByTestId("e2e-sent-drafts")
           .textContent()
           .then(
-            (text) =>
-              text?.match(/Same text from distinct sessions\./g)?.length ?? 0,
+            (text) => text?.match(/Same text from distinct sessions\./g)?.length ?? 0,
           ),
       { timeout: 5000 },
     )

@@ -76,6 +76,15 @@ const {
   );
   assert.equal(messages.isEnd, true);
 
+  const foundMessages = await service.getMessagesByClientMsgIDs(
+    conversation.conversationID,
+    [peerMessage.clientMsgID],
+  );
+  assert.deepEqual(
+    foundMessages.map((item: { clientMsgID: string }) => item.clientMsgID),
+    [peerMessage.clientMsgID],
+  );
+
   const updatedConversations = await service.listConversations();
   const latestMessage = JSON.parse(String(updatedConversations[0].latestMsg)) as {
     textElem?: { content?: string };

@@ -69,13 +69,11 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const setBotDetectionEnabled = usePendingAgentRequestStore(
     (state) => state.setBotDetectionEnabled,
   );
-  const autoInjectEnabled = useTerminalDockStore((state) => state.autoInjectEnabled);
-  const autoReplyTextEnabled = useTerminalDockStore(
-    (state) => state.autoReplyTextEnabled,
-  );
-  const autoFileAttachmentEnabled = useTerminalDockStore(
-    (state) => state.autoFileAttachmentEnabled,
-  );
+  // The legacy Terminal Dock automation path is intentionally disabled. Agent
+  // requests are routed globally and Agent output always requires IM confirmation.
+  const autoInjectEnabled = false;
+  const autoReplyTextEnabled = false;
+  const autoFileAttachmentEnabled = false;
   const botContextMessageLimit = useTerminalDockStore(
     (state) => state.botContextMessageLimit,
   );
@@ -490,79 +488,6 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       <div className="flex h-full flex-col border-t border-t-[var(--gap-text)]">
         <SendActionBar />
         <div className="relative flex flex-1 flex-col overflow-hidden">
-          <div
-            className="mx-4 mt-2 flex flex-wrap items-center gap-3 rounded border border-[#e5e7eb] bg-[#f8fafc] px-3 py-2 text-xs text-[#475467]"
-            data-testid="chat-agent-automation-bar"
-          >
-            <span className="font-medium text-[#344054]">Agent automation</span>
-            <Tooltip title="Use this exact prefix to target your own local agent. Bare @bot will not trigger.">
-              <Button
-                size="small"
-                type="text"
-                className="!h-6 !px-1 text-xs"
-                onClick={insertSelfBotMention}
-                data-testid="chat-agent-mention-insert"
-              >
-                Use {selfMentionTemplate}
-              </Button>
-            </Tooltip>
-            <Tooltip title="Detect @bot requests and inject approved prompts into the active terminal. Enabling this also enables Bot Requests detection.">
-              <label className="flex items-center gap-1">
-                <span>Auto Inject</span>
-                <Switch
-                  size="small"
-                  checked={autoInjectEnabled}
-                  onChange={onAutoInjectChange}
-                  data-testid="terminal-auto-inject-toggle"
-                />
-              </label>
-            </Tooltip>
-            <Tooltip title="Auto Reply Text is experimental. New final_answer text from the active agent run may be sent automatically to the current IM conversation.">
-              <label className="flex items-center gap-1">
-                <span>Auto Reply Text</span>
-                <Switch
-                  size="small"
-                  checked={autoReplyTextEnabled}
-                  onChange={onAutoReplyTextChange}
-                  data-testid="terminal-auto-reply-toggle"
-                />
-              </label>
-            </Tooltip>
-            <Tooltip title="Auto File Attachment is experimental. Files listed under ## Output Files in the active run's final_answer.md may be sent automatically to the current IM conversation.">
-              <label className="flex items-center gap-1">
-                <span>Auto File Attach</span>
-                <Switch
-                  size="small"
-                  checked={autoFileAttachmentEnabled}
-                  onChange={onAutoFileAttachmentChange}
-                  data-testid="terminal-auto-file-attach-toggle"
-                />
-              </label>
-            </Tooltip>
-            <Tooltip title="Number of recent messages to include as context alongside each @bot trigger.">
-              <label className="flex items-center gap-1">
-                <span>Context msgs</span>
-                <input
-                  type="number"
-                  className="w-14 rounded border border-[#d0d5dd] px-1 py-0.5 text-xs text-[#344054]"
-                  min={1}
-                  max={200}
-                  step={1}
-                  value={botContextMessageLimit}
-                  onChange={(e) => {
-                    const value = Number.parseInt(e.target.value, 10);
-                    if (value >= 1 && value <= 200) {
-                      setBotContextMessageLimit(value);
-                    }
-                  }}
-                  data-testid="chat-agent-context-limit"
-                />
-              </label>
-            </Tooltip>
-            <span className="text-[#98a2b3]" data-testid="chat-agent-automation-state">
-              {automationStateText}
-            </span>
-          </div>
           {pendingAttachments.length > 0 && (
             <div
               className="mx-4 mt-2 flex max-h-24 flex-wrap gap-2 overflow-y-auto"

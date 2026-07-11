@@ -6,19 +6,9 @@ import { spawn as spawnPty, type IPty } from "node-pty";
 import { IpcMainToRender } from "../constants";
 import { getCurrentAppConfig } from "./appConfig";
 
-export type TerminalStatus =
-  | "detached"
-  | "starting"
-  | "running"
-  | "error"
-  | "stopped";
+export type TerminalStatus = "detached" | "starting" | "running" | "error" | "stopped";
 
-export type TerminalEventType =
-  | "started"
-  | "stdout"
-  | "exit"
-  | "error"
-  | "stopped";
+export type TerminalEventType = "started" | "stdout" | "exit" | "error" | "stopped";
 
 export interface TerminalInstance {
   id: string;
@@ -36,7 +26,7 @@ export interface TerminalEvent {
   type: TerminalEventType;
   data?: string;
   exitCode?: number | null;
-  signal?: string | null;
+  signal?: string | number | null;
   timestamp: number;
 }
 
@@ -48,6 +38,9 @@ interface ManagedTerminal {
 }
 
 const terminals = new Map<string, ManagedTerminal>();
+const outputByTab = new Map<string, string>();
+const MAX_OUTPUT_CHARS = 512 * 1024;
+const INTERNAL_AGENT_LAUNCH = Symbol("agent-terminal-launch");
 
 const getDefaultShell = () => {
   const configuredProfile = getCurrentAppConfig().terminal.profiles[0];
@@ -78,6 +71,10 @@ const emitTerminalEvent = (
   terminal: Pick<ManagedTerminal, "instance" | "webContents">,
   event: Omit<TerminalEvent, "tabID" | "timestamp">,
 ) => {
+  if (event.data) {
+    const next = `${outputByTab.get(terminal.instance.id) ?? ""}${event.data}`;
+    outputByTab.set(terminal.instance.id, next.slice(-MAX_OUTPUT_CHARS));
+  }
   if (terminal.webContents.isDestroyed()) return;
 
   terminal.webContents.send(IpcMainToRender.terminalEvent, {
@@ -105,13 +102,22 @@ export const terminalManager = {
       cwd: string;
       cols?: number;
       rows?: number;
+      command?: string;
+      args?: string[];
+      env?: Record<string, string>;
+      internalLaunchToken?: symbol;
     },
   ) => {
     stopExistingTerminal(params.tabID);
 
     const now = Date.now();
     const cwd = existsSync(params.cwd) ? params.cwd : process.cwd();
-    const { shell, args, env } = getDefaultShell();
+    const profile = getDefaultShell();
+    const controlledAgentLaunch =
+      params.internalLaunchToken === INTERNAL_AGENT_LAUNCH && Boolean(params.command);
+    const shell = controlledAgentLaunch ? params.command! : profile.shell;
+    const args = controlledAgentLaunch ? params.args ?? [] : profile.args;
+    const env = controlledAgentLaunch ? params.env ?? {} : profile.env;
     const instance: TerminalInstance = {
       id: params.tabID,
       workspaceID: params.workspaceID,
@@ -188,6 +194,55 @@ export const terminalManager = {
         lastError: error instanceof Error ? error.message : String(error),
       };
     }
+  },
+
+  async ensureAgentAttachment(
+    webContents: WebContents,
+    params: {
+      tabID: string;
+      sessionID: string;
+      cwd: string;
+      baseUrl: string;
+      runtimeSessionID: string;
+      cols?: number;
+      rows?: number;
+    },
+  ) {
+    const existing = terminals.get(params.tabID);
+    if (existing) {
+      existing.webContents = webContents;
+      return {
+        instance: existing.instance,
+        output: outputByTab.get(params.tabID) ?? "",
+      };
+    }
+    const config = getCurrentAppConfig();
+    const instance = await this.start(webContents, {
+      tabID: params.tabID,
+      workspaceID: params.sessionID,
+      cwd: params.cwd,
+      cols: params.cols,
+      rows: params.rows,
+      command: config.opencode.command || "opencode",
+      internalLaunchToken: INTERNAL_AGENT_LAUNCH,
+      args: [
+        ...(config.opencode.args || []),
+        "attach",
+        params.baseUrl,
+        "--dir",
+        params.cwd,
+        "--session",
+        params.runtimeSessionID,
+      ],
+    });
+    return { instance, output: outputByTab.get(params.tabID) ?? "" };
+  },
+
+  snapshot(tabID: string) {
+    return {
+      instance: terminals.get(tabID)?.instance,
+      output: outputByTab.get(tabID) ?? "",
+    };
   },
 
   write: async (params: { tabID: string; data: string }) => {

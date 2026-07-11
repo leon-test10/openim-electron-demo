@@ -293,6 +293,14 @@ export class OfflineIMService {
     };
   }
 
+  async getMessagesByClientMsgIDs(conversationID: string, clientMsgIDs: string[]) {
+    const state = await this.readState();
+    const requested = new Set(clientMsgIDs);
+    return (state.messagesByConversation[conversationID] ?? []).filter((message) =>
+      requested.has(message.clientMsgID),
+    );
+  }
+
   private ensureConversation(
     state: OfflineIMState,
     friend: OfflineFriend,

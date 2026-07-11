@@ -2,6 +2,8 @@ import { Platform, SessionType } from "@openim/wasm-client-sdk";
 import { Modal, Switch } from "antd";
 import { useEffect, useMemo, useState } from "react";
 
+import AgentPanel from "@/components/AgentPanel";
+import AgentTerminalPanel from "@/components/AgentTerminalPanel";
 import TerminalDock from "@/components/TerminalDock";
 import { DEFAULT_RUNTIME_CONFIG } from "@/config/appConfig";
 import { DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE } from "@/services/agentRunContract";
@@ -13,6 +15,7 @@ import {
   isAgentGeneratedMessage,
 } from "@/services/botTrigger";
 import {
+  useAgentSessionStore,
   useConversationStore,
   useMessageSelectionStore,
   usePendingAgentRequestStore,
@@ -40,6 +43,7 @@ const installE2EElectronMock = () => {
   const subscribers = new Map<string, Set<(...args: unknown[]) => void>>();
   const watchedAgentWorkspaces = new Set<string>();
   const workspaceRoot = "C:\\OpenIM-E2E\\workspaces";
+  let visibleAgentSessionID: string | undefined;
   const e2eWindow = window as unknown as {
     __e2eTerminalWrites?: string[];
     __e2eWorkspaceWrites?: Array<{
@@ -76,6 +80,7 @@ const installE2EElectronMock = () => {
     ) => void;
     __e2eGetActiveWorkspaceID?: () => string | undefined;
     __e2eLinkActiveConversationToWorkspace?: () => void;
+    __e2eAgentTerminalSessionIDs?: string[];
   };
   e2eWindow.__e2eTerminalWrites = [];
   e2eWindow.__e2eWorkspaceWrites = [];
@@ -84,6 +89,7 @@ const installE2EElectronMock = () => {
   e2eWindow.__e2eSentAttachments = [];
   e2eWindow.__e2eFileActions = [];
   e2eWindow.__e2eStructuredEvents = [];
+  e2eWindow.__e2eAgentTerminalSessionIDs = [];
   e2eWindow.__e2eEmitTerminalOutput = (text: string) => {
     const state = useTerminalDockStore.getState();
     const workspaceID = state.activeWorkspaceID;
@@ -196,6 +202,156 @@ const installE2EElectronMock = () => {
     },
     ipcInvoke: <T,>(channel: string, ...args: unknown[]): Promise<T> => {
       let result: unknown;
+
+      if (channel === "agent-session:list") {
+        const state = useAgentSessionStore.getState();
+        return Promise.resolve({
+          sessions: state.sessions,
+          activeSessionByConversation: state.activeSessionByConversation,
+          botPolicyByConversation: state.botPolicyByConversation,
+          botContextLimitByConversation: state.botContextLimitByConversation,
+          botCheckpointByConversation: state.botCheckpointByConversation,
+          botRequests: state.botRequests,
+          agentPanelOpen: state.agentPanelOpen,
+          terminalPanelOpen: state.terminalPanelOpen,
+          initialized: true,
+        } as T);
+      }
+
+      if (channel === "agent-session:select") {
+        const params = args[0] as { conversationID: string; sessionID?: string };
+        useAgentSessionStore.setState((state) => ({
+          activeSessionByConversation: {
+            ...state.activeSessionByConversation,
+            [params.conversationID]: params.sessionID,
+          },
+        }));
+        return Promise.resolve({ ok: true } as T);
+      }
+
+      if (channel === "agent-session:setViewport") {
+        const params = args[0] as { visible: boolean; sessionID?: string };
+        visibleAgentSessionID = params.visible ? params.sessionID : undefined;
+        return Promise.resolve({ ok: true } as T);
+      }
+
+      if (channel === "agent-session:markRead") {
+        const sessionID = args[0] as string;
+        useAgentSessionStore.setState((state) => ({
+          sessions: state.sessions.map((session) =>
+            session.id === sessionID ? { ...session, unreadCount: 0 } : session,
+          ),
+        }));
+        return Promise.resolve({ ok: true } as T);
+      }
+
+      if (channel === "agent-session:setPanelState") {
+        const params = args[0] as {
+          agentPanelOpen?: boolean;
+          terminalPanelOpen?: boolean;
+        };
+        useAgentSessionStore.setState(params);
+        return Promise.resolve({ ok: true } as T);
+      }
+
+      if (channel === "agent-session:update") {
+        const params = args[0] as {
+          sessionID: string;
+          title?: string;
+          pinned?: boolean;
+          liveHistoryEnabled?: boolean;
+        };
+        useAgentSessionStore.setState((state) => ({
+          sessions: state.sessions.map((session) =>
+            session.id === params.sessionID ? { ...session, ...params } : session,
+          ),
+        }));
+        return Promise.resolve({ ok: true } as T);
+      }
+
+      if (channel === "agent-session:send") {
+        const params = args[0] as { sessionID: string; text: string };
+        const now = Date.now();
+        useAgentSessionStore.setState((state) => ({
+          sessions: state.sessions.map((session) =>
+            session.id === params.sessionID
+              ? {
+                  ...session,
+                  status: "running",
+                  messages: [
+                    ...session.messages,
+                    {
+                      id: `e2e-user-${now}`,
+                      sessionID: params.sessionID,
+                      role: "user",
+                      createdAt: now,
+                      parts: [
+                        { id: `e2e-user-part-${now}`, type: "text", text: params.text },
+                      ],
+                    },
+                  ],
+                }
+              : session,
+          ),
+        }));
+        window.setTimeout(() => {
+          useAgentSessionStore.setState((state) => ({
+            sessions: state.sessions.map((session) =>
+              session.id === params.sessionID
+                ? {
+                    ...session,
+                    status: "idle",
+                    unreadCount:
+                      visibleAgentSessionID === params.sessionID
+                        ? 0
+                        : session.unreadCount + 1,
+                    messages: [
+                      ...session.messages,
+                      {
+                        id: `e2e-assistant-${now}`,
+                        sessionID: params.sessionID,
+                        role: "assistant",
+                        createdAt: now + 1,
+                        parts: [
+                          {
+                            id: `e2e-assistant-part-${now}`,
+                            type: "text",
+                            text: `Completed in background: ${params.text}`,
+                          },
+                        ],
+                      },
+                    ],
+                  }
+                : session,
+            ),
+          }));
+        }, 500);
+        return Promise.resolve({ ok: true } as T);
+      }
+
+      if (channel === "agent-session:openTerminal") {
+        const params = args[0] as { sessionID: string };
+        e2eWindow.__e2eAgentTerminalSessionIDs?.push(params.sessionID);
+        const tabID = `agent-terminal-${params.sessionID}`;
+        window.setTimeout(() => {
+          subscribers.get("terminal:event")?.forEach((callback) =>
+            callback({
+              tabID,
+              type: "stdout",
+              data: `Attached ${params.sessionID}\r\n`,
+              timestamp: Date.now(),
+            }),
+          );
+        }, 0);
+        return Promise.resolve({
+          instance: { status: "running" },
+          output: "",
+        } as T);
+      }
+
+      if (channel.startsWith("agent-session:") && channel !== "agent-session:create") {
+        return Promise.resolve({ ok: true } as T);
+      }
 
       if (channel === "terminal:getWorkspaceDir") {
         result = `${workspaceRoot}\\${args[0]}`;
@@ -583,12 +739,16 @@ const E2EHarness = () => {
   const [terminalEnabled, setTerminalEnabled] = useState(
     () => typeof window !== "undefined" && window.location.hash.includes("terminal=1"),
   );
+  const [agentEnabled, setAgentEnabled] = useState(
+    () => typeof window !== "undefined" && window.location.hash.includes("agent=1"),
+  );
   const [groupMode, setGroupMode] = useState(
     () => typeof window !== "undefined" && window.location.hash.includes("group=1"),
   );
   const activeConversation = groupMode ? e2eGroupConversation : e2eConversation;
   const activeConversationID = activeConversation.conversationID;
   const activeMessages = groupMode ? e2eGroupMessages : e2eMessages;
+  const harnessAgentSessions = useAgentSessionStore((state) => state.sessions);
   const selectionActive = useMessageSelectionStore(
     (state) => state.activeConversationID === activeConversationID,
   );
@@ -632,7 +792,7 @@ const E2EHarness = () => {
     );
   }, [activeMessages, selectionActive, selectionAnchorMessageID]);
 
-  if (terminalEnabled) {
+  if (terminalEnabled || agentEnabled) {
     installE2EElectronMock();
   }
 
@@ -693,6 +853,7 @@ const E2EHarness = () => {
   useEffect(() => {
     const syncTerminalFlag = () => {
       setTerminalEnabled(window.location.hash.includes("terminal=1"));
+      setAgentEnabled(window.location.hash.includes("agent=1"));
       setGroupMode(window.location.hash.includes("group=1"));
     };
 
@@ -713,8 +874,56 @@ const E2EHarness = () => {
       currentConversation: activeConversation,
       conversationList: [activeConversation],
     });
-    if (terminalEnabled) {
+    if (terminalEnabled || agentEnabled) {
       installE2EElectronMock();
+    }
+    if (agentEnabled) {
+      const now = Date.now();
+      const current = useAgentSessionStore.getState();
+      const existingIDs = new Set(current.sessions.map((session) => session.id));
+      const seedSessions = [
+        {
+          id: "e2e-agent-contact-1",
+          conversationID: e2eConversationID,
+          title: "Contact 1 task",
+        },
+        {
+          id: "e2e-agent-contact-2",
+          conversationID: e2eGroupConversation.conversationID,
+          title: "Contact 2 task",
+        },
+      ]
+        .filter((seed) => !existingIDs.has(seed.id))
+        .map((seed) => ({
+          ...seed,
+          kind: "manual" as const,
+          runtime: "opencode" as const,
+          runtimeSessionID: `runtime-${seed.id}`,
+          workspacePath: `C:\\OpenIM-E2E\\workspaces\\${seed.id}`,
+          managedWorkspace: true,
+          status: "idle" as const,
+          pinned: false,
+          archived: false,
+          unreadCount: 0,
+          liveHistoryEnabled: true,
+          createdAt: now,
+          updatedAt: now,
+          lastOpenedAt: now,
+          messages: [],
+          turns: [],
+          interactions: [],
+        }));
+      useAgentSessionStore.setState({
+        sessions: [...current.sessions, ...seedSessions],
+        activeSessionByConversation: {
+          ...current.activeSessionByConversation,
+          [e2eConversationID]: "e2e-agent-contact-1",
+          [e2eGroupConversation.conversationID]: "e2e-agent-contact-2",
+        },
+        initialized: true,
+        agentPanelOpen: true,
+        terminalPanelOpen: true,
+      });
     }
     const terminalDockState = useTerminalDockStore.getState();
     terminalDockState.setAgentPromptTemplate(DEFAULT_AGENT_TERMINAL_PROMPT_TEMPLATE);
@@ -724,7 +933,7 @@ const E2EHarness = () => {
       useMessageSelectionStore.getState().clearSelection(activeConversationID);
       useTerminalDockStore.getState().setPanelOpen(false);
     };
-  }, [activeConversation, activeConversationID, terminalEnabled]);
+  }, [activeConversation, activeConversationID, agentEnabled, terminalEnabled]);
 
   useEffect(() => {
     const handleAppendDraft = (value: string) => {
@@ -1056,6 +1265,41 @@ const E2EHarness = () => {
       {terminalEnabled && (
         <div className="h-full w-[560px] shrink-0" data-testid="e2e-terminal-pane">
           <TerminalDock />
+        </div>
+      )}
+      {agentEnabled && (
+        <div className="flex h-full w-[620px] shrink-0 flex-col border-l border-[#d0d5dd]">
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b px-2">
+            <button
+              type="button"
+              data-testid="agent-contact-1"
+              onClick={() => {
+                window.location.hash = "/e2e-harness?agent=1";
+              }}
+            >
+              Contact 1
+              <span data-testid="agent-contact-1-unread">
+                {harnessAgentSessions.find(
+                  (session) => session.id === "e2e-agent-contact-1",
+                )?.unreadCount ?? 0}
+              </span>
+            </button>
+            <button
+              type="button"
+              data-testid="agent-contact-2"
+              onClick={() => {
+                window.location.hash = "/e2e-harness?agent=1&group=1";
+              }}
+            >
+              Contact 2
+            </button>
+          </div>
+          <div className="min-h-0 flex-[2]">
+            <AgentPanel conversationIDOverride={activeConversationID} />
+          </div>
+          <div className="min-h-0 flex-1">
+            <AgentTerminalPanel conversationIDOverride={activeConversationID} />
+          </div>
         </div>
       )}
     </div>

@@ -4,6 +4,7 @@ import { SendMsgParams } from "@openim/wasm-client-sdk/lib/types/params";
 import { useCallback } from "react";
 
 import { IMSDK } from "@/layout/MainContentWrap";
+import { queueIncomingBotMessage } from "@/services/agentSessions/botRouter";
 import { offlineIMService, OfflineMessageSender } from "@/services/offlineIM";
 import { useConversationStore } from "@/store";
 import { emit } from "@/utils/events";
@@ -44,6 +45,9 @@ export function useSendMessage() {
           currentConversation: updatedCurrentConversation ?? currentConversation,
         });
         pushNewMessage(offlineMessage);
+        void queueIncomingBotMessage(offlineMessage).catch((error) =>
+          console.error("Failed to route offline Bot message", error),
+        );
         emit("CHAT_LIST_SCROLL_TO_BOTTOM");
         return offlineMessage;
       }

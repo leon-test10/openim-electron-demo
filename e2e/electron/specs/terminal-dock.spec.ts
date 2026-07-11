@@ -4,6 +4,11 @@ import { messageActionTrigger, messageItem } from "../helpers/selectors";
 import { setupTerminalHarness } from "../helpers/terminal";
 import { gotoHarness } from "../helpers/wait";
 
+test.skip(
+  true,
+  "Superseded by the contact-scoped Agent panel and session-attached terminal contract.",
+);
+
 test("terminal dock smoke is available without a real runtime", async ({
   appWindow,
 }) => {
@@ -72,14 +77,13 @@ test("auto-inject enabled without binding still creates pending request only", a
   await enableBotDetection(appWindow);
 
   // Pending count badge should appear (request stored but not injected)
-  await expect(
-    appWindow.getByTestId("terminal-pending-agent-count"),
-  ).toContainText("Pending: 1");
+  await expect(appWindow.getByTestId("terminal-pending-agent-count")).toContainText(
+    "Pending: 1",
+  );
 
   // Terminal should NOT have received the injection
   const writes = await appWindow.evaluate(
-    () =>
-      (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
+    () => (window as unknown as { __e2eTerminalWrites?: string[] }).__e2eTerminalWrites,
   );
   expect(writes?.join("\n") ?? "").not.toContain("@bot @e2e_self");
 });
@@ -372,14 +376,16 @@ test("agent prompt template can be edited without keeping prompt history", async
   await expect(
     appWindow.getByRole("dialog", { name: "Command Templates" }),
   ).toBeVisible();
-  await appWindow.getByTestId("terminal-agent-prompt-template").fill(
-    [
-      "CUSTOM OPENIM RUN",
-      "Read {requestPath}",
-      "Write {finalAnswerPath}",
-      "Update {manifestPath}",
-    ].join("\n"),
-  );
+  await appWindow
+    .getByTestId("terminal-agent-prompt-template")
+    .fill(
+      [
+        "CUSTOM OPENIM RUN",
+        "Read {requestPath}",
+        "Write {finalAnswerPath}",
+        "Update {manifestPath}",
+      ].join("\n"),
+    );
   await appWindow
     .getByRole("dialog", { name: "Command Templates" })
     .locator("button")

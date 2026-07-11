@@ -49,7 +49,7 @@ export interface RuntimeEvent {
   type: RuntimeEventType;
   data?: string;
   exitCode?: number | null;
-  signal?: string | null;
+  signal?: string | number | null;
   timestamp: number;
 }
 
@@ -87,7 +87,8 @@ const getTerminalProfile = (cwd: string): RuntimeProfile => {
 const runtimes = new Map<string, ManagedRuntime>();
 
 const getProfile = (profileID: RuntimeProfile["id"]) => {
-  if (profileID !== "terminal") throw new Error(`Unknown runtime profile: ${profileID}`);
+  if (profileID !== "terminal")
+    throw new Error(`Unknown runtime profile: ${profileID}`);
   return getTerminalProfile(process.cwd());
 };
 
@@ -147,23 +148,19 @@ export const runtimeManager = {
     };
 
     try {
-      const child = spawnPty(
-        profile.shell,
-        profile.args,
-        {
-          cwd,
-          env: {
-            ...process.env,
-            ...profile.env,
-            OPENAI_BASE_URL: getCurrentAppConfig().llm.baseUrl,
-            OPENAI_API_KEY: getCurrentAppConfig().llm.apiKey,
-          },
-          cols: 120,
-          rows: 30,
-          name: "xterm-color",
-          useConpty: true,
+      const child = spawnPty(profile.shell, profile.args, {
+        cwd,
+        env: {
+          ...process.env,
+          ...profile.env,
+          OPENAI_BASE_URL: getCurrentAppConfig().llm.baseUrl,
+          OPENAI_API_KEY: getCurrentAppConfig().llm.apiKey,
         },
-      );
+        cols: 120,
+        rows: 30,
+        name: "xterm-color",
+        useConpty: true,
+      });
       const runtime: ManagedRuntime = {
         instance: {
           ...instance,
@@ -184,8 +181,8 @@ export const runtimeManager = {
 
       runtime.disposables.push(
         child.onData((data) => {
-        emitRuntimeEvent(runtime, {
-          type: "stdout",
+          emitRuntimeEvent(runtime, {
+            type: "stdout",
             data,
           });
         }),

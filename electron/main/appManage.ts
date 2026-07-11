@@ -8,6 +8,7 @@ import { IpcMainToRender } from "../constants";
 import { logger } from ".";
 import { agentWatchManager } from "./agentWatchManage";
 import { opencodeManager } from "./opencodeManage";
+import { agentSessionManager } from "./agentSessionManage";
 import { getUserConfigPath, loadAppConfig } from "./appConfig";
 import { ensureBundledOpencodeCommand } from "./opencodeBundleManage";
 import { ensureOpencodeConfigFile } from "./opencodeConfigManage";
@@ -26,6 +27,8 @@ export const setSingleInstance = () => {
 };
 
 export const setAppListener = (startApp: () => void) => {
+  let shutdownStarted = false;
+  let shutdownComplete = false;
   app.on("activate", () => {
     if (isExistMainWindow()) {
       showWindow();
@@ -36,15 +39,20 @@ export const setAppListener = (startApp: () => void) => {
 
   app.on("window-all-closed", () => {
     if (isMac && !getIsForceQuit()) return;
-
-    agentWatchManager.stopAll();
-    opencodeManager.stopAll();
     app.quit();
   });
 
-  app.on("before-quit", () => {
+  app.on("before-quit", (event) => {
+    if (shutdownComplete) return;
+    event.preventDefault();
+    if (shutdownStarted) return;
+    shutdownStarted = true;
     agentWatchManager.stopAll();
-    opencodeManager.stopAll();
+    void agentSessionManager.stop().finally(() => {
+      opencodeManager.stopAll();
+      shutdownComplete = true;
+      app.quit();
+    });
   });
 
   powerMonitor.on("suspend", () => {

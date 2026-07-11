@@ -4,7 +4,7 @@ import { FC, useMemo } from "react";
 
 import { IMSDK } from "@/layout/MainContentWrap";
 import { openMessageForwardChooser } from "@/services/messageForward";
-import { useMessageSelectionStore, useTerminalDockStore } from "@/store";
+import { useAgentSessionStore, useMessageSelectionStore } from "@/store";
 import emitter from "@/utils/events";
 import {
   formatMessagesAsMarkdown,
@@ -23,7 +23,6 @@ const MessageSelectionToolbar: FC<MessageSelectionToolbarProps> = ({
     (state) => state.selectedMessagesByConversation,
   );
   const clearSelection = useMessageSelectionStore((state) => state.clearSelection);
-  const setTerminalPanelOpen = useTerminalDockStore((state) => state.setPanelOpen);
 
   const selectedMessages = useMemo(
     () =>
@@ -35,7 +34,7 @@ const MessageSelectionToolbar: FC<MessageSelectionToolbarProps> = ({
   const selectedCount = selectedMessages.length;
 
   const runSelectedContextAction = (action: "preview" | "copy" | "send") => {
-    setTerminalPanelOpen(true);
+    void useAgentSessionStore.getState().setPanelState({ agentPanelOpen: true });
     emitter.emit("IM_CONTEXT_ACTION", {
       source: {
         kind: "selectedMessages",
