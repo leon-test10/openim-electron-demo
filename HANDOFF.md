@@ -2993,4 +2993,20 @@ Close the app, edit `%APPDATA%/OpenIM Agent/config.json`, then reopen.
   or keyboard focus enters the action group.
 - Added unit coverage for multi-message tool outputs and generic offline file
   messages, plus an Electron assertion for the hover-only actions.
+
+## 2026-07-16 Folder delivery and streaming follow-up
+
+- Automatic delivery is now gated on the Agent session reaching `idle`, so a
+  completed intermediate write tool cannot send a child file before the full
+  turn has finished.
+- Final attachment resolution removes every file or nested folder already
+  contained by a selected parent folder, independent of tool event order.
+- OpenCode `message.updated` and `message.part.updated` SSE events now update the
+  in-memory Agent transcript immediately. Text deltas are broadcast to the
+  Renderer on a 32 ms throttle, while the normal HTTP refresh remains as the
+  persisted reconciliation path.
+- Incomplete assistant messages display a small streaming cursor while the
+  session is running.
+- Real-message replay for the reported `test_folder/readme.txt` case resolves
+  only `test_folder`; unit tests cover folder deduplication and text deltas.
 - The Agent Electron E2E reached and passed the new switch visibility assertions and all existing UI assertions, but the Playwright worker exited nonzero during Electron teardown without reporting a failed test ID (`failedTests: []`).

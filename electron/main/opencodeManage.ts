@@ -175,9 +175,19 @@ const normalizePart = (
   if (!isRecord(value)) return undefined;
   const type = String(value.type ?? "text");
   const id = typeof value.id === "string" ? value.id : fallbackID;
-  if (type === "text") return { id, type: "text", text: extractText(value) };
+  if (type === "text") {
+    return {
+      id,
+      type: "text",
+      text: typeof value.text === "string" ? value.text : extractText(value),
+    };
+  }
   if (type === "reasoning") {
-    return { id, type: "reasoning", text: extractText(value) };
+    return {
+      id,
+      type: "reasoning",
+      text: typeof value.text === "string" ? value.text : extractText(value),
+    };
   }
   if (type === "file") {
     return {
@@ -378,6 +388,15 @@ const emitSSE = (raw: unknown) => {
       wrapper && typeof wrapper.directory === "string" ? wrapper.directory : undefined,
     type: payload.type,
     payload: properties,
+    message: info ? normalizeMessage({ info }, 0) : undefined,
+    part: part ? normalizePart(part, `stream_part_${Date.now()}`) : undefined,
+    messageID:
+      typeof part?.messageID === "string"
+        ? part.messageID
+        : typeof properties.messageID === "string"
+        ? properties.messageID
+        : undefined,
+    delta: typeof properties.delta === "string" ? properties.delta : undefined,
   };
   listeners.forEach((listener) => listener(event));
 };

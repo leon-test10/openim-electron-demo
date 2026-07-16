@@ -28,6 +28,7 @@ import type {
 import { IpcMainToRender } from "../constants";
 import type { RuntimeSessionEvent } from "./agentRuntimeAdapter";
 import { mergeAgentRuntimeMessages } from "./agentMessageMerge";
+import { applyRuntimeMessageEvent } from "./agentStreaming";
 import { AGENT_DELIVERY_SYSTEM_PROMPT, resolveAgentDelivery } from "./agentDelivery";
 import { opencodeManager } from "./opencodeManage";
 import { getStore } from "./storeManage";
@@ -69,6 +70,7 @@ const autoApproveSessionIDs = new Set<string>();
 const historyCapabilities = new AgentHistoryCapabilityRegistry();
 const historyRequests = new Map<string, PendingHistoryRequest>();
 const refreshTimers = new Map<string, NodeJS.Timeout>();
+const streamPublishTimers = new Map<string, NodeJS.Timeout>();
 const pendingDeliveryRequests = new Map<string, string>();
 const fileWriteQueues = new Map<string, Promise<void>>();
 let runtimeBaseUrl: string | undefined;
@@ -245,12 +247,27 @@ const snapshot = (): AgentSessionStateSnapshot => ({
   initialized,
 });
 
-const publish = () => {
-  persist();
+const broadcastSnapshot = () => {
   sendEvent(IpcMainToRender.agentSessionEvent, {
     type: "snapshot",
     snapshot: snapshot(),
   } satisfies AgentSessionEvent);
+};
+
+const publish = () => {
+  persist();
+  broadcastSnapshot();
+};
+
+const scheduleStreamPublish = (sessionID: string) => {
+  if (streamPublishTimers.has(sessionID)) return;
+  streamPublishTimers.set(
+    sessionID,
+    setTimeout(() => {
+      streamPublishTimers.delete(sessionID);
+      broadcastSnapshot();
+    }, 32),
+  );
 };
 
 const activeInViewport = (session: AgentSession) =>
@@ -506,6 +523,7 @@ const latestCompletedAssistantTurn = (session: AgentSession) => {
 
 const maybeRequestAutoDelivery = async (session: AgentSession) => {
   if (
+    session.status !== "idle" ||
     !session.lastCompletedAt ||
     (!session.autoReplyTextEnabled && !session.autoFileAttachmentEnabled)
   ) {
@@ -721,7 +739,10 @@ const handleRuntimeEvent = (event: RuntimeSessionEvent) => {
   if (!session) return;
 
   if (event.type === "message.updated" || event.type === "message.part.updated") {
-    scheduleRefresh(session);
+    session.messages = applyRuntimeMessageEvent(session.messages, event);
+    session.updatedAt = Date.now();
+    scheduleStreamPublish(session.id);
+    scheduleRefresh(session, 250);
     return;
   }
   if (event.type === "session.status") {
@@ -1446,6 +1467,8 @@ export const agentSessionManager = {
     unsubscribeRuntime = undefined;
     refreshTimers.forEach(clearTimeout);
     refreshTimers.clear();
+    streamPublishTimers.forEach(clearTimeout);
+    streamPublishTimers.clear();
     historyRequests.forEach((request) => {
       clearTimeout(request.timer);
       request.reject(new Error("Application is shutting down"));

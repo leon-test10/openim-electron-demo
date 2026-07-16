@@ -12,6 +12,7 @@ const tests = [
   "tests/opencodeConfigManage.test.ts",
   "tests/agentHistoryCapability.test.ts",
   "tests/agentDelivery.test.ts",
+  "tests/agentStreaming.test.ts",
   "tests/opencodeHttp.test.ts",
 ];
 

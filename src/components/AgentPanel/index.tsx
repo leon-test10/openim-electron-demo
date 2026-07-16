@@ -177,6 +177,14 @@ const MessageCard = ({
           <SafeMarkdown key={part.id} text={part.text ?? ""} />
         ),
       )}
+      {agentMessage.role === "assistant" &&
+        !agentMessage.completedAt &&
+        session.status === "running" && (
+          <span
+            className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-[var(--primary)] align-middle"
+            data-testid="agent-streaming-cursor"
+          />
+        )}
       {details.length > 0 && (
         <div className="mt-2 border-t border-black/5 pt-1 dark:border-white/10">
           <Button type="link" size="small" onClick={() => setDetailsOpen(!detailsOpen)}>

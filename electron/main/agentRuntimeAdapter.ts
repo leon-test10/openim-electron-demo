@@ -19,6 +19,10 @@ export interface RuntimeSessionEvent {
   directory?: string;
   type: string;
   payload: Record<string, unknown>;
+  message?: AgentMessage;
+  part?: AgentMessage["parts"][number];
+  messageID?: string;
+  delta?: string;
 }
 
 export interface AgentRuntimeAdapter {

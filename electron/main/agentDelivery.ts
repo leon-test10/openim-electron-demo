@@ -147,9 +147,19 @@ export const resolveAgentDelivery = async (
     }
   }
 
+  const topLevelAttachments = attachments.filter(
+    (item, index) =>
+      !attachments.some(
+        (parent, parentIndex) =>
+          parentIndex !== index &&
+          parent.kind === "folder" &&
+          item.nativePath.startsWith(`${parent.nativePath}${path.sep}`),
+      ),
+  );
+
   return {
     text: stripOutputSections(rawText),
-    attachments,
+    attachments: topLevelAttachments,
   };
 };
 

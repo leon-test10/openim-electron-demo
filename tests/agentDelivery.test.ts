@@ -95,6 +95,50 @@ const run = async () => {
       toolResult.attachments.map((item) => [item.path, item.kind]),
       [["tool-created.txt", "file"]],
     );
+
+    await fs.promises.mkdir(path.join(workspace, "test-folder"), {
+      recursive: true,
+    });
+    await fs.promises.writeFile(
+      path.join(workspace, "test-folder", "readme.txt"),
+      "inside folder",
+    );
+    const folderResult = await resolveAgentDelivery(workspace, [
+      {
+        ...toolMessage,
+        id: "assistant-folder-tool",
+        parts: [
+          {
+            id: "tool-folder-write",
+            type: "tool",
+            name: "write",
+            status: "completed",
+            metadata: {
+              state: {
+                input: {
+                  filePath: path.join(workspace, "test-folder", "readme.txt"),
+                },
+              },
+            },
+          },
+        ],
+      },
+      {
+        ...finalMessage,
+        id: "assistant-folder-final",
+        parts: [
+          {
+            id: "folder-final-text",
+            type: "text",
+            text: "Folder created: `test-folder/`",
+          },
+        ],
+      },
+    ]);
+    assert.deepEqual(
+      folderResult.attachments.map((item) => [item.path, item.kind]),
+      [["test-folder", "folder"]],
+    );
   } finally {
     await fs.promises.rm(workspace, { recursive: true, force: true });
   }
