@@ -286,6 +286,55 @@ const InteractionCard = ({
   );
 };
 
+const RuntimeStatusCard = ({ session }: { session: AgentSession }) => {
+  if (
+    session.status !== "error" &&
+    session.status !== "recovery_required" &&
+    session.status !== "disconnected"
+  ) {
+    return null;
+  }
+
+  return (
+    <div
+      className="mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:bg-red-950/20"
+      data-testid="agent-runtime-error"
+    >
+      <div className="font-medium">Agent runtime is unavailable</div>
+      <div className="my-2 break-words text-xs text-red-700 dark:text-red-300">
+        {session.lastError ?? "The OpenCode session could not be restored."}
+      </div>
+      <Button
+        danger
+        size="small"
+        onClick={() =>
+          void useAgentSessionStore
+            .getState()
+            .recover(session.id)
+            .then(() => message.success("Agent runtime session is ready"))
+            .catch((error) =>
+              message.error(error instanceof Error ? error.message : String(error)),
+            )
+        }
+      >
+        Retry in this workspace
+      </Button>
+    </div>
+  );
+};
+
+const RuntimeRetryCard = ({ session }: { session: AgentSession }) => {
+  if (session.status !== "running" || !session.lastError) return null;
+  return (
+    <div className="mb-3 rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm dark:bg-orange-950/20">
+      <div className="font-medium">Agent is retrying the model request</div>
+      <div className="mt-1 break-words text-xs text-orange-700 dark:text-orange-300">
+        {session.lastError}
+      </div>
+    </div>
+  );
+};
+
 const BotRequestCard = ({ request }: { request: BotRequest }) => {
   const [running, setRunning] = useState(false);
   const run = async () => {
@@ -432,10 +481,15 @@ const AgentPanel = ({
     const value = prompt.trim();
     if (!activeSession || !value) return;
     setPrompt("");
-    await useAgentSessionStore.getState().sendMessage({
-      sessionID: activeSession.id,
-      text: value,
-    });
+    try {
+      await useAgentSessionStore.getState().sendMessage({
+        sessionID: activeSession.id,
+        text: value,
+      });
+    } catch (error) {
+      setPrompt(value);
+      message.error(error instanceof Error ? error.message : String(error));
+    }
   };
 
   const addContext = async () => {
@@ -648,11 +702,23 @@ const AgentPanel = ({
               </div>
             )}
             components={{
+              EmptyPlaceholder: () => (
+                <div className="flex h-full min-h-[240px] flex-col px-3">
+                  <div className="flex flex-1 items-center justify-center">
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="Start a persistent Agent conversation"
+                    />
+                  </div>
+                </div>
+              ),
               Header: () => (
                 <div className="px-3 pt-3">
                   {pendingRequests.map((request) => (
                     <BotRequestCard key={request.id} request={request} />
                   ))}
+                  <RuntimeStatusCard session={activeSession} />
+                  <RuntimeRetryCard session={activeSession} />
                   {activeSession.messages.length === 0 &&
                     activeSession.interactions.length === 0 &&
                     pendingRequests.length === 0 && (
@@ -672,22 +738,6 @@ const AgentPanel = ({
                       sessionID={activeSession.id}
                     />
                   ))}
-                  {(activeSession.status === "recovery_required" ||
-                    activeSession.status === "disconnected") && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                      <div className="mb-2">
-                        The OpenCode runtime session is missing. History was preserved.
-                      </div>
-                      <Button
-                        danger
-                        onClick={() =>
-                          void useAgentSessionStore.getState().recover(activeSession.id)
-                        }
-                      >
-                        Create replacement in this workspace
-                      </Button>
-                    </div>
-                  )}
                 </div>
               ),
             }}
@@ -731,7 +781,7 @@ const AgentPanel = ({
                   type="primary"
                   size="small"
                   icon={<SendOutlined rev={undefined} />}
-                  disabled={!prompt.trim()}
+                  disabled={!prompt.trim() || !activeSession.runtimeSessionID}
                   onClick={() => void send()}
                 >
                   Send

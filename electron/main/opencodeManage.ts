@@ -14,7 +14,11 @@ import type {
 } from "./agentRuntimeAdapter";
 import { getCurrentAppConfig } from "./appConfig";
 import { getTerminalWorkspaceDir } from "./workspaceManage";
-import { parseOpenCodeSSEBlock, requestOpenCodeJSON } from "./opencodeHttp";
+import {
+  fetchOpenCode,
+  parseOpenCodeSSEBlock,
+  requestOpenCodeJSON,
+} from "./opencodeHttp";
 
 type RuntimeBindingMode =
   | "shared-server-session"
@@ -58,10 +62,12 @@ type ServerRecord = {
 const listeners = new Set<(event: RuntimeSessionEvent) => void>();
 const bindings = new Map<string, RuntimeSessionBinding>();
 let server: ServerRecord | undefined;
+let ensureServerPromise: Promise<ServerRecord> | undefined;
 let eventAbort: AbortController | undefined;
 let eventLoopGeneration = 0;
 let eventStreamConnected = false;
 let eventStreamConnectedBefore = false;
+let lastHealthError = "";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -77,7 +83,7 @@ const fetchWithTimeout = async (
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, {
+    return await fetchOpenCode(url, {
       ...init,
       signal: controller.signal,
     });
@@ -90,8 +96,13 @@ const health = async (baseUrl: string) => {
   for (const pathname of ["/global/health", "/health", "/"]) {
     try {
       const response = await fetchWithTimeout(`${baseUrl}${pathname}`, undefined, 1500);
-      if (response.ok) return true;
-    } catch {
+      if (response.ok) {
+        lastHealthError = "";
+        return true;
+      }
+      lastHealthError = `${pathname} returned ${response.status}`;
+    } catch (error) {
+      lastHealthError = error instanceof Error ? error.message : String(error);
       continue;
     }
   }
@@ -378,10 +389,13 @@ const startEventLoop = (baseUrl: string) => {
 
   const run = async () => {
     while (generation === eventLoopGeneration && !controller.signal.aborted) {
+      const attemptController = new AbortController();
+      const abortAttempt = () => attemptController.abort();
+      controller.signal.addEventListener("abort", abortAttempt, { once: true });
       try {
-        const response = await fetch(`${baseUrl}/global/event`, {
+        const response = await fetchOpenCode(`${baseUrl}/global/event`, {
           headers: { Accept: "text/event-stream" },
-          signal: controller.signal,
+          signal: attemptController.signal,
         });
         if (!response.ok || !response.body)
           throw new Error("OpenCode event stream unavailable");
@@ -398,7 +412,7 @@ const startEventLoop = (baseUrl: string) => {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        while (!controller.signal.aborted) {
+        while (!attemptController.signal.aborted) {
           const chunk = await reader.read();
           if (chunk.done) break;
           buffer += decoder.decode(chunk.value, { stream: true });
@@ -424,6 +438,8 @@ const startEventLoop = (baseUrl: string) => {
             }),
           );
         }
+      } finally {
+        controller.signal.removeEventListener("abort", abortAttempt);
       }
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
@@ -431,15 +447,19 @@ const startEventLoop = (baseUrl: string) => {
   void run();
 };
 
-const ensureServer = async () => {
-  if (server && (await health(server.baseUrl))) return server;
+const ensureServerInternal = async (): Promise<ServerRecord> => {
+  const existing = server;
+  if (existing && (await health(existing.baseUrl))) return existing;
+  if (existing?.owned) existing.process?.kill();
+  if (server === existing) server = undefined;
 
   const config = getCurrentAppConfig();
   const configuredBaseUrl = `http://127.0.0.1:${config.opencode.serverPort || 4096}`;
   if (await health(configuredBaseUrl)) {
-    server = { baseUrl: configuredBaseUrl, owned: false };
-    startEventLoop(server.baseUrl);
-    return server;
+    const connected = { baseUrl: configuredBaseUrl, owned: false };
+    server = connected;
+    startEventLoop(connected.baseUrl);
+    return connected;
   }
 
   const port = await findAvailablePort(config.opencode.serverPort || 4096);
@@ -456,7 +476,7 @@ const ensureServer = async () => {
     {
       cwd: process.cwd(),
       windowsHide: true,
-      shell: process.platform === "win32",
+      shell: false,
       env: {
         ...process.env,
         OPENCODE_SERVER_PASSWORD: undefined,
@@ -466,31 +486,58 @@ const ensureServer = async () => {
       },
     },
   );
-  server = {
+  const candidate: ServerRecord = {
     baseUrl: `http://127.0.0.1:${port}`,
     process: child,
     owned: true,
   };
   let spawnError: Error | undefined;
+  let exitDescription = "";
+  let childOutput = "";
   child.once("error", (error) => {
     spawnError = error;
   });
-  child.stdout.resume();
-  child.stderr.resume();
-  child.once("exit", () => {
-    if (server?.process === child) server = undefined;
+  child.stdout.on("data", (chunk: Buffer) => {
+    childOutput = `${childOutput}${chunk.toString("utf8")}`.slice(-2_000);
+  });
+  child.stderr.on("data", (chunk: Buffer) => {
+    childOutput = `${childOutput}${chunk.toString("utf8")}`.slice(-2_000);
+  });
+  child.once("exit", (code, signal) => {
+    exitDescription = `process exited with code ${code ?? "null"}${
+      signal ? ` (${signal})` : ""
+    }`;
+    if (server?.process === child) {
+      server = undefined;
+      eventAbort?.abort();
+      eventAbort = undefined;
+      eventLoopGeneration += 1;
+    }
   });
   for (let attempt = 0; attempt < 40; attempt += 1) {
     if (spawnError) break;
-    if (await health(server.baseUrl)) {
-      startEventLoop(server.baseUrl);
-      return server;
+    if (await health(candidate.baseUrl)) {
+      server = candidate;
+      startEventLoop(candidate.baseUrl);
+      return candidate;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   child.kill();
   server = undefined;
-  throw spawnError ?? new Error("OpenCode server failed to start");
+  if (spawnError) throw spawnError;
+  const detail = [exitDescription, lastHealthError, childOutput.trim()]
+    .filter(Boolean)
+    .join("; ");
+  throw new Error(`OpenCode server failed to start${detail ? `: ${detail}` : ""}`);
+};
+
+const ensureServer = () => {
+  if (ensureServerPromise) return ensureServerPromise;
+  ensureServerPromise = ensureServerInternal().finally(() => {
+    ensureServerPromise = undefined;
+  });
+  return ensureServerPromise;
 };
 
 const getMessages = async (
@@ -579,7 +626,6 @@ const adapter: AgentRuntimeAdapter = {
       {
         method: "POST",
         body: JSON.stringify({
-          messageID: params.messageID,
           parts: [{ type: "text", text: params.prompt }],
         }),
       },

@@ -1,3 +1,16 @@
+import { fetch as undiciFetch } from "undici";
+
+export const fetchOpenCode = (input: string, init?: RequestInit) => {
+  if (typeof globalThis.fetch === "function") {
+    return globalThis.fetch(input, init);
+  }
+  // Electron 22 embeds Node 16, where global fetch is not available.
+  return undiciFetch(
+    input,
+    init as Parameters<typeof undiciFetch>[1],
+  ) as unknown as ReturnType<typeof fetch>;
+};
+
 export const requestOpenCodeJSON = async (
   baseUrl: string,
   pathname: string,
@@ -7,7 +20,7 @@ export const requestOpenCodeJSON = async (
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`${baseUrl}${pathname}`, {
+    const response = await fetchOpenCode(`${baseUrl}${pathname}`, {
       ...init,
       signal: controller.signal,
       headers: {

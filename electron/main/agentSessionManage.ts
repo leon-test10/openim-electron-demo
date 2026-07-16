@@ -66,6 +66,7 @@ const autoApproveSessionIDs = new Set<string>();
 const historyCapabilities = new AgentHistoryCapabilityRegistry();
 const historyRequests = new Map<string, PendingHistoryRequest>();
 const refreshTimers = new Map<string, NodeJS.Timeout>();
+const fileWriteQueues = new Map<string, Promise<void>>();
 let runtimeBaseUrl: string | undefined;
 let initialized = false;
 let initializePromise: Promise<AgentSessionStateSnapshot> | undefined;
@@ -159,11 +160,42 @@ const persist = () => {
   store.set(STORE_KEY, state);
 };
 
-const writeJSONAtomic = async (filePath: string, value: unknown) => {
+const writeJSONAtomicInternal = async (filePath: string, value: unknown) => {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-  const temporary = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  const suffix = `${process.pid}.${crypto.randomUUID()}`;
+  const temporary = `${filePath}.${suffix}.tmp`;
+  const backup = `${filePath}.${suffix}.bak`;
   await fs.promises.writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  await fs.promises.rename(temporary, filePath);
+  let movedExisting = false;
+  try {
+    try {
+      await fs.promises.rename(filePath, backup);
+      movedExisting = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    await fs.promises.rename(temporary, filePath);
+    if (movedExisting) await fs.promises.rm(backup, { force: true });
+  } catch (error) {
+    await fs.promises.rm(temporary, { force: true }).catch(() => undefined);
+    if (movedExisting) {
+      await fs.promises.rename(backup, filePath).catch(() => undefined);
+    }
+    throw error;
+  }
+};
+
+const writeJSONAtomic = (filePath: string, value: unknown) => {
+  const previous = fileWriteQueues.get(filePath) ?? Promise.resolve();
+  const queued = previous
+    .catch(() => undefined)
+    .then(() => writeJSONAtomicInternal(filePath, value));
+  fileWriteQueues.set(filePath, queued);
+  const cleanup = () => {
+    if (fileWriteQueues.get(filePath) === queued) fileWriteQueues.delete(filePath);
+  };
+  void queued.then(cleanup, cleanup);
+  return queued;
 };
 
 const persistSessionFiles = async (session: AgentSession) => {
@@ -622,11 +654,22 @@ const handleRuntimeEvent = (event: RuntimeSessionEvent) => {
   }
   if (event.type === "session.status") {
     const status = event.payload.status;
-    const type =
+    const statusRecord =
       status && typeof status === "object"
-        ? (status as Record<string, unknown>).type
-        : status;
-    if (type === "busy" || type === "retry") session.status = "running";
+        ? (status as Record<string, unknown>)
+        : undefined;
+    const type = statusRecord?.type ?? status;
+    if (type === "busy") {
+      session.status = "running";
+      session.lastError = undefined;
+    }
+    if (type === "retry") {
+      session.status = "running";
+      session.lastError = String(
+        statusRecord?.message ?? "OpenCode is retrying the model request.",
+      );
+      scheduleRefresh(session, 0);
+    }
     publish();
     return;
   }

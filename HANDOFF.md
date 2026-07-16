@@ -1,5 +1,56 @@
 # Session Handoff - Contact-scoped Persistent Agent Sessions
 
+## Latest Update - Offline Agent Runtime Hotfix (2026-07-16)
+
+Current branch: `feature/agent-run-contract`
+
+This hotfix was driven by a real offline-mode smoke test on Electron 22 and
+Windows. Agent sessions can now start without a separately launched OpenCode
+service, and the right panel always exposes a visible conversation surface.
+
+### Fixed
+
+- Added a single-flight guard around OpenCode service discovery/startup so
+  concurrent persisted-session recovery cannot overwrite the shared binding or
+  return an undefined `baseUrl`.
+- Launches the configured OpenCode executable directly (`shell: false`), which
+  supports the bundled executable path under `%APPDATA%` safely.
+- Added `undici` as the Electron 22/Node 16 HTTP implementation. Health checks,
+  Session API calls, and global SSE no longer depend on unavailable global
+  `fetch`.
+- SSE reconnect attempts now use per-attempt abort controllers and stop when an
+  owned service exits, preventing accumulated abort listeners during outages.
+- Removed the optional locally generated `messageID` from `prompt_async`;
+  OpenCode now generates its required `msg*` identifier.
+- Serialized JSON snapshot writes by target path and uses unique temporary plus
+  backup files, avoiding Windows `ENOENT`/`EPERM` collisions while updating
+  `.openim-agent/bridge.json` and message metadata.
+- The Agent panel now renders an empty conversation state even with zero
+  messages, shows actionable runtime errors and retry controls, restores draft
+  text after send failure, and displays OpenCode model retry reasons.
+
+### Smoke Test Result
+
+- Application-owned OpenCode `1.17.12` started on `127.0.0.1:4096` and passed
+  `/global/health`.
+- A failed persisted session was recovered into the same workspace and became
+  `idle`.
+- System and user messages rendered as structured conversation cards.
+- `prompt_async` accepted the user message after removing the invalid local ID.
+- The configured model backend `http://10.96.248.17:8000/v1` currently returns
+  HTTP 502 / closed-socket retries. The UI now reports this as a model retry;
+  it is external to the Electron/OpenCode session transport hotfix.
+
+### Validation
+
+- `npm.cmd test`: pass.
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd run lint -- --quiet`: pass.
+- `npm.cmd run build:renderer`: pass.
+- `agent-sessions.spec.ts`: pass.
+
+---
+
 ## Latest Update - Persistent Agent Workspace Milestone (2026-07-11)
 
 Current branch: `feature/agent-run-contract`
