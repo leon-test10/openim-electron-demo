@@ -260,6 +260,7 @@ const installE2EElectronMock = () => {
           title?: string;
           pinned?: boolean;
           liveHistoryEnabled?: boolean;
+          model?: { providerID: string; modelID: string };
         };
         useAgentSessionStore.setState((state) => ({
           sessions: state.sessions.map((session) =>
@@ -267,6 +268,18 @@ const installE2EElectronMock = () => {
           ),
         }));
         return Promise.resolve({ ok: true } as T);
+      }
+
+      if (channel === "agent-session:listModels") {
+        return Promise.resolve([
+          {
+            providerID: "e2e-provider",
+            providerName: "E2E Provider",
+            modelID: "e2e-model",
+            modelName: "E2E Model",
+            isDefault: true,
+          },
+        ] as T);
       }
 
       if (channel === "agent-session:send") {

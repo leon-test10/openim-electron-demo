@@ -5,6 +5,7 @@ import type {
   AgentInteraction,
   AgentMessage,
   AgentMessagePart,
+  AgentModelOption,
   AgentSessionStatus,
 } from "../../src/types/agentSession";
 import type {
@@ -554,6 +555,39 @@ const getMessages = async (
     ),
   );
 
+const getModels = async (
+  baseUrl: string,
+  workspacePath: string,
+): Promise<AgentModelOption[]> => {
+  const value = unwrapData(
+    await requestOpenCodeJSON(baseUrl, `/config/providers${query(workspacePath)}`),
+  );
+  if (!isRecord(value) || !Array.isArray(value.providers)) return [];
+  const defaults = isRecord(value.default) ? value.default : {};
+
+  return value.providers.flatMap((providerValue) => {
+    if (!isRecord(providerValue) || typeof providerValue.id !== "string") return [];
+    const providerID = providerValue.id;
+    const providerName =
+      typeof providerValue.name === "string" ? providerValue.name : providerID;
+    const models = isRecord(providerValue.models) ? providerValue.models : {};
+    return Object.entries(models).flatMap(([modelKey, modelValue]) => {
+      if (!isRecord(modelValue)) return [];
+      const modelID = typeof modelValue.id === "string" ? modelValue.id : modelKey;
+      if (modelValue.status === "deprecated") return [];
+      return [
+        {
+          providerID,
+          providerName,
+          modelID,
+          modelName: typeof modelValue.name === "string" ? modelValue.name : modelID,
+          isDefault: defaults[providerID] === modelID,
+        },
+      ];
+    });
+  });
+};
+
 const adapter: AgentRuntimeAdapter = {
   async ensureRuntime() {
     const current = await ensureServer();
@@ -616,6 +650,10 @@ const adapter: AgentRuntimeAdapter = {
     const current = await ensureServer();
     return getMessages(current.baseUrl, params.workspacePath, params.runtimeSessionID);
   },
+  async listModels(params) {
+    const current = await ensureServer();
+    return getModels(current.baseUrl, params.workspacePath);
+  },
   async send(params) {
     const current = await ensureServer();
     await requestOpenCodeJSON(
@@ -626,6 +664,7 @@ const adapter: AgentRuntimeAdapter = {
       {
         method: "POST",
         body: JSON.stringify({
+          ...(params.model ? { model: params.model } : {}),
           parts: [{ type: "text", text: params.prompt }],
         }),
       },

@@ -408,6 +408,9 @@ export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.agentSessionSend, (_, params) => {
     return agentSessionManager.sendMessage(params);
   });
+  ipcMain.handle(IpcRenderToMain.agentSessionListModels, (_, sessionID) => {
+    return agentSessionManager.listModels(sessionID);
+  });
   ipcMain.handle(IpcRenderToMain.agentSessionAbort, (_, sessionID) => {
     return agentSessionManager.abort(sessionID);
   });

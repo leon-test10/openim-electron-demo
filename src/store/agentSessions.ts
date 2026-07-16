@@ -6,6 +6,7 @@ import {
 } from "@/services/agentSessions/sessionModel";
 import type {
   AgentHistoryQueryResponse,
+  AgentModelOption,
   AgentSession,
   AgentSessionEvent,
   AgentSessionStateSnapshot,
@@ -43,6 +44,7 @@ interface AgentSessionStore extends AgentSessionStateSnapshot {
   archiveSession: (sessionID: string) => Promise<void>;
   selectSession: (conversationID: string, sessionID?: string) => Promise<void>;
   sendMessage: (params: SendAgentMessageParams) => Promise<void>;
+  listModels: (sessionID: string) => Promise<AgentModelOption[]>;
   abort: (sessionID: string) => Promise<void>;
   recover: (sessionID: string) => Promise<void>;
   replyPermission: (
@@ -150,6 +152,9 @@ export const useAgentSessionStore = create<AgentSessionStore>()((set) => ({
   },
   sendMessage: async (params) => {
     await invoke("agent-session:send", params);
+  },
+  listModels: async (sessionID) => {
+    return invoke<AgentModelOption[]>("agent-session:listModels", sessionID);
   },
   abort: async (sessionID) => {
     await invoke("agent-session:abort", sessionID);

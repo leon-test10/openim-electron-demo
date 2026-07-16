@@ -32,6 +32,17 @@ export interface AgentMessage {
   parts: AgentMessagePart[];
 }
 
+export interface AgentModelRef {
+  providerID: string;
+  modelID: string;
+}
+
+export interface AgentModelOption extends AgentModelRef {
+  providerName: string;
+  modelName: string;
+  isDefault: boolean;
+}
+
 export type AgentTurnSource = "manual" | "bot" | "context";
 export type AgentTurnStatus =
   | "queued"
@@ -101,6 +112,7 @@ export interface AgentSession {
   archived: boolean;
   unreadCount: number;
   liveHistoryEnabled: boolean;
+  model?: AgentModelRef;
   createdAt: number;
   updatedAt: number;
   lastOpenedAt: number;
@@ -174,6 +186,7 @@ export interface UpdateAgentSessionParams {
   title?: string;
   pinned?: boolean;
   liveHistoryEnabled?: boolean;
+  model?: AgentModelRef;
 }
 
 export interface AgentViewportState {

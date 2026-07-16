@@ -55,6 +55,7 @@ export const IpcRenderToMain = {
   agentSessionArchive: "agent-session:archive",
   agentSessionSelect: "agent-session:select",
   agentSessionSend: "agent-session:send",
+  agentSessionListModels: "agent-session:listModels",
   agentSessionAbort: "agent-session:abort",
   agentSessionRecover: "agent-session:recover",
   agentSessionReplyPermission: "agent-session:replyPermission",

@@ -1,5 +1,37 @@
 # Session Handoff - Contact-scoped Persistent Agent Sessions
 
+## Latest Update - Agent Model, Message Dedup, and IM Delivery (2026-07-16)
+
+### Fixed
+
+- Agent sessions now load the connected provider/model catalog from OpenCode's
+  `/config/providers` endpoint. The panel exposes a searchable per-session model
+  selector and persists the selected `providerID/modelID`.
+- Every new OpenCode prompt explicitly carries the selected model instead of
+  silently falling through to an unsuitable global default.
+- Optimistic `local_*` user messages are reconciled one-for-one with the
+  corresponding OpenCode `msg_*` user message by text and creation time. This
+  removes the duplicate user cards while retaining genuinely queued messages.
+- Assistant message actions are always visible. `Insert to IM` still prepares a
+  draft; `Send to IM` shows a confirmation dialog and then sends to the bound,
+  currently visible IM conversation.
+- Confirmed Agent replies sent in offline mode now use the local/self sender,
+  rather than the legacy simulated peer sender.
+- Fully automatic Agent-to-IM delivery remains disabled. Bot auto mode runs the
+  Agent request but does not send its result without user confirmation.
+
+### Validation
+
+- `npx.cmd tsc --noEmit`: pass.
+- `npm.cmd test`: pass, including new optimistic/runtime message reconciliation
+  coverage.
+- `npm.cmd run lint -- --quiet`: pass.
+- `npm.cmd run build:renderer`: pass.
+- `agent-sessions.spec.ts`: pass, including model selection and confirmed IM
+  delivery.
+
+---
+
 ## Latest Update - Chat Layout Regression Fix (2026-07-16)
 
 The nested horizontal Agent split and vertical Terminal/chat splits could

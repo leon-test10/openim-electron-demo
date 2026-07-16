@@ -1,6 +1,8 @@
 import type {
   AgentInteraction,
   AgentMessage,
+  AgentModelOption,
+  AgentModelRef,
   AgentSessionStatus,
 } from "../../src/types/agentSession";
 
@@ -33,11 +35,13 @@ export interface AgentRuntimeAdapter {
     workspacePath: string;
     runtimeSessionID: string;
   }): Promise<AgentMessage[]>;
+  listModels(params: { workspacePath: string }): Promise<AgentModelOption[]>;
   send(params: {
     workspacePath: string;
     runtimeSessionID: string;
     prompt: string;
     messageID: string;
+    model?: AgentModelRef;
   }): Promise<void>;
   abort(params: { workspacePath: string; runtimeSessionID: string }): Promise<void>;
   replyPermission(params: {

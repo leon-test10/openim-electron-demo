@@ -34,6 +34,18 @@ test("Agent panel follows contacts while background work continues", async ({
   ).toBeVisible();
   await expect(appWindow.getByTestId("agent-contact-1-unread")).toHaveText("0");
 
+  await appWindow.getByTestId("agent-model-select").click();
+  await appWindow.getByText("E2E Provider · E2E Model (default)").click();
+
+  await appWindow.getByTestId("agent-send-to-im").click();
+  await appWindow
+    .getByRole("dialog")
+    .getByRole("button", { name: "Send to IM" })
+    .click();
+  await expect(appWindow.getByTestId("e2e-sent-drafts")).toContainText(
+    "Completed in background: finish contact one task",
+  );
+
   const attachedSessions = await appWindow.evaluate(
     () =>
       (

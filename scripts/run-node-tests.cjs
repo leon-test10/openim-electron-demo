@@ -5,6 +5,7 @@ const tests = [
   "src/services/offlineIM/OfflineIMService.test.ts",
   "src/services/agentSessions/sessionModel.test.ts",
   "src/services/agentSessions/botCheckpoint.test.ts",
+  "src/services/agentSessions/messageMerge.test.ts",
   "tests/folderShareDownload.test.ts",
   "tests/appConfig.test.ts",
   "tests/opencodeBundleManage.test.ts",

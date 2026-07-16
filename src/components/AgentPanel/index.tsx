@@ -34,6 +34,7 @@ import { useAgentSessionStore } from "@/store";
 import type {
   AgentInteraction,
   AgentMessage,
+  AgentModelOption,
   AgentQuestionInteraction,
   AgentSession,
   BotRequest,
@@ -75,6 +76,12 @@ const MessageCard = ({
     (part) => part.type === "reasoning" || part.type === "tool",
   );
   const text = partText(agentMessage);
+  const replyText = visible
+    .filter((part) => part.type === "text")
+    .map((part) => part.text ?? "")
+    .filter(Boolean)
+    .join("\n")
+    .trim();
 
   const attachFile = async (pathValue?: string) => {
     if (!pathValue) return;
@@ -113,7 +120,14 @@ const MessageCard = ({
     >
       <div className="mb-1 flex items-center justify-between gap-3 text-[11px] text-[var(--sub-text)]">
         <span>{agentMessage.role}</span>
-        <div className="opacity-0 transition-opacity group-hover:opacity-100">
+        <div
+          className={clsx(
+            "transition-opacity",
+            agentMessage.role === "assistant"
+              ? "opacity-100"
+              : "opacity-0 group-hover:opacity-100",
+          )}
+        >
           <Tooltip title="Copy">
             <Button
               size="small"
@@ -129,6 +143,27 @@ const MessageCard = ({
           >
             Insert to IM
           </Button>
+          {agentMessage.role === "assistant" && replyText && (
+            <Button
+              size="small"
+              type="link"
+              onClick={() =>
+                Modal.confirm({
+                  title: "Send this Agent reply to the current IM chat?",
+                  content: (
+                    <div className="max-h-48 overflow-y-auto whitespace-pre-wrap text-sm">
+                      {replyText}
+                    </div>
+                  ),
+                  okText: "Send to IM",
+                  onOk: () => emit("SEND_CHAT_INPUT", replyText),
+                })
+              }
+              data-testid="agent-send-to-im"
+            >
+              Send to IM
+            </Button>
+          )}
         </div>
       </div>
       {visible.map((part) =>
@@ -331,6 +366,9 @@ const RuntimeRetryCard = ({ session }: { session: AgentSession }) => {
       <div className="mt-1 break-words text-xs text-orange-700 dark:text-orange-300">
         {session.lastError}
       </div>
+      <div className="mt-2 text-xs text-orange-700 dark:text-orange-300">
+        Stop this retry, select a working model above, then send the request again.
+      </div>
     </div>
   );
 };
@@ -402,6 +440,8 @@ const AgentPanel = ({
   const [creating, setCreating] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameTitle, setRenameTitle] = useState("");
+  const [modelOptions, setModelOptions] = useState<AgentModelOption[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
 
   const conversationSessions = useMemo(
     () =>
@@ -450,6 +490,37 @@ const AgentPanel = ({
     setPrompt((current) => `${current}${current ? "\n\n" : ""}${pendingDraft}`);
     useAgentSessionStore.getState().consumeDraft(activeSession.id);
   }, [activeSession, pendingDraft]);
+
+  useEffect(() => {
+    if (!activeSession) {
+      setModelOptions([]);
+      return;
+    }
+    let current = true;
+    setModelsLoading(true);
+    void useAgentSessionStore
+      .getState()
+      .listModels(activeSession.id)
+      .then((options) => {
+        if (current) setModelOptions(options);
+      })
+      .catch((error) => {
+        if (current) {
+          setModelOptions([]);
+          message.error(
+            `Cannot load Agent models: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      })
+      .finally(() => {
+        if (current) setModelsLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [activeSession?.id]);
 
   const create = async () => {
     if (!conversationID) return;
@@ -610,6 +681,50 @@ const AgentPanel = ({
       {activeSession ? (
         <>
           <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-black/5 px-3 py-2 text-xs dark:border-white/10">
+            <label className="flex items-center gap-1">
+              Model
+              <Select
+                size="small"
+                showSearch
+                loading={modelsLoading}
+                placeholder="Select model"
+                className="min-w-[190px] max-w-[260px]"
+                value={
+                  activeSession.model
+                    ? `${activeSession.model.providerID}::${activeSession.model.modelID}`
+                    : undefined
+                }
+                optionFilterProp="label"
+                options={modelOptions
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      Number(b.isDefault) - Number(a.isDefault) ||
+                      a.providerName.localeCompare(b.providerName) ||
+                      a.modelName.localeCompare(b.modelName),
+                  )
+                  .map((option) => ({
+                    value: `${option.providerID}::${option.modelID}`,
+                    label: `${option.providerName} · ${option.modelName}${
+                      option.isDefault ? " (default)" : ""
+                    }`,
+                  }))}
+                onChange={(value) => {
+                  const option = modelOptions.find(
+                    (item) => `${item.providerID}::${item.modelID}` === value,
+                  );
+                  if (!option) return;
+                  void useAgentSessionStore.getState().updateSession({
+                    sessionID: activeSession.id,
+                    model: {
+                      providerID: option.providerID,
+                      modelID: option.modelID,
+                    },
+                  });
+                }}
+                data-testid="agent-model-select"
+              />
+            </label>
             <label className="flex items-center gap-1">
               Bot requests
               <Select

@@ -316,7 +316,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
         setHtml("");
         await sendMessage({
           message,
-          offlineSender: getAuthMode() === "offline" ? "peer" : undefined,
+          offlineSender: getAuthMode() === "offline" ? "self" : undefined,
         });
       }
 

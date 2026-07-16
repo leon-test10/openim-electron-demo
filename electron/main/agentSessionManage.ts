@@ -26,6 +26,7 @@ import type {
 } from "../../src/types/agentSession";
 import { IpcMainToRender } from "../constants";
 import type { RuntimeSessionEvent } from "./agentRuntimeAdapter";
+import { mergeAgentRuntimeMessages } from "./agentMessageMerge";
 import { opencodeManager } from "./opencodeManage";
 import { getStore } from "./storeManage";
 import { getTerminalWorkspaceDir } from "./workspaceManage";
@@ -462,19 +463,6 @@ const startHistoryServer = () =>
     });
   });
 
-const mergeRuntimeMessages = (
-  session: AgentSession,
-  runtimeMessages: AgentMessage[],
-) => {
-  const runtimeIDs = new Set(runtimeMessages.map((message) => message.id));
-  const localMessages = session.messages.filter(
-    (message) => message.id.startsWith("local_") && !runtimeIDs.has(message.id),
-  );
-  return [...runtimeMessages, ...localMessages].sort(
-    (a, b) => a.createdAt - b.createdAt,
-  );
-};
-
 const refreshMessages = async (session: AgentSession) => {
   if (!session.runtimeSessionID) return;
   try {
@@ -482,7 +470,7 @@ const refreshMessages = async (session: AgentSession) => {
       workspacePath: session.workspacePath,
       runtimeSessionID: session.runtimeSessionID,
     });
-    session.messages = mergeRuntimeMessages(session, messages);
+    session.messages = mergeAgentRuntimeMessages(session.messages, messages);
     session.updatedAt = Date.now();
     await persistSessionFiles(session);
     publish();
@@ -538,6 +526,7 @@ const dispatchNext = async (session: AgentSession) => {
       runtimeSessionID: session.runtimeSessionID,
       prompt: turn.prompt,
       messageID: `local_${turn.id}`,
+      model: session.model,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -808,7 +797,10 @@ const reconcileRuntimeSessions = async () => {
             return;
           }
           session.status = restored.status;
-          session.messages = mergeRuntimeMessages(session, restored.messages);
+          session.messages = mergeAgentRuntimeMessages(
+            session.messages,
+            restored.messages,
+          );
           session.interactions = restored.interactions;
           session.lastError = undefined;
           await persistSessionFiles(session);
@@ -978,6 +970,7 @@ export const agentSessionManager = {
       session.title = params.title.trim();
     }
     if (typeof params.pinned === "boolean") session.pinned = params.pinned;
+    if (params.model) session.model = params.model;
     if (
       typeof params.liveHistoryEnabled === "boolean" &&
       params.liveHistoryEnabled !== session.liveHistoryEnabled
@@ -989,6 +982,12 @@ export const agentSessionManager = {
     await persistSessionFiles(session);
     publish();
     return session;
+  },
+  async listModels(sessionID: string) {
+    await ensureInitialized();
+    const session = sessions.get(sessionID);
+    if (!session || session.archived) throw new Error("Agent session not found");
+    return adapter.listModels({ workspacePath: session.workspacePath });
   },
   async archiveSession(sessionID: string) {
     await ensureInitialized();
