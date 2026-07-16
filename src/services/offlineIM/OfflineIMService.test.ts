@@ -92,6 +92,31 @@ const {
   assert.equal(latestMessage.textElem?.content, "agent answer");
   assert.equal(updatedConversations[0].latestMsgSendTime, peerMessage.sendTime);
 
+  now += 1000;
+  const fileMessage = await service.createMessage({
+    conversationID: conversation.conversationID,
+    sender: "self",
+    message: {
+      contentType: 101,
+      fileElem: {
+        filePath: "C:\\workspace\\result.txt",
+        fileName: "result.txt",
+        fileSize: 12,
+        sourceUrl: "",
+      },
+    },
+  });
+  assert.equal(fileMessage.sendID, OFFLINE_SELF_USER_ID);
+  assert.equal(fileMessage.fileElem?.fileName, "result.txt");
+  const messagesWithFile = await service.listMessages({
+    conversationID: conversation.conversationID,
+    count: 20,
+  });
+  assert.equal(
+    messagesWithFile.messageList[messagesWithFile.messageList.length - 1]?.clientMsgID,
+    fileMessage.clientMsgID,
+  );
+
   console.log("OfflineIMService tests passed");
 })();
 

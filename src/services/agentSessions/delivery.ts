@@ -1,5 +1,6 @@
-import { MessageStatus } from "@openim/wasm-client-sdk";
+import { MessageStatus, MessageType } from "@openim/wasm-client-sdk";
 import type { MessageItem } from "@openim/wasm-client-sdk/lib/types/entity";
+import { v4 as uuidV4 } from "uuid";
 
 import { IMSDK } from "@/layout/MainContentWrap";
 import { createFileMessageHelpers } from "@/pages/chat/queryChat/ChatFooter/SendActionBar/useFileMessage";
@@ -14,7 +15,11 @@ import type {
   AgentDeliveryRequest,
   AgentDeliveryResponse,
 } from "@/types/agentSession";
-import { parseFolderShareMessage } from "@/utils/folderShare";
+import {
+  createFolderSharePayload,
+  FOLDER_SHARE_SCHEMA,
+  parseFolderShareMessage,
+} from "@/utils/folderShare";
 import { recordLocalFileForMessage } from "@/utils/localFileCache";
 import { recordLocalFolderShare } from "@/utils/localFolderShareCache";
 import { getAuthMode } from "@/utils/storage";
@@ -54,6 +59,28 @@ const sendOnlineMessage = async (conversationID: string, message: MessageItem) =
   }
 };
 
+type FolderScanResult = {
+  folderName: string;
+  itemCount: number;
+  totalSize: number;
+  files: Array<{
+    relativePath: string;
+    fileName: string;
+    nativePath?: string;
+    size: number;
+    mimeType?: string;
+  }>;
+};
+
+const scanFolder = async (attachment: AgentDeliveryAttachment) => {
+  const scan = await window.electronAPI?.ipcInvoke<FolderScanResult>("folder:scan", {
+    nativePath: attachment.nativePath,
+    folderName: attachment.fileName,
+  });
+  if (!scan) throw new Error(`Cannot scan output folder: ${attachment.path}`);
+  return scan;
+};
+
 const sendAttachment = async (
   conversationID: string,
   attachment: AgentDeliveryAttachment,
@@ -61,22 +88,7 @@ const sendAttachment = async (
   const { getFileMessage, getFolderMessage, getImageMessage } =
     createFileMessageHelpers();
   if (attachment.kind === "folder") {
-    const scan = await window.electronAPI?.ipcInvoke<{
-      folderName: string;
-      itemCount: number;
-      totalSize: number;
-      files: Array<{
-        relativePath: string;
-        fileName: string;
-        nativePath?: string;
-        size: number;
-        mimeType?: string;
-      }>;
-    }>("folder:scan", {
-      nativePath: attachment.nativePath,
-      folderName: attachment.fileName,
-    });
-    if (!scan) throw new Error(`Cannot scan output folder: ${attachment.path}`);
+    const scan = await scanFolder(attachment);
     const message = await getFolderMessage({
       nativePath: attachment.nativePath,
       folderName: scan.folderName || attachment.fileName,
@@ -110,6 +122,60 @@ const sendAttachment = async (
     attachment.fileName,
     attachment.nativePath,
   );
+};
+
+const sendOfflineAttachment = async (
+  conversationID: string,
+  attachment: AgentDeliveryAttachment,
+) => {
+  if (attachment.kind === "folder") {
+    const scan = await scanFolder(attachment);
+    const shareID = uuidV4();
+    const manifest = {
+      schema: FOLDER_SHARE_SCHEMA,
+      shareID,
+      folderName: scan.folderName || attachment.fileName,
+      itemCount: scan.itemCount,
+      totalSize: scan.totalSize,
+      createdAt: Date.now(),
+      files: scan.files.map((file) => ({
+        relativePath: file.relativePath,
+        fileName: file.fileName,
+        size: file.size,
+        mimeType: file.mimeType,
+      })),
+    };
+    const sent = await offlineIMService.createMessage({
+      conversationID,
+      sender: "self",
+      message: {
+        contentType: MessageType.CustomMessage,
+        customElem: createFolderSharePayload(manifest),
+      } as MessageItem,
+    });
+    recordLocalFolderShare(shareID, manifest.folderName, attachment.nativePath);
+    return sent;
+  }
+  const sent = await offlineIMService.createMessage({
+    conversationID,
+    sender: "self",
+    message: {
+      contentType: MessageType.FileMessage,
+      fileElem: {
+        filePath: attachment.nativePath,
+        uuid: uuidV4(),
+        sourceUrl: "",
+        fileName: attachment.fileName,
+        fileSize: attachment.size ?? 0,
+      },
+    } as MessageItem,
+  });
+  recordLocalFileForMessage(
+    sent.clientMsgID,
+    attachment.fileName,
+    attachment.nativePath,
+  );
+  return sent;
 };
 
 export const deliverAgentOutput = async (
@@ -150,9 +216,17 @@ export const deliverAgentOutput = async (
   for (const attachment of request.attachments) {
     try {
       if (getAuthMode() === "offline") {
-        throw new Error("Offline mode does not support file or folder messages");
+        const sent = await sendOfflineAttachment(request.conversationID, attachment);
+        await refreshOfflineConversations(request.conversationID);
+        if (
+          useConversationStore.getState().currentConversation?.conversationID ===
+          request.conversationID
+        ) {
+          pushNewMessage(sent);
+        }
+      } else {
+        await sendAttachment(request.conversationID, attachment);
       }
-      await sendAttachment(request.conversationID, attachment);
       response.sentAttachmentPaths.push(attachment.path);
     } catch (error) {
       response.errors!.push(

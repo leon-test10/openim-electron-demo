@@ -51,6 +51,50 @@ const run = async () => {
         ["output/report.md", "file"],
       ],
     );
+
+    await fs.promises.writeFile(
+      path.join(workspace, "tool-created.txt"),
+      "created by tool",
+    );
+    const toolMessage: AgentMessage = {
+      id: "assistant-tool",
+      sessionID: "runtime-1",
+      role: "assistant",
+      createdAt: Date.now(),
+      completedAt: Date.now(),
+      parts: [
+        {
+          id: "tool-write",
+          type: "tool",
+          name: "write",
+          status: "completed",
+          text: "Wrote file successfully.",
+          metadata: {
+            state: {
+              status: "completed",
+              input: { filePath: path.join(workspace, "tool-created.txt") },
+            },
+          },
+        },
+      ],
+    };
+    const finalMessage: AgentMessage = {
+      id: "assistant-final",
+      sessionID: "runtime-1",
+      role: "assistant",
+      createdAt: Date.now(),
+      completedAt: Date.now(),
+      parts: [{ id: "final-text", type: "text", text: "文件已经创建完成。" }],
+    };
+    const toolResult = await resolveAgentDelivery(workspace, [
+      toolMessage,
+      finalMessage,
+    ]);
+    assert.equal(toolResult.text, "文件已经创建完成。");
+    assert.deepEqual(
+      toolResult.attachments.map((item) => [item.path, item.kind]),
+      [["tool-created.txt", "file"]],
+    );
   } finally {
     await fs.promises.rm(workspace, { recursive: true, force: true });
   }

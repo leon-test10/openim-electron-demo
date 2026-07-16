@@ -2978,4 +2978,19 @@ Close the app, edit `%APPDATA%/OpenIM Agent/config.json`, then reopen.
 - `## Output Files` and `## Output Folders` are parsed from the final assistant response. Paths are restricted to the session workspace, missing paths are ignored, folders take priority over child files, and images retain image-message routing.
 - OpenCode receives a system hint describing the output section contract whenever automatic output attachment is enabled.
 - Added `tests/agentDelivery.test.ts`; `npm.cmd test` and `npm.cmd run build:renderer` pass.
+
+## 2026-07-16 Agent output delivery follow-up
+
+- Agent output discovery now evaluates the whole completed assistant turn, not
+  only the final text message. Completed write/edit/patch tool metadata is used
+  to find files and folders created in the bound workspace.
+- Bot prompts now state that the application can deliver replies and workspace
+  outputs, so the model should not refuse or ask the user to send files
+  manually.
+- Offline conversations can persist Agent-produced files and folder manifests;
+  local-path caches keep those attachments openable from the message surface.
+- Assistant actions are icon-only and hidden until the message card is hovered
+  or keyboard focus enters the action group.
+- Added unit coverage for multi-message tool outputs and generic offline file
+  messages, plus an Electron assertion for the hover-only actions.
 - The Agent Electron E2E reached and passed the new switch visibility assertions and all existing UI assertions, but the Playwright worker exited nonzero during Electron teardown without reporting a failed test ID (`failedTests: []`).

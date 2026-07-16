@@ -1,6 +1,7 @@
 import {
   CopyOutlined,
   DeleteOutlined,
+  EditOutlined,
   FolderOpenOutlined,
   PushpinFilled,
   PushpinOutlined,
@@ -120,14 +121,7 @@ const MessageCard = ({
     >
       <div className="mb-1 flex items-center justify-between gap-3 text-[11px] text-[var(--sub-text)]">
         <span>{agentMessage.role}</span>
-        <div
-          className={clsx(
-            "transition-opacity",
-            agentMessage.role === "assistant"
-              ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100",
-          )}
-        >
+        <div className="invisible flex items-center opacity-0 transition-opacity focus-within:visible focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
           <Tooltip title="Copy">
             <Button
               size="small"
@@ -136,33 +130,36 @@ const MessageCard = ({
               onClick={() => void navigator.clipboard.writeText(text)}
             />
           </Tooltip>
-          <Button
-            size="small"
-            type="link"
-            onClick={() => emit("APPEND_CHAT_INPUT", text)}
-          >
-            Insert to IM
-          </Button>
-          {agentMessage.role === "assistant" && replyText && (
+          <Tooltip title="Insert into IM composer">
             <Button
               size="small"
-              type="link"
-              onClick={() =>
-                Modal.confirm({
-                  title: "Send this Agent reply to the current IM chat?",
-                  content: (
-                    <div className="max-h-48 overflow-y-auto whitespace-pre-wrap text-sm">
-                      {replyText}
-                    </div>
-                  ),
-                  okText: "Send to IM",
-                  onOk: () => emit("SEND_CHAT_INPUT", replyText),
-                })
-              }
-              data-testid="agent-send-to-im"
-            >
-              Send to IM
-            </Button>
+              type="text"
+              icon={<EditOutlined rev={undefined} />}
+              onClick={() => emit("APPEND_CHAT_INPUT", text)}
+              data-testid="agent-insert-to-im"
+            />
+          </Tooltip>
+          {agentMessage.role === "assistant" && replyText && (
+            <Tooltip title="Send to IM">
+              <Button
+                size="small"
+                type="text"
+                icon={<SendOutlined rev={undefined} />}
+                onClick={() =>
+                  Modal.confirm({
+                    title: "Send this Agent reply to the current IM chat?",
+                    content: (
+                      <div className="max-h-48 overflow-y-auto whitespace-pre-wrap text-sm">
+                        {replyText}
+                      </div>
+                    ),
+                    okText: "Send to IM",
+                    onOk: () => emit("SEND_CHAT_INPUT", replyText),
+                  })
+                }
+                data-testid="agent-send-to-im"
+              />
+            </Tooltip>
           )}
         </div>
       </div>

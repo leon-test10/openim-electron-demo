@@ -483,15 +483,26 @@ const refreshMessages = async (session: AgentSession) => {
   }
 };
 
-const latestCompletedAssistantMessage = (session: AgentSession) =>
-  [...session.messages]
-    .reverse()
-    .find(
+const latestCompletedAssistantTurn = (session: AgentSession) => {
+  let lastUserIndex = -1;
+  for (let index = session.messages.length - 1; index >= 0; index -= 1) {
+    if (session.messages[index].role === "user") {
+      lastUserIndex = index;
+      break;
+    }
+  }
+  return session.messages
+    .slice(lastUserIndex + 1)
+    .filter(
       (item) =>
         item.role === "assistant" &&
         typeof item.completedAt === "number" &&
-        item.parts.some((part) => part.type === "text" || part.type === "file"),
+        item.parts.some(
+          (part) =>
+            part.type === "text" || part.type === "file" || part.type === "tool",
+        ),
     );
+};
 
 const maybeRequestAutoDelivery = async (session: AgentSession) => {
   if (
@@ -500,7 +511,8 @@ const maybeRequestAutoDelivery = async (session: AgentSession) => {
   ) {
     return;
   }
-  const message = latestCompletedAssistantMessage(session);
+  const turnMessages = latestCompletedAssistantTurn(session);
+  const message = turnMessages[turnMessages.length - 1];
   if (!message) return;
   const messageAt = message.completedAt ?? message.createdAt;
   const wantsText =
@@ -514,7 +526,7 @@ const maybeRequestAutoDelivery = async (session: AgentSession) => {
   if (!wantsText && !wantsAttachments) return;
   if (pendingDeliveryRequests.has(session.id)) return;
 
-  const resolved = await resolveAgentDelivery(session.workspacePath, message);
+  const resolved = await resolveAgentDelivery(session.workspacePath, turnMessages);
   if (wantsText && !resolved.text) {
     session.lastAutoReplyMessageID = message.id;
   }

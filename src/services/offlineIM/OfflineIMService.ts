@@ -208,6 +208,21 @@ export class OfflineIMService {
     sender: OfflineMessageSender;
     content: string;
   }) {
+    return this.createMessage({
+      conversationID: params.conversationID,
+      sender: params.sender,
+      message: {
+        contentType: MessageType.TextMessage,
+        textElem: { content: params.content },
+      } as MessageItem,
+    });
+  }
+
+  async createMessage(params: {
+    conversationID: string;
+    sender: OfflineMessageSender;
+    message: MessageItem;
+  }) {
     const state = await this.readState();
     const conversation = state.conversations.find(
       (item) => item.conversationID === params.conversationID,
@@ -226,6 +241,7 @@ export class OfflineIMService {
     const now = this.now();
     const isSelf = params.sender === "self";
     const message = {
+      ...params.message,
       clientMsgID: createID("offline_msg", now),
       serverMsgID: "",
       conversationID: conversation.conversationID,
@@ -234,10 +250,6 @@ export class OfflineIMService {
       senderNickname: isSelf ? OFFLINE_SELF_NICKNAME : friend.nickname,
       senderFaceUrl: isSelf ? "" : friend.faceURL,
       sessionType: SessionType.Single,
-      contentType: MessageType.TextMessage,
-      textElem: {
-        content: params.content,
-      },
       sendTime: now,
       createTime: now,
       status: MessageStatus.Succeed,

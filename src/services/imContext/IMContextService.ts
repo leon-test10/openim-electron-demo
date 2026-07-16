@@ -317,7 +317,9 @@ export const createContextPrompt = (
       "",
       "Bot request safety:",
       "Do not send messages back to OpenIM by yourself.",
-      "Return your answer in the terminal. The user will review it before sending.",
+      "Return the complete answer and any output paths to the application.",
+      "The application may deliver them automatically according to the bound Agent session settings.",
+      "Do not claim that OpenIM file or folder delivery is unsupported and do not ask the user to send outputs manually.",
       "",
     );
   }

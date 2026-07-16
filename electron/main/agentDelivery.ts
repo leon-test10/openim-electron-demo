@@ -56,18 +56,54 @@ const resolveWorkspacePath = (workspacePath: string, value: string) => {
 
 export const resolveAgentDelivery = async (
   workspacePath: string,
-  message: AgentMessage,
+  messageOrMessages: AgentMessage | AgentMessage[],
 ) => {
-  const rawText = message.parts
+  const messages = Array.isArray(messageOrMessages)
+    ? messageOrMessages
+    : [messageOrMessages];
+  const finalMessage = messages[messages.length - 1];
+  const rawText = finalMessage.parts
     .filter((part) => part.type === "text" && part.text)
     .map((part) => part.text)
     .join("\n")
     .trim();
+  const toolOutputPaths: string[] = [];
+  const collectPathValues = (value: unknown, key = "") => {
+    if (typeof value === "string") {
+      if (/^(?:file)?path$/i.test(key)) toolOutputPaths.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => collectPathValues(item, key));
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    Object.entries(value as Record<string, unknown>).forEach(([childKey, child]) =>
+      collectPathValues(child, childKey),
+    );
+  };
+  messages.forEach((message) =>
+    message.parts
+      .filter(
+        (part) =>
+          part.type === "tool" &&
+          /^(?:write|edit|apply_patch|patch|mkdir|create_directory)$/i.test(
+            part.name ?? "",
+          ) &&
+          part.status === "completed",
+      )
+      .forEach((part) => collectPathValues(part.metadata)),
+  );
+  const inlinePaths = [...rawText.matchAll(/`([^`\r\n]+)`/g)].map((match) => match[1]);
   const filePaths = [
     ...parseSection(rawText, "Files"),
-    ...message.parts
-      .filter((part) => part.type === "file" && part.path)
-      .map((part) => part.path!),
+    ...toolOutputPaths,
+    ...inlinePaths,
+    ...messages.flatMap((message) =>
+      message.parts
+        .filter((part) => part.type === "file" && part.path)
+        .map((part) => part.path!),
+    ),
   ];
   const folderPaths = parseSection(rawText, "Folders");
   const attachments: AgentDeliveryAttachment[] = [];
@@ -118,6 +154,9 @@ export const resolveAgentDelivery = async (
 };
 
 export const AGENT_DELIVERY_SYSTEM_PROMPT = [
+  "The application can deliver your final text and workspace outputs to the bound OpenIM conversation.",
+  "Do not claim that files or folders cannot be sent and do not ask the user to send them manually.",
+  "When the user asks you to send a file or folder, create it in the workspace first.",
   "When you create files or folders that the user should receive in OpenIM,",
   "list workspace-relative paths at the end of your final response using these headings:",
   "## Output Files and ## Output Folders. Use one markdown list item per path.",

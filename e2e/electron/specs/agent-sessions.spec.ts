@@ -39,6 +39,19 @@ test("Agent panel follows contacts while background work continues", async ({
   await appWindow.getByTestId("agent-model-select").click();
   await appWindow.getByText("E2E Provider · E2E Model (default)").click();
 
+  const assistantCard = appWindow
+    .getByTestId("agent-message-assistant")
+    .last();
+  await expect(appWindow.getByTestId("agent-send-to-im")).toBeHidden();
+  await expect(
+    appWindow.getByTestId("agent-insert-to-im").last(),
+  ).toBeHidden();
+  await assistantCard.hover();
+  await expect(appWindow.getByTestId("agent-send-to-im")).toBeVisible();
+  await expect(
+    appWindow.getByTestId("agent-insert-to-im").last(),
+  ).toBeVisible();
+
   await appWindow.getByTestId("agent-send-to-im").click();
   await appWindow
     .getByRole("dialog")
