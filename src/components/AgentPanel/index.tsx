@@ -22,7 +22,7 @@ import {
   Tooltip,
 } from "antd";
 import clsx from "clsx";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
@@ -61,6 +61,66 @@ const partText = (agentMessage: AgentMessage) =>
     .map((part) => part.text ?? part.path ?? "")
     .filter(Boolean)
     .join("\n");
+
+const StreamedMarkdown = ({
+  text,
+  shouldStream,
+}: {
+  text: string;
+  shouldStream: boolean;
+}) => {
+  const [displayed, setDisplayed] = useState(() => (shouldStream ? "" : text));
+  const displayedRef = useRef(displayed);
+  const targetRef = useRef(text);
+  const streamingRef = useRef(shouldStream && Boolean(text));
+
+  useEffect(() => {
+    displayedRef.current = displayed;
+  }, [displayed]);
+
+  useEffect(() => {
+    targetRef.current = text;
+    const canContinue = text.startsWith(displayedRef.current);
+    if ((shouldStream || streamingRef.current) && canContinue) {
+      streamingRef.current = displayedRef.current !== text;
+      return;
+    }
+    streamingRef.current = false;
+    setDisplayed(text);
+  }, [shouldStream, text]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!streamingRef.current) return;
+      setDisplayed((current) => {
+        const target = targetRef.current;
+        if (!target.startsWith(current)) {
+          streamingRef.current = false;
+          return target;
+        }
+        const remaining = target.length - current.length;
+        if (remaining <= 0) {
+          streamingRef.current = false;
+          return target;
+        }
+        const step = Math.max(1, Math.ceil(remaining / 40));
+        const next = target.slice(0, current.length + step);
+        if (next === target) streamingRef.current = false;
+        return next;
+      });
+    }, 24);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <div data-testid="agent-streaming-text">
+      <SafeMarkdown text={displayed} />
+      {displayed !== text && (
+        <span className="inline-block h-4 w-0.5 animate-pulse bg-[var(--primary)] align-middle" />
+      )}
+    </div>
+  );
+};
 
 const MessageCard = ({
   agentMessage,
@@ -174,7 +234,15 @@ const MessageCard = ({
             <span className="truncate">{part.name ?? part.path ?? "Output file"}</span>
           </Button>
         ) : (
-          <SafeMarkdown key={part.id} text={part.text ?? ""} />
+          <StreamedMarkdown
+            key={part.id}
+            text={part.text ?? ""}
+            shouldStream={
+              agentMessage.role === "assistant" &&
+              !agentMessage.completedAt &&
+              session.status === "running"
+            }
+          />
         ),
       )}
       {agentMessage.role === "assistant" &&
@@ -391,15 +459,22 @@ const BotRequestCard = ({ request }: { request: BotRequest }) => {
     }
   };
   return (
-    <div className="mb-2 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:bg-blue-950/20">
-      <div className="mb-1 text-xs text-[var(--sub-text)]">
-        Bot request from {request.senderNickname ?? request.senderUserID}
+    <div
+      className="mb-2 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:bg-blue-950/20"
+      data-testid="agent-pending-bot-request"
+    >
+      <div className="font-medium">Pending @bot request</div>
+      <div className="mb-1 mt-0.5 text-xs text-[var(--sub-text)]">
+        From {request.senderNickname ?? request.senderUserID}. It has not run yet.
       </div>
       <div className="mb-2 text-sm">
         {request.instructionText || "(no instruction)"}
       </div>
+      <div className="mb-2 text-xs text-[var(--sub-text)]">
+        Run it in this contact&apos;s pinned Bot session, or dismiss it.
+      </div>
       <Button size="small" type="primary" loading={running} onClick={() => void run()}>
-        Review and run
+        Run in Bot session
       </Button>
       <Button
         size="small"
@@ -408,7 +483,7 @@ const BotRequestCard = ({ request }: { request: BotRequest }) => {
           void useAgentSessionStore.getState().ignoreBotRequest(request.id)
         }
       >
-        Ignore
+        Dismiss
       </Button>
     </div>
   );
@@ -612,7 +687,9 @@ const AgentPanel = ({
               value={activeSession.id}
               options={conversationSessions.map((session) => ({
                 value: session.id,
-                label: `${session.pinned ? "📌 " : ""}${session.title}`,
+                label: `${session.kind === "bot" ? "Bot · " : ""}${
+                  session.pinned ? "📌 " : ""
+                }${session.title}`,
               }))}
               onChange={(sessionID) =>
                 conversationID &&

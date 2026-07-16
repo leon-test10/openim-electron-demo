@@ -3,7 +3,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 
-import { Notification } from "electron";
+import { app, Notification } from "electron";
 
 import type {
   AgentHistoryQueryRequest,
@@ -29,10 +29,14 @@ import { IpcMainToRender } from "../constants";
 import type { RuntimeSessionEvent } from "./agentRuntimeAdapter";
 import { mergeAgentRuntimeMessages } from "./agentMessageMerge";
 import { applyRuntimeMessageEvent } from "./agentStreaming";
+import {
+  discoverExternalAgentSessions,
+  discoverManagedAgentSessions,
+} from "./agentSessionRecovery";
 import { AGENT_DELIVERY_SYSTEM_PROMPT, resolveAgentDelivery } from "./agentDelivery";
 import { opencodeManager } from "./opencodeManage";
 import { getStore } from "./storeManage";
-import { getTerminalWorkspaceDir } from "./workspaceManage";
+import { getTerminalWorkspaceDir, getWorkspaceRoot } from "./workspaceManage";
 import { sendEvent, showWindow } from "./windowManage";
 import {
   AgentHistoryCapabilityRegistry,
@@ -217,6 +221,9 @@ const persistSessionFiles = async (session: AgentSession) => {
       runtimeSessionID: session.runtimeSessionID,
       workspacePath: session.workspacePath,
       updatedAt: session.updatedAt,
+      archived: session.archived,
+      pinned: session.pinned,
+      liveHistoryEnabled: session.liveHistoryEnabled,
     }),
   ]);
 };
@@ -741,7 +748,18 @@ const handleRuntimeEvent = (event: RuntimeSessionEvent) => {
   if (event.type === "message.updated" || event.type === "message.part.updated") {
     session.messages = applyRuntimeMessageEvent(session.messages, event);
     session.updatedAt = Date.now();
-    scheduleStreamPublish(session.id);
+    const streamedMessage = event.messageID
+      ? session.messages.find((message) => message.id === event.messageID)
+      : event.message;
+    if (
+      event.part?.type === "text" &&
+      streamedMessage?.role === "assistant" &&
+      Boolean(event.part.text || event.delta)
+    ) {
+      broadcastSnapshot();
+    } else {
+      scheduleStreamPublish(session.id);
+    }
     scheduleRefresh(session, 250);
     return;
   }
@@ -878,6 +896,18 @@ const restorePersistedSessions = async () => {
     }),
   );
   restored.forEach((session) => sessions.set(session.id, session));
+  const discovered = await discoverManagedAgentSessions(
+    getWorkspaceRoot(),
+    new Set(sessions.keys()),
+  );
+  discovered.forEach((session) => sessions.set(session.id, session));
+  const external = await discoverExternalAgentSessions(
+    ["desktop", "documents", "downloads", "pictures"].map((name) =>
+      app.getPath(name as "desktop" | "documents" | "downloads" | "pictures"),
+    ),
+    new Set(sessions.keys()),
+  );
+  external.forEach((session) => sessions.set(session.id, session));
 };
 
 const reconcileRuntimeSessions = async () => {
@@ -1048,12 +1078,14 @@ const queueMessage = async (params: SendAgentMessageParams) => {
 };
 
 const getOrCreateBotSession = async (conversationID: string) => {
-  const existing = [...sessions.values()].find(
-    (session) =>
-      session.conversationID === conversationID &&
-      session.kind === "bot" &&
-      !session.archived,
-  );
+  const existing = [...sessions.values()]
+    .filter(
+      (session) =>
+        session.conversationID === conversationID &&
+        session.kind === "bot" &&
+        !session.archived,
+    )
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
   if (existing) return existing;
   return createSession({
     conversationID,
@@ -1370,6 +1402,7 @@ export const agentSessionManager = {
     request.contextPaths = params.contextPaths;
     request.status = "queued";
     request.updatedAt = Date.now();
+    state.activeSessionByConversation[request.conversationID] = session.id;
     publish();
     return queueMessage({
       sessionID: session.id,

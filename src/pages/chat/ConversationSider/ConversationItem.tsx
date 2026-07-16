@@ -189,7 +189,15 @@ const ConversationItem = ({ isActive, conversation }: IConversationProps) => {
                 })}
               />
               {session.pinned && <PushpinFilled rev={undefined} className="shrink-0" />}
-              <span className="min-w-0 flex-1 truncate">{session.title}</span>
+              <span
+                className="min-w-0 flex-1 truncate"
+                title={`${session.kind === "bot" ? "Bot session" : "Agent session"}: ${
+                  session.title
+                }\n${session.workspacePath}`}
+              >
+                {session.kind === "bot" ? "Bot · " : ""}
+                {session.title}
+              </span>
               {session.unreadCount > 0 && (
                 <Badge size="small" count={session.unreadCount} />
               )}

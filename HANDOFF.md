@@ -3009,4 +3009,24 @@ Close the app, edit `%APPDATA%/OpenIM Agent/config.json`, then reopen.
   session is running.
 - Real-message replay for the reported `test_folder/readme.txt` case resolves
   only `test_folder`; unit tests cover folder deduplication and text deltas.
+
+## 2026-07-16 Session recovery and visible streaming follow-up
+
+- Startup now merges electron-store metadata with `.openim-agent/session.json`
+  records found in both the managed workspace root and standard user folders
+  (Desktop, Documents, Downloads, Pictures, depth-limited). Missing store rows
+  no longer hide intact managed or explicitly selected workspaces.
+- Recovered sessions retain cached messages and runtime IDs; unsafe automatic
+  reply/attachment switches remain off. New metadata also records archive,
+  pin, and live-history state.
+- Bot execution reuses the most recently active non-archived Bot session and
+  selects it when a reviewed request is run. Pending request cards now explain
+  that they have not run and offer `Run in Bot session` or `Dismiss` actions.
+- Conversation and panel session selectors prefix Bot sessions with `Bot ·`.
+- A live OpenCode probe showed this configured model emits an empty text part
+  followed by one full text part and no `delta`. Full text parts are therefore
+  broadcast before `session.idle` and progressively revealed in the Renderer;
+  true deltas remain supported when a provider emits them.
+- Real startup recovery restored all five existing sessions for the reported
+  offline contact, including two external workspaces under Pictures.
 - The Agent Electron E2E reached and passed the new switch visibility assertions and all existing UI assertions, but the Playwright worker exited nonzero during Electron teardown without reporting a failed test ID (`failedTests: []`).

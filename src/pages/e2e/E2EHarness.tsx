@@ -315,11 +315,6 @@ const installE2EElectronMock = () => {
               session.id === params.sessionID
                 ? {
                     ...session,
-                    status: "idle",
-                    unreadCount:
-                      visibleAgentSessionID === params.sessionID
-                        ? 0
-                        : session.unreadCount + 1,
                     messages: [
                       ...session.messages,
                       {
@@ -340,7 +335,28 @@ const installE2EElectronMock = () => {
                 : session,
             ),
           }));
-        }, 500);
+        }, 120);
+        window.setTimeout(() => {
+          useAgentSessionStore.setState((state) => ({
+            sessions: state.sessions.map((session) =>
+              session.id === params.sessionID
+                ? {
+                    ...session,
+                    status: "idle",
+                    unreadCount:
+                      visibleAgentSessionID === params.sessionID
+                        ? 0
+                        : session.unreadCount + 1,
+                    messages: session.messages.map((message) =>
+                      message.id === `e2e-assistant-${now}`
+                        ? { ...message, completedAt: Date.now() }
+                        : message,
+                    ),
+                  }
+                : session,
+            ),
+          }));
+        }, 900);
         return Promise.resolve({ ok: true } as T);
       }
 

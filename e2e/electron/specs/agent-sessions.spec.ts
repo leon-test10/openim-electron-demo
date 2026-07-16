@@ -72,3 +72,21 @@ test("Agent panel follows contacts while background work continues", async ({
   expect(attachedSessions).toContain("e2e-agent-contact-1");
   expect(attachedSessions).toContain("e2e-agent-contact-2");
 });
+
+test("Agent assistant text renders progressively while running", async ({
+  appWindow,
+}) => {
+  await gotoHarness(appWindow, { agent: true });
+  const composer = appWindow.getByPlaceholder("Message Agent");
+  await composer.fill("stream this response");
+  await appWindow.getByRole("button", { name: "Send" }).click();
+
+  const streamed = appWindow.getByTestId("agent-streaming-text").last();
+  await expect(streamed).toBeVisible();
+  await expect
+    .poll(async () => (await streamed.textContent())?.length ?? 0)
+    .toBeGreaterThan(0);
+  await expect(streamed).toContainText(
+    "Completed in background: stream this response",
+  );
+});
