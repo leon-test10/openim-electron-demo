@@ -73,6 +73,7 @@ export const IpcRenderToMain = {
   agentSessionRunBotRequest: "agent-session:runBotRequest",
   agentSessionWriteFiles: "agent-session:writeFiles",
   agentSessionHistoryResponse: "agent-session:historyResponse",
+  agentSessionDeliveryResponse: "agent-session:deliveryResponse",
   agentSessionOpenTerminal: "agent-session:openTerminal",
 
   workspaceGetConversationDir: "workspace:getConversationDir",

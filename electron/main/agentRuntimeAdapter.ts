@@ -42,6 +42,7 @@ export interface AgentRuntimeAdapter {
     prompt: string;
     messageID: string;
     model?: AgentModelRef;
+    system?: string;
   }): Promise<void>;
   abort(params: { workspacePath: string; runtimeSessionID: string }): Promise<void>;
   replyPermission(params: {

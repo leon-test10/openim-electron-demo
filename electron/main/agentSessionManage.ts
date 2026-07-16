@@ -8,6 +8,7 @@ import { Notification } from "electron";
 import type {
   AgentHistoryQueryRequest,
   AgentHistoryQueryResponse,
+  AgentDeliveryResponse,
   AgentInteraction,
   AgentMessage,
   AgentPermissionInteraction,
@@ -27,6 +28,7 @@ import type {
 import { IpcMainToRender } from "../constants";
 import type { RuntimeSessionEvent } from "./agentRuntimeAdapter";
 import { mergeAgentRuntimeMessages } from "./agentMessageMerge";
+import { AGENT_DELIVERY_SYSTEM_PROMPT, resolveAgentDelivery } from "./agentDelivery";
 import { opencodeManager } from "./opencodeManage";
 import { getStore } from "./storeManage";
 import { getTerminalWorkspaceDir } from "./workspaceManage";
@@ -67,6 +69,7 @@ const autoApproveSessionIDs = new Set<string>();
 const historyCapabilities = new AgentHistoryCapabilityRegistry();
 const historyRequests = new Map<string, PendingHistoryRequest>();
 const refreshTimers = new Map<string, NodeJS.Timeout>();
+const pendingDeliveryRequests = new Map<string, string>();
 const fileWriteQueues = new Map<string, Promise<void>>();
 let runtimeBaseUrl: string | undefined;
 let initialized = false;
@@ -474,9 +477,74 @@ const refreshMessages = async (session: AgentSession) => {
     session.updatedAt = Date.now();
     await persistSessionFiles(session);
     publish();
+    await maybeRequestAutoDelivery(session);
   } catch (error) {
     session.lastError = error instanceof Error ? error.message : String(error);
   }
+};
+
+const latestCompletedAssistantMessage = (session: AgentSession) =>
+  [...session.messages]
+    .reverse()
+    .find(
+      (item) =>
+        item.role === "assistant" &&
+        typeof item.completedAt === "number" &&
+        item.parts.some((part) => part.type === "text" || part.type === "file"),
+    );
+
+const maybeRequestAutoDelivery = async (session: AgentSession) => {
+  if (
+    !session.lastCompletedAt ||
+    (!session.autoReplyTextEnabled && !session.autoFileAttachmentEnabled)
+  ) {
+    return;
+  }
+  const message = latestCompletedAssistantMessage(session);
+  if (!message) return;
+  const messageAt = message.completedAt ?? message.createdAt;
+  const wantsText =
+    session.autoReplyTextEnabled &&
+    messageAt >= (session.autoReplyTextEnabledAt ?? Number.MAX_SAFE_INTEGER) &&
+    session.lastAutoReplyMessageID !== message.id;
+  const wantsAttachments =
+    session.autoFileAttachmentEnabled &&
+    messageAt >= (session.autoFileAttachmentEnabledAt ?? Number.MAX_SAFE_INTEGER) &&
+    session.lastAutoAttachmentMessageID !== message.id;
+  if (!wantsText && !wantsAttachments) return;
+  if (pendingDeliveryRequests.has(session.id)) return;
+
+  const resolved = await resolveAgentDelivery(session.workspacePath, message);
+  if (wantsText && !resolved.text) {
+    session.lastAutoReplyMessageID = message.id;
+  }
+  if (wantsAttachments && resolved.attachments.length === 0) {
+    session.lastAutoAttachmentMessageID = message.id;
+  }
+  const deliveryText = wantsText ? resolved.text || undefined : undefined;
+  const deliveryAttachments = wantsAttachments ? resolved.attachments : [];
+  if (!deliveryText && deliveryAttachments.length === 0) {
+    persist();
+    return;
+  }
+  const requestID = createID("agent_delivery");
+  pendingDeliveryRequests.set(session.id, requestID);
+  setTimeout(() => {
+    if (pendingDeliveryRequests.get(session.id) === requestID) {
+      pendingDeliveryRequests.delete(session.id);
+    }
+  }, 30_000).unref();
+  sendEvent(IpcMainToRender.agentSessionEvent, {
+    type: "delivery-request",
+    request: {
+      requestID,
+      sessionID: session.id,
+      conversationID: session.conversationID,
+      messageID: message.id,
+      text: deliveryText,
+      attachments: deliveryAttachments,
+    },
+  } satisfies AgentSessionEvent);
 };
 
 const scheduleRefresh = (session: AgentSession, delay = 120) => {
@@ -527,6 +595,9 @@ const dispatchNext = async (session: AgentSession) => {
       prompt: turn.prompt,
       messageID: `local_${turn.id}`,
       model: session.model,
+      system: session.autoFileAttachmentEnabled
+        ? AGENT_DELIVERY_SYSTEM_PROMPT
+        : undefined,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -763,6 +834,8 @@ const restorePersistedSessions = async () => {
       );
       return {
         ...saved,
+        autoReplyTextEnabled: saved.autoReplyTextEnabled === true,
+        autoFileAttachmentEnabled: saved.autoFileAttachmentEnabled === true,
         turns,
         status:
           saved.archived || saved.status === "archived" ? "archived" : "disconnected",
@@ -859,6 +932,8 @@ const createSession = async (params: CreateAgentSessionParams) => {
       typeof params.liveHistoryEnabled === "boolean"
         ? params.liveHistoryEnabled
         : params.kind !== "bot",
+    autoReplyTextEnabled: false,
+    autoFileAttachmentEnabled: false,
     createdAt: now,
     updatedAt: now,
     lastOpenedAt: now,
@@ -972,6 +1047,24 @@ export const agentSessionManager = {
     if (typeof params.pinned === "boolean") session.pinned = params.pinned;
     if (params.model) session.model = params.model;
     if (
+      typeof params.autoReplyTextEnabled === "boolean" &&
+      params.autoReplyTextEnabled !== session.autoReplyTextEnabled
+    ) {
+      session.autoReplyTextEnabled = params.autoReplyTextEnabled;
+      session.autoReplyTextEnabledAt = params.autoReplyTextEnabled
+        ? Date.now()
+        : undefined;
+    }
+    if (
+      typeof params.autoFileAttachmentEnabled === "boolean" &&
+      params.autoFileAttachmentEnabled !== session.autoFileAttachmentEnabled
+    ) {
+      session.autoFileAttachmentEnabled = params.autoFileAttachmentEnabled;
+      session.autoFileAttachmentEnabledAt = params.autoFileAttachmentEnabled
+        ? Date.now()
+        : undefined;
+    }
+    if (
       typeof params.liveHistoryEnabled === "boolean" &&
       params.liveHistoryEnabled !== session.liveHistoryEnabled
     ) {
@@ -997,6 +1090,7 @@ export const agentSessionManager = {
     session.status = "archived";
     session.updatedAt = Date.now();
     autoApproveSessionIDs.delete(sessionID);
+    pendingDeliveryRequests.delete(sessionID);
     await refreshHistoryCapability(session);
     if (state.activeSessionByConversation[session.conversationID] === sessionID) {
       state.activeSessionByConversation[session.conversationID] = [...sessions.values()]
@@ -1023,6 +1117,24 @@ export const agentSessionManager = {
     return snapshot();
   },
   sendMessage: queueMessage,
+  async handleDeliveryResponse(response: AgentDeliveryResponse) {
+    await ensureInitialized();
+    const session = sessions.get(response.sessionID);
+    if (!session) return;
+    if (pendingDeliveryRequests.get(session.id) !== response.requestID) return;
+    pendingDeliveryRequests.delete(session.id);
+    if (response.textSent) session.lastAutoReplyMessageID = response.messageID;
+    if (response.sentAttachmentPaths.length > 0) {
+      session.lastAutoAttachmentMessageID = response.messageID;
+    }
+    if (response.errors?.length) {
+      session.lastError = `Automatic IM delivery: ${response.errors.join("; ")}`;
+      notifySession(session, "Automatic Agent delivery failed", session.title);
+    }
+    session.updatedAt = Date.now();
+    await persistSessionFiles(session);
+    publish();
+  },
   async abort(sessionID: string) {
     await ensureInitialized();
     const session = sessions.get(sessionID);

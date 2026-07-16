@@ -524,6 +524,9 @@ export const setIpcMainListener = () => {
     agentSessionManager.handleHistoryResponse(response);
     return true;
   });
+  ipcMain.handle(IpcRenderToMain.agentSessionDeliveryResponse, (_, response) => {
+    return agentSessionManager.handleDeliveryResponse(response);
+  });
   ipcMain.handle(
     IpcRenderToMain.agentSessionOpenTerminal,
     async (event, params: { sessionID: string; cols?: number; rows?: number }) => {

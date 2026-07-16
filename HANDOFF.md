@@ -2968,3 +2968,14 @@ Close the app, edit `%APPDATA%/OpenIM Agent/config.json`, then reopen.
 - `npm.cmd run build` passed.
 - `npm.cmd run package:win` produced the installer.
 - `npm.cmd run package:win:portable` produced the portable exe.
+
+## 2026-07-16 Agent-session automatic IM delivery
+
+- Restored per-Agent-session switches for `Auto send reply` and `Auto attach outputs`; both default to off and enabling either requires an explicit warning dialog.
+- Delivery is now contact-safe: Main emits a request containing the bound `conversationID`, so a background Agent cannot accidentally send through the currently visible chat composer.
+- Text delivery supports online and offline conversations. Output file/folder delivery supports online OpenIM and reports an explicit unsupported error in offline mode.
+- Completed assistant messages are deduplicated by runtime message ID and the delivery checkpoint is persisted with the Agent session.
+- `## Output Files` and `## Output Folders` are parsed from the final assistant response. Paths are restricted to the session workspace, missing paths are ignored, folders take priority over child files, and images retain image-message routing.
+- OpenCode receives a system hint describing the output section contract whenever automatic output attachment is enabled.
+- Added `tests/agentDelivery.test.ts`; `npm.cmd test` and `npm.cmd run build:renderer` pass.
+- The Agent Electron E2E reached and passed the new switch visibility assertions and all existing UI assertions, but the Playwright worker exited nonzero during Electron teardown without reporting a failed test ID (`failedTests: []`).

@@ -112,6 +112,12 @@ export interface AgentSession {
   archived: boolean;
   unreadCount: number;
   liveHistoryEnabled: boolean;
+  autoReplyTextEnabled?: boolean;
+  autoReplyTextEnabledAt?: number;
+  autoFileAttachmentEnabled?: boolean;
+  autoFileAttachmentEnabledAt?: number;
+  lastAutoReplyMessageID?: string;
+  lastAutoAttachmentMessageID?: string;
   model?: AgentModelRef;
   createdAt: number;
   updatedAt: number;
@@ -186,6 +192,8 @@ export interface UpdateAgentSessionParams {
   title?: string;
   pinned?: boolean;
   liveHistoryEnabled?: boolean;
+  autoReplyTextEnabled?: boolean;
+  autoFileAttachmentEnabled?: boolean;
   model?: AgentModelRef;
 }
 
@@ -236,7 +244,34 @@ export interface AgentHistoryQueryResponse {
   error?: string;
 }
 
+export interface AgentDeliveryAttachment {
+  path: string;
+  nativePath: string;
+  fileName: string;
+  kind: "file" | "image" | "folder";
+  size?: number;
+}
+
+export interface AgentDeliveryRequest {
+  requestID: string;
+  sessionID: string;
+  conversationID: string;
+  messageID: string;
+  text?: string;
+  attachments: AgentDeliveryAttachment[];
+}
+
+export interface AgentDeliveryResponse {
+  requestID: string;
+  sessionID: string;
+  messageID: string;
+  textSent: boolean;
+  sentAttachmentPaths: string[];
+  errors?: string[];
+}
+
 export type AgentSessionEvent =
   | { type: "snapshot"; snapshot: AgentSessionStateSnapshot }
   | { type: "navigate"; conversationID: string; sessionID?: string }
-  | { type: "history-query"; request: AgentHistoryQueryRequest };
+  | { type: "history-query"; request: AgentHistoryQueryRequest }
+  | { type: "delivery-request"; request: AgentDeliveryRequest };

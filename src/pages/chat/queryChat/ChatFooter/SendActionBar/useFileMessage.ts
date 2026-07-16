@@ -38,7 +38,7 @@ const joinNativeFolderPath = (rootPath: string, relativePath: string) => {
   )}`;
 };
 
-export function useFileMessage() {
+export function createFileMessageHelpers() {
   const getImageMessage = async (input: LocalFileInput) => {
     const isFile = input instanceof File;
     const nativePath = isFile ? (input as FileWithPath).path : input.nativePath;
@@ -161,4 +161,8 @@ export function useFileMessage() {
     getFolderMessage,
     getImageMessage,
   };
+}
+
+export function useFileMessage() {
+  return createFileMessageHelpers();
 }

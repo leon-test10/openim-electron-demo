@@ -665,6 +665,7 @@ const adapter: AgentRuntimeAdapter = {
         method: "POST",
         body: JSON.stringify({
           ...(params.model ? { model: params.model } : {}),
+          ...(params.system ? { system: params.system } : {}),
           parts: [{ type: "text", text: params.prompt }],
         }),
       },

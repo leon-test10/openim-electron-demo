@@ -797,6 +797,60 @@ const AgentPanel = ({
                 }
               />
             </label>
+            <label className="flex items-center gap-1">
+              Auto send reply
+              <Switch
+                size="small"
+                checked={Boolean(activeSession.autoReplyTextEnabled)}
+                onChange={(checked) => {
+                  const apply = () =>
+                    useAgentSessionStore.getState().updateSession({
+                      sessionID: activeSession.id,
+                      autoReplyTextEnabled: checked,
+                    });
+                  if (!checked) {
+                    void apply();
+                    return;
+                  }
+                  Modal.confirm({
+                    title: "Send Agent replies without confirmation?",
+                    content:
+                      "New replies from this Agent session will be sent automatically to its bound IM conversation, even when you switch to another contact.",
+                    okText: "Enable auto send",
+                    cancelText: "Cancel",
+                    onOk: apply,
+                  });
+                }}
+                data-testid="agent-auto-send-reply"
+              />
+            </label>
+            <label className="flex items-center gap-1">
+              Auto attach outputs
+              <Switch
+                size="small"
+                checked={Boolean(activeSession.autoFileAttachmentEnabled)}
+                onChange={(checked) => {
+                  const apply = () =>
+                    useAgentSessionStore.getState().updateSession({
+                      sessionID: activeSession.id,
+                      autoFileAttachmentEnabled: checked,
+                    });
+                  if (!checked) {
+                    void apply();
+                    return;
+                  }
+                  Modal.confirm({
+                    title: "Automatically send output files and folders?",
+                    content:
+                      "Files and folders listed by this Agent under Output Files or Output Folders will be uploaded to its bound IM conversation without another confirmation.",
+                    okText: "Enable auto attachments",
+                    cancelText: "Cancel",
+                    onOk: apply,
+                  });
+                }}
+                data-testid="agent-auto-attach-output"
+              />
+            </label>
             <span
               className="truncate text-[var(--sub-text)]"
               title={activeSession.workspacePath}

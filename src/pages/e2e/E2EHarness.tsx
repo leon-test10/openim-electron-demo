@@ -260,6 +260,8 @@ const installE2EElectronMock = () => {
           title?: string;
           pinned?: boolean;
           liveHistoryEnabled?: boolean;
+          autoReplyTextEnabled?: boolean;
+          autoFileAttachmentEnabled?: boolean;
           model?: { providerID: string; modelID: string };
         };
         useAgentSessionStore.setState((state) => ({
@@ -919,6 +921,8 @@ const E2EHarness = () => {
           archived: false,
           unreadCount: 0,
           liveHistoryEnabled: true,
+          autoReplyTextEnabled: false,
+          autoFileAttachmentEnabled: false,
           createdAt: now,
           updatedAt: now,
           lastOpenedAt: now,

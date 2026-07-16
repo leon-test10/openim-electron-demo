@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { persistAgentContextBundle } from "@/services/agentSessions/context";
+import { deliverAgentOutput } from "@/services/agentSessions/delivery";
 import { answerAgentHistoryQuery } from "@/services/agentSessions/history";
 import {
   useAgentSessionStore,
@@ -37,6 +38,22 @@ export const useAgentSessionBridge = () => {
           void answerAgentHistoryQuery(event.request).then((response) =>
             useAgentSessionStore.getState().sendHistoryResponse(response),
           );
+          return;
+        }
+        if (event.type === "delivery-request") {
+          void deliverAgentOutput(event.request).then(async (response) => {
+            await window.electronAPI?.ipcInvoke(
+              "agent-session:deliveryResponse",
+              response,
+            );
+            if (response.errors?.length) {
+              message.error(response.errors.join("; "));
+            } else {
+              const count =
+                Number(response.textSent) + response.sentAttachmentPaths.length;
+              message.success(`Agent output auto-sent (${count})`);
+            }
+          });
           return;
         }
         useAgentSessionStore.getState().applyEvent(event);

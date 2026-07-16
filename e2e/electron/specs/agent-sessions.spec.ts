@@ -7,6 +7,8 @@ test("Agent panel follows contacts while background work continues", async ({
   await gotoHarness(appWindow, { agent: true });
 
   await expect(appWindow.getByTestId("agent-panel")).toBeVisible();
+  await expect(appWindow.getByTestId("agent-auto-send-reply")).toBeVisible();
+  await expect(appWindow.getByTestId("agent-auto-attach-output")).toBeVisible();
   await expect(
     appWindow.getByTestId("agent-panel").getByText("Contact 1 task"),
   ).toBeVisible();
