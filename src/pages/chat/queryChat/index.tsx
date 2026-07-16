@@ -30,19 +30,29 @@ export const QueryChat = () => {
   });
 
   return (
-    <Layout id="chat-container" className="relative overflow-hidden">
+    <Layout
+      id="chat-container"
+      className="relative h-full min-h-0 min-w-0 overflow-hidden"
+    >
       <ChatHeader onOpenHistory={() => setHistoryDrawerOpen(true)} />
-      <PanelGroup direction="vertical">
-        <Panel id="chat-main" order={0}>
+      <PanelGroup direction="vertical" className="min-h-0 flex-1">
+        <Panel
+          id="chat-messages-panel"
+          order={0}
+          defaultSize={75}
+          minSize={35}
+          className="min-h-0"
+        >
           <ChatContent />
         </Panel>
-        <PanelResizeHandle />
+        <PanelResizeHandle className="h-1 shrink-0 bg-[var(--gap-text)] transition-colors hover:bg-[var(--primary)]" />
         <Panel
           id="chat-footer"
           order={1}
           defaultSize={25}
+          minSize={18}
           maxSize={60}
-          className="min-h-[200px]"
+          className="min-h-0"
         >
           <ChatFooter />
         </Panel>

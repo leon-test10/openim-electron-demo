@@ -65,7 +65,7 @@ const ChatContent = () => {
 
   return (
     <Layout.Content
-      className="relative flex h-full overflow-hidden !bg-white"
+      className="relative flex h-full min-h-0 min-w-0 overflow-hidden !bg-white"
       id="chat-main"
     >
       {loadState.initLoading ? (
@@ -79,7 +79,7 @@ const ChatContent = () => {
           )}
           <Virtuoso
             id="chat-list"
-            className="w-full overflow-x-hidden"
+            className="h-full min-h-0 w-full overflow-x-hidden"
             followOutput="smooth"
             firstItemIndex={loadState.firstItemIndex}
             initialTopMostItemIndex={SPLIT_COUNT - 1}

@@ -22,11 +22,11 @@ const ChatAndAgent = ({ agentOpen }: { agentOpen: boolean }) => {
   if (!agentOpen) return <Outlet />;
   return (
     <PanelGroup direction="horizontal" className="h-full min-w-0">
-      <Panel defaultSize={66} minSize={32}>
+      <Panel defaultSize={66} minSize={40} className="min-h-0 min-w-0">
         <Outlet />
       </Panel>
       <ResizeHandle direction="horizontal" />
-      <Panel defaultSize={34} minSize={24} maxSize={58}>
+      <Panel defaultSize={34} minSize={24} maxSize={55} className="min-h-0 min-w-0">
         <AgentPanel />
       </Panel>
     </PanelGroup>
@@ -38,16 +38,16 @@ export const Chat = () => {
   const terminalOpen = useAgentSessionStore((state) => state.terminalPanelOpen);
 
   return (
-    <Layout className="min-w-0 flex-row">
+    <Layout className="h-full min-h-0 min-w-0 flex-row overflow-hidden">
       <ConversationSider />
-      <div className="min-w-0 flex-1">
+      <div className="h-full min-h-0 min-w-0 flex-1 overflow-hidden">
         {terminalOpen ? (
-          <PanelGroup direction="vertical" className="h-full">
-            <Panel defaultSize={70} minSize={30}>
+          <PanelGroup direction="vertical" className="h-full min-h-0">
+            <Panel defaultSize={70} minSize={40} className="min-h-0">
               <ChatAndAgent agentOpen={agentOpen} />
             </Panel>
             <ResizeHandle direction="vertical" />
-            <Panel defaultSize={30} minSize={16} maxSize={65}>
+            <Panel defaultSize={30} minSize={16} maxSize={55} className="min-h-0">
               <AgentTerminalPanel />
             </Panel>
           </PanelGroup>

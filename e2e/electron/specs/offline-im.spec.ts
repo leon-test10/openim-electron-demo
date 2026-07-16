@@ -40,9 +40,17 @@ test("offline mode creates a virtual friend conversation with persistent message
   await expect(appWindow.getByText("Local Agent").first()).toBeVisible();
   await expect(appWindow).toHaveURL(/#\/chat\/offline_si_/);
 
+  const messagesBox = await appWindow.locator("#chat-main").boundingBox();
+  const footerBox = await appWindow.locator("#chat-footer").boundingBox();
+  expect(messagesBox?.height ?? 0).toBeGreaterThan(200);
+  expect(footerBox?.height ?? Number.POSITIVE_INFINITY).toBeLessThan(
+    messagesBox?.height ?? 0,
+  );
+  await expect(appWindow.locator(".ck-content[contenteditable='true']")).toBeVisible();
+
   await appWindow.locator(".ck-content[contenteditable='true']").fill("hello offline");
   await appWindow.getByTestId("chat-footer-send").click();
-  await expect(appWindow.getByText("hello offline")).toBeVisible();
+  await expect(appWindow.getByText("hello offline").last()).toBeVisible();
 
   await appWindow.reload();
   await expect(appWindow).toHaveURL(/#\/chat\/offline_si_/);

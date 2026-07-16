@@ -1,5 +1,35 @@
 # Session Handoff - Contact-scoped Persistent Agent Sessions
 
+## Latest Update - Chat Layout Regression Fix (2026-07-16)
+
+The nested horizontal Agent split and vertical Terminal/chat splits could
+collapse the center IM message panel while leaving only the composer/send
+controls visible.
+
+### Fixed
+
+- Propagated `h-full`, `min-h-0`, `min-w-0`, and overflow constraints through
+  the chat layout and every nested resizable panel.
+- Gave the IM message panel an explicit 75% default and 35% minimum share, and
+  prevented the Agent/Terminal panels from shrinking the chat below a usable
+  size.
+- Removed the duplicate `chat-main` DOM id from the resizable panel wrapper.
+- Made the editor body the flexible region inside the footer while keeping the
+  action bar and Send button fixed.
+- Added an offline Electron regression assertion that the message surface is
+  visible, taller than the composer, and remains usable with the Agent panel
+  open.
+
+### Validation
+
+- `npm.cmd run lint -- --no-fix`: pass with existing warnings only.
+- `npm.cmd run build:renderer`: pass.
+- `offline-im.spec.ts`: pass (1/1).
+- Live Electron visual smoke test: message list retains the primary center
+  area and the composer stays at the bottom.
+
+---
+
 ## Latest Update - Offline Agent Runtime Hotfix (2026-07-16)
 
 Current branch: `feature/agent-run-contract`

@@ -484,10 +484,10 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   };
 
   return (
-    <footer className="relative h-full bg-white py-px">
+    <footer className="relative h-full min-h-0 bg-white py-px">
       <div className="flex h-full flex-col border-t border-t-[var(--gap-text)]">
         <SendActionBar />
-        <div className="relative flex flex-1 flex-col overflow-hidden">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           {pendingAttachments.length > 0 && (
             <div
               className="mx-4 mt-2 flex max-h-24 flex-wrap gap-2 overflow-y-auto"
@@ -522,7 +522,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
               })}
             </div>
           )}
-          <div className="relative">
+          <div className="relative min-h-0 flex-1 overflow-y-auto">
             <BotMentionAutocomplete
               candidates={botTargetCandidates}
               query={mentionQuery}
@@ -532,7 +532,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
             />
             <CKEditor value={html} onEnter={enterToSend} onChange={onChange} />
           </div>
-          <div className="flex items-center justify-end py-2 pr-3">
+          <div className="flex shrink-0 items-center justify-end py-2 pr-3">
             <Button
               className="w-fit px-6 py-1"
               type="primary"
