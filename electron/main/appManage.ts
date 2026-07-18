@@ -1,17 +1,21 @@
-import { app, powerMonitor } from "electron";
-import { isExistMainWindow, sendEvent, showWindow } from "./windowManage";
 import { join } from "node:path";
+
+import { app, powerMonitor } from "electron";
 import fs from "fs";
-import { isMac, isProd, isWin } from "../utils";
-import { getStore } from "./storeManage";
+
 import { IpcMainToRender } from "../constants";
+import { isMac, isProd, isWin } from "../utils";
 import { logger } from ".";
-import { agentWatchManager } from "./agentWatchManage";
-import { opencodeManager } from "./opencodeManage";
+import { stopAgentCollaborationBridge } from "./agentGatewayBootstrap";
+import { agentGatewayManager } from "./agentGatewayManage";
 import { agentSessionManager } from "./agentSessionManage";
+import { agentWatchManager } from "./agentWatchManage";
 import { getUserConfigPath, loadAppConfig } from "./appConfig";
 import { ensureBundledOpencodeCommand } from "./opencodeBundleManage";
 import { ensureOpencodeConfigFile } from "./opencodeConfigManage";
+import { opencodeManager } from "./opencodeManage";
+import { getStore } from "./storeManage";
+import { isExistMainWindow, sendEvent, showWindow } from "./windowManage";
 
 const store = getStore();
 
@@ -48,7 +52,11 @@ export const setAppListener = (startApp: () => void) => {
     if (shutdownStarted) return;
     shutdownStarted = true;
     agentWatchManager.stopAll();
-    void agentSessionManager.stop().finally(() => {
+    stopAgentCollaborationBridge();
+    void Promise.allSettled([
+      agentSessionManager.stop(),
+      agentGatewayManager.stop(),
+    ]).finally(() => {
       opencodeManager.stopAll();
       shutdownComplete = true;
       app.quit();

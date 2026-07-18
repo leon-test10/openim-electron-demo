@@ -10,6 +10,13 @@ export const DEFAULT_RUNTIME_CONFIG: AppRuntimeConfig = {
   agent: {
     serviceUrl: "http://127.0.0.1:4096",
     bridgeUrl: "http://127.0.0.1:4096",
+    gateway: {
+      enabled: true,
+      hostname: "127.0.0.1",
+      port: 4097,
+      authToken: "",
+      heartbeatTtlMs: 30000,
+    },
   },
   terminal: {
     defaultWorkspacePath: "%USERPROFILE%\\OpenIM-Agent\\workspaces",

@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "vite --force --host",
     "build": "npm run build:renderer",
-    "build:renderer": "vite build",
+    "build:renderer": "vite build && node scripts/check-electron-runtime-imports.cjs",
     "build:main": "vite build --mode production",
     "package:win": "npm run build && electron-builder --win nsis",
     "package:win:portable": "npm run build && electron-builder --win portable",

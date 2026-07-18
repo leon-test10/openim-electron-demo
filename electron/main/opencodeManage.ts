@@ -10,9 +10,11 @@ import type {
 } from "../../src/types/agentSession";
 import type {
   AgentRuntimeAdapter,
+  AgentRuntimeDescriptor,
   RuntimeSessionEvent,
   RuntimeSessionRecord,
 } from "./agentRuntimeAdapter";
+import { OPENIM_AGENT_PROTOCOL_VERSION } from "../agent-core/protocol";
 import { getCurrentAppConfig } from "./appConfig";
 import { getTerminalWorkspaceDir } from "./workspaceManage";
 import {
@@ -607,7 +609,28 @@ const getModels = async (
   });
 };
 
+export const OPEN_CODE_RUNTIME_DESCRIPTOR: AgentRuntimeDescriptor = {
+  id: "opencode",
+  displayName: "OpenCode",
+  protocolVersion: OPENIM_AGENT_PROTOCOL_VERSION,
+  transport: "embedded-api",
+  capabilities: [
+    "session.create",
+    "session.restore",
+    "session.history",
+    "run.execute",
+    "run.abort",
+    "run.streaming",
+    "interaction.permission",
+    "interaction.question",
+    "model.list",
+    "artifact.publish",
+    "history.query",
+  ],
+};
+
 const adapter: AgentRuntimeAdapter = {
+  descriptor: OPEN_CODE_RUNTIME_DESCRIPTOR,
   async ensureRuntime() {
     const current = await ensureServer();
     return { baseUrl: current.baseUrl };

@@ -22,6 +22,11 @@ import {
   useTerminalDockStore,
   useUserStore,
 } from "@/store";
+import type {
+  CollaborationSession,
+  CollaborationTask,
+  GatewayAgentRecord,
+} from "@/types/agentCollaboration";
 import {
   e2eConversation,
   e2eConversationID,
@@ -44,6 +49,8 @@ const installE2EElectronMock = () => {
   const watchedAgentWorkspaces = new Set<string>();
   const workspaceRoot = "C:\\OpenIM-E2E\\workspaces";
   let visibleAgentSessionID: string | undefined;
+  let collaborationSequence = 0;
+  let mockCollaborations: CollaborationSession[] = [];
   const e2eWindow = window as unknown as {
     __e2eTerminalWrites?: string[];
     __e2eWorkspaceWrites?: Array<{
@@ -216,6 +223,176 @@ const installE2EElectronMock = () => {
           terminalPanelOpen: state.terminalPanelOpen,
           initialized: true,
         } as T);
+      }
+
+      if (channel === "agent-collaboration:list") {
+        const conversationID = args[0] as string;
+        return Promise.resolve(
+          mockCollaborations.filter(
+            (collaboration) => collaboration.conversationID === conversationID,
+          ) as T,
+        );
+      }
+
+      if (channel === "agent-gateway:discover") {
+        return Promise.resolve([
+          {
+            agentID: "e2e-worker-a",
+            displayName: "E2E Worker A",
+            capabilities: ["run.execute", "run.streaming"],
+            status: "online",
+          },
+          {
+            agentID: "e2e-worker-b",
+            displayName: "E2E Worker B",
+            capabilities: ["run.execute", "run.streaming"],
+            status: "online",
+          },
+          {
+            agentID: "e2e-reviewer",
+            displayName: "E2E Reviewer",
+            capabilities: ["run.execute"],
+            status: "online",
+          },
+        ] satisfies GatewayAgentRecord[] as T);
+      }
+
+      if (channel === "agent-collaboration:create") {
+        const params = args[0] as Omit<
+          CollaborationSession,
+          "collaborationID" | "status" | "tasks"
+        >;
+        const collaboration: CollaborationSession = {
+          collaborationID: `e2e-collaboration-${++collaborationSequence}`,
+          conversationID: params.conversationID,
+          sessionID: params.sessionID,
+          objective: params.objective,
+          participants: params.participants,
+          status: "planning",
+          tasks: [],
+        };
+        mockCollaborations = [collaboration, ...mockCollaborations];
+        return Promise.resolve({ created: true, collaboration } as T);
+      }
+
+      if (channel === "agent-collaboration:delegate") {
+        const params = args[0] as {
+          collaborationID: string;
+          tasks: Array<
+            Pick<CollaborationTask, "title" | "assigneeParticipantID"> & {
+              taskID?: string;
+              instruction: string;
+            }
+          >;
+        };
+        const collaboration = mockCollaborations.find(
+          (item) => item.collaborationID === params.collaborationID,
+        );
+        if (!collaboration) return Promise.reject(new Error("Unknown collaboration"));
+        const created = params.tasks.map((task, index) => ({
+          taskID:
+            task.taskID ??
+            `e2e-task-${collaborationSequence}-${collaboration.tasks.length + index}`,
+          title: task.title,
+          instruction: task.instruction,
+          assigneeParticipantID: task.assigneeParticipantID,
+          status: "queued" as const,
+        }));
+        collaboration.tasks.push(...created);
+        collaboration.status = "running";
+        return Promise.resolve({ created: true, tasks: created } as T);
+      }
+
+      if (channel === "agent-collaboration:beginReview") {
+        const params = args[0] as { collaborationID: string };
+        const collaboration = mockCollaborations.find(
+          (item) => item.collaborationID === params.collaborationID,
+        );
+        if (!collaboration) return Promise.reject(new Error("Unknown collaboration"));
+        const reviewer = collaboration.participants.find(
+          (participant) => participant.role === "reviewer",
+        );
+        if (!reviewer) return Promise.reject(new Error("Reviewer is missing"));
+        const task: CollaborationTask = {
+          taskID: `e2e-review-${++collaborationSequence}`,
+          title: "Independent review",
+          instruction: "Review worker outputs",
+          assigneeParticipantID: reviewer.participantID,
+          status: "queued",
+        };
+        collaboration.tasks.push(task);
+        collaboration.status = "reviewing";
+        return Promise.resolve(task as T);
+      }
+
+      if (channel === "agent-collaboration:dispatch") {
+        const params = args[0] as { collaborationID: string };
+        const collaboration = mockCollaborations.find(
+          (item) => item.collaborationID === params.collaborationID,
+        );
+        if (!collaboration) return Promise.reject(new Error("Unknown collaboration"));
+        const ready = collaboration.tasks.filter((task) => task.status === "queued");
+        ready.forEach((task) => {
+          task.status = "completed";
+          task.output = { summary: `${task.title} completed` };
+        });
+        const reviewed = ready.some(
+          (task) =>
+            collaboration.participants.find(
+              (participant) => participant.participantID === task.assigneeParticipantID,
+            )?.role === "reviewer",
+        );
+        if (reviewed) {
+          collaboration.status = "waiting_human";
+          collaboration.intervention = {
+            requestID: `e2e-human-${collaborationSequence}`,
+            reason: "Agent review is ready for the human final decision",
+          };
+        } else {
+          collaboration.status = "running";
+        }
+        emitToSubscribers("agent-collaboration:event", { collaboration });
+        return Promise.resolve({ dispatched: ready, manualTasks: [] } as T);
+      }
+
+      if (channel === "agent-collaboration:resolveHuman") {
+        const params = args[0] as {
+          collaborationID: string;
+          decision: "approve" | "reject" | "instruct";
+          instruction?: string;
+        };
+        const collaboration = mockCollaborations.find(
+          (item) => item.collaborationID === params.collaborationID,
+        );
+        if (!collaboration) return Promise.reject(new Error("Unknown collaboration"));
+        if (params.decision === "approve") {
+          collaboration.status = "completed";
+          collaboration.finalSummary =
+            params.instruction || "Human approved the reviewed result";
+          if (collaboration.intervention) {
+            collaboration.intervention.resolvedAt = Date.now();
+          }
+        } else if (params.decision === "reject") {
+          collaboration.status = "aborted";
+        } else {
+          const worker = collaboration.participants.find(
+            (participant) => participant.role === "worker",
+          );
+          if (!worker) return Promise.reject(new Error("Worker is missing"));
+          collaboration.tasks.push({
+            taskID: `e2e-revision-${++collaborationSequence}`,
+            title: "Human-requested revision",
+            instruction: params.instruction ?? "",
+            assigneeParticipantID: worker.participantID,
+            status: "queued",
+          });
+          collaboration.status = "running";
+          if (collaboration.intervention) {
+            collaboration.intervention.resolvedAt = Date.now();
+          }
+        }
+        emitToSubscribers("agent-collaboration:event", { collaboration });
+        return Promise.resolve(collaboration as T);
       }
 
       if (channel === "agent-session:select") {

@@ -18,6 +18,8 @@ const {
   assert.equal(DEFAULT_APP_CONFIG.openim.chatUrl, "http://10.96.253.9:10008");
   assert.equal(DEFAULT_APP_CONFIG.llm.baseUrl, "http://10.96.248.17:8000/v1");
   assert.equal(DEFAULT_APP_CONFIG.opencode.command, "opencode");
+  assert.equal(DEFAULT_APP_CONFIG.agent.gateway.enabled, true);
+  assert.equal(DEFAULT_APP_CONFIG.agent.gateway.port, 4097);
 
   const merged = mergeAppConfig({
     openim: {

@@ -8,6 +8,7 @@ import createAppMenu from "./menuManage";
 import { isLinux } from "../utils";
 import { getLogger } from "../utils/log";
 import { initI18n } from "../i18n";
+import { initializeAgentGateway } from "./agentGatewayBootstrap";
 
 const isE2EMode = process.env.E2E_MODE === "1";
 
@@ -33,6 +34,12 @@ if (!isE2EMode) {
 }
 setAppListener(init);
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  try {
+    const gateway = await initializeAgentGateway();
+    logger.info("Agent Gateway initialized", gateway);
+  } catch (error) {
+    logger.error("Agent Gateway initialization failed", error);
+  }
   isLinux ? setTimeout(init, 300) : init();
 });

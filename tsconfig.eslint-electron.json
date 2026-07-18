@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "electron/**/*.ts",
+    "src/agent-core/**/*.ts",
+    "src/types/agentSession.ts",
+    "src/types/globalExpose.d.ts"
+  ],
+  "references": []
+}

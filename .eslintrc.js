@@ -12,7 +12,18 @@ module.exports = {
     "plugin:@typescript-eslint/recommended-requiring-type-checking",
     "plugin:prettier/recommended",
   ],
-  overrides: [],
+  overrides: [
+    {
+      files: ["electron/**/*.ts"],
+      env: {
+        browser: false,
+        node: true,
+      },
+      parserOptions: {
+        project: ["./tsconfig.eslint-electron.json"],
+      },
+    },
+  ],
   parser: "@typescript-eslint/parser",
   parserOptions: {
     ecmaVersion: "latest",

@@ -6,9 +6,9 @@ import path from "node:path";
 import { app, Notification } from "electron";
 
 import type {
+  AgentDeliveryResponse,
   AgentHistoryQueryRequest,
   AgentHistoryQueryResponse,
-  AgentDeliveryResponse,
   AgentInteraction,
   AgentMessage,
   AgentPermissionInteraction,
@@ -26,22 +26,22 @@ import type {
   UpdateAgentSessionParams,
 } from "../../src/types/agentSession";
 import { IpcMainToRender } from "../constants";
-import type { RuntimeSessionEvent } from "./agentRuntimeAdapter";
-import { mergeAgentRuntimeMessages } from "./agentMessageMerge";
-import { applyRuntimeMessageEvent } from "./agentStreaming";
-import {
-  discoverExternalAgentSessions,
-  discoverManagedAgentSessions,
-} from "./agentSessionRecovery";
 import { AGENT_DELIVERY_SYSTEM_PROMPT, resolveAgentDelivery } from "./agentDelivery";
-import { opencodeManager } from "./opencodeManage";
-import { getStore } from "./storeManage";
-import { getTerminalWorkspaceDir, getWorkspaceRoot } from "./workspaceManage";
-import { sendEvent, showWindow } from "./windowManage";
 import {
   AgentHistoryCapabilityRegistry,
   normalizeHistoryToolQuery,
 } from "./agentHistoryCapability";
+import { mergeAgentRuntimeMessages } from "./agentMessageMerge";
+import type { RuntimeSessionEvent } from "./agentRuntimeAdapter";
+import { agentRuntimeRegistry, DEFAULT_AGENT_RUNTIME_ID } from "./agentRuntimeRegistry";
+import {
+  discoverExternalAgentSessions,
+  discoverManagedAgentSessions,
+} from "./agentSessionRecovery";
+import { applyRuntimeMessageEvent } from "./agentStreaming";
+import { getStore } from "./storeManage";
+import { sendEvent, showWindow } from "./windowManage";
+import { getTerminalWorkspaceDir, getWorkspaceRoot } from "./workspaceManage";
 
 const STORE_KEY = "agentSessions.v1";
 const MAX_HISTORY_RESPONSE_BYTES = 1024 * 1024;
@@ -68,7 +68,7 @@ interface PendingHistoryRequest {
 }
 
 const store = getStore();
-const adapter = opencodeManager.adapter;
+const adapter = agentRuntimeRegistry.require(DEFAULT_AGENT_RUNTIME_ID);
 const sessions = new Map<string, AgentSession>();
 const autoApproveSessionIDs = new Set<string>();
 const historyCapabilities = new AgentHistoryCapabilityRegistry();
@@ -224,6 +224,9 @@ const persistSessionFiles = async (session: AgentSession) => {
       archived: session.archived,
       pinned: session.pinned,
       liveHistoryEnabled: session.liveHistoryEnabled,
+      parentSessionID: session.parentSessionID,
+      collaborationID: session.collaborationID,
+      gatewayRunID: session.gatewayRunID,
     }),
   ]);
 };
@@ -427,7 +430,7 @@ const startHistoryServer = () =>
       resolve();
       return;
     }
-    historyServer = http.createServer(async (request, response) => {
+    historyServer = http.createServer((request, response) => {
       if (request.method !== "POST" || request.url !== "/v1/history") {
         response.writeHead(404).end("Not found");
         return;
@@ -1000,6 +1003,9 @@ const createSession = async (params: CreateAgentSessionParams) => {
     createdAt: now,
     updatedAt: now,
     lastOpenedAt: now,
+    parentSessionID: params.parentSessionID,
+    collaborationID: params.collaborationID,
+    gatewayRunID: params.gatewayRunID,
     messages: [],
     turns: [],
     interactions: [],
@@ -1009,7 +1015,9 @@ const createSession = async (params: CreateAgentSessionParams) => {
       params.kind === "bot" ? "Bot Requests" : `Agent Session ${sessions.size + 1}`;
   }
   sessions.set(id, session);
-  state.activeSessionByConversation[params.conversationID] = id;
+  if (params.activate !== false) {
+    state.activeSessionByConversation[params.conversationID] = id;
+  }
   publish();
   try {
     await installSessionFiles(session);
@@ -1077,6 +1085,103 @@ const queueMessage = async (params: SendAgentMessageParams) => {
   return turn;
 };
 
+const executeCollaborationRun = async (params: {
+  parentSessionID: string;
+  collaborationID: string;
+  runID: string;
+  title: string;
+  prompt: string;
+  timeoutMs?: number;
+  onState?: (
+    state: "running" | "waiting_permission" | "waiting_question",
+  ) => void | Promise<void>;
+}) => {
+  await ensureInitialized();
+  const parent = sessions.get(params.parentSessionID);
+  if (!parent || parent.archived) throw new Error("Parent Agent session not found");
+  let workerSession = [...sessions.values()].find(
+    (session) => session.gatewayRunID === params.runID && !session.archived,
+  );
+  if (!workerSession) {
+    workerSession = await createSession({
+      conversationID: parent.conversationID,
+      title: `协作 · ${params.title}`,
+      liveHistoryEnabled: parent.liveHistoryEnabled,
+      activate: false,
+      parentSessionID: parent.id,
+      collaborationID: params.collaborationID,
+      gatewayRunID: params.runID,
+    });
+  }
+  const turn = await queueMessage({
+    sessionID: workerSession.id,
+    text: params.prompt,
+    source: "context",
+  });
+  const timeoutAt = Date.now() + (params.timeoutMs ?? 30 * 60_000);
+  let reportedState: "running" | "waiting_permission" | "waiting_question" | undefined;
+  while (Date.now() < timeoutAt) {
+    const current = sessions.get(workerSession.id);
+    const currentTurn = current?.turns.find((candidate) => candidate.id === turn.id);
+    if (!current || !currentTurn) {
+      throw new Error("Collaboration worker session disappeared");
+    }
+    const state =
+      current.status === "waiting_permission" || current.status === "waiting_question"
+        ? current.status
+        : currentTurn.status === "running"
+        ? "running"
+        : undefined;
+    if (state && state !== reportedState) {
+      reportedState = state;
+      await params.onState?.(state);
+    }
+    if (currentTurn.status === "failed" || currentTurn.status === "cancelled") {
+      throw new Error(
+        currentTurn.lastError ?? `Collaboration turn ${currentTurn.status}`,
+      );
+    }
+    if (currentTurn.status === "completed") {
+      await refreshMessages(current);
+      const userMessageIndex = current.messages.findIndex(
+        (message) => message.id === `local_${turn.id}`,
+      );
+      const assistantMessages = current.messages
+        .slice(Math.max(0, userMessageIndex + 1))
+        .filter(
+          (message) =>
+            message.role === "assistant" &&
+            message.parts.some((part) => part.type === "text" || part.type === "file"),
+        );
+      if (assistantMessages.length === 0) {
+        throw new Error("Collaboration worker completed without an assistant result");
+      }
+      const delivery = await resolveAgentDelivery(
+        current.workspacePath,
+        assistantMessages,
+      );
+      return {
+        text: delivery.text,
+        artifacts: delivery.attachments,
+        workerSessionID: current.id,
+        workspacePath: current.workspacePath,
+      };
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 250);
+    });
+  }
+  if (workerSession.runtimeSessionID) {
+    await adapter
+      .abort({
+        workspacePath: workerSession.workspacePath,
+        runtimeSessionID: workerSession.runtimeSessionID,
+      })
+      .catch(() => undefined);
+  }
+  throw new Error("Collaboration worker timed out");
+};
+
 const getOrCreateBotSession = async (conversationID: string) => {
   const existing = [...sessions.values()]
     .filter(
@@ -1097,6 +1202,76 @@ const getOrCreateBotSession = async (conversationID: string) => {
 
 export const agentSessionManager = {
   initialize: ensureInitialized,
+  async getSession(sessionID: string) {
+    await ensureInitialized();
+    const session = sessions.get(sessionID);
+    return session ? structuredClone(session) : undefined;
+  },
+  async appendCollaborationMessage(params: {
+    sessionID: string;
+    eventID: string;
+    collaborationID: string;
+    sequence: number;
+    eventType: string;
+    text: string;
+    role?: "system" | "assistant";
+    createdAt?: number;
+    notify?: boolean;
+    artifacts?: Array<{
+      nativePath: string;
+      fileName?: string;
+      kind?: string;
+      size?: number;
+    }>;
+  }) {
+    await ensureInitialized();
+    const session = sessions.get(params.sessionID);
+    if (!session || session.archived) throw new Error("Agent session not found");
+    const messageID = `collaboration_${params.eventID}`;
+    const existing = session.messages.find((message) => message.id === messageID);
+    if (existing) return structuredClone(existing);
+    const timestamp = params.createdAt ?? Date.now();
+    const message: AgentMessage = {
+      id: messageID,
+      sessionID: session.id,
+      role: params.role ?? "system",
+      createdAt: timestamp,
+      completedAt: timestamp,
+      parts: [
+        {
+          id: `${messageID}_part`,
+          type: "text",
+          text: params.text,
+          metadata: {
+            collaborationID: params.collaborationID,
+            collaborationEventID: params.eventID,
+            collaborationSequence: params.sequence,
+            collaborationEventType: params.eventType,
+          },
+        },
+        ...(params.artifacts ?? []).map((artifact, index) => ({
+          id: `${messageID}_artifact_${index}`,
+          type: "file" as const,
+          name: artifact.fileName,
+          path: artifact.nativePath,
+          status: "completed",
+          metadata: {
+            collaborationID: params.collaborationID,
+            kind: artifact.kind,
+            size: artifact.size,
+          },
+        })),
+      ],
+    };
+    session.messages.push(message);
+    session.updatedAt = Math.max(session.updatedAt, timestamp);
+    await persistSessionFiles(session);
+    if (params.notify) {
+      notifySession(session, "Agent collaboration needs attention", params.text);
+    }
+    publish();
+    return structuredClone(message);
+  },
   getSnapshot: async () => {
     await ensureInitialized();
     return snapshot();
@@ -1182,6 +1357,7 @@ export const agentSessionManager = {
     return snapshot();
   },
   sendMessage: queueMessage,
+  executeCollaborationRun,
   async handleDeliveryResponse(response: AgentDeliveryResponse) {
     await ensureInitialized();
     const session = sessions.get(response.sessionID);
@@ -1302,7 +1478,7 @@ export const agentSessionManager = {
     session.unreadCount = 0;
     publish();
   },
-  async setViewport(next: typeof viewport) {
+  setViewport(next: typeof viewport) {
     viewport = next;
     if (next.visible && next.sessionID) {
       const session = sessions.get(next.sessionID);

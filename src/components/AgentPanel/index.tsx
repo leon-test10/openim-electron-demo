@@ -22,7 +22,7 @@ import {
   Tooltip,
 } from "antd";
 import clsx from "clsx";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
@@ -31,7 +31,11 @@ import {
   loadRecentConversationMessages,
   persistAgentContextBundle,
 } from "@/services/agentSessions/context";
-import { useAgentSessionStore } from "@/store";
+import { useAgentSessionStore, useUserStore } from "@/store";
+import type {
+  CollaborationSession,
+  GatewayAgentRecord,
+} from "@/types/agentCollaboration";
 import type {
   AgentInteraction,
   AgentMessage,
@@ -489,6 +493,297 @@ const BotRequestCard = ({ request }: { request: BotRequest }) => {
   );
 };
 
+const CollaborationCard = ({ session }: { session: AgentSession }) => {
+  const self = useUserStore((state) => state.selfInfo);
+  const [collaborations, setCollaborations] = useState<CollaborationSession[]>([]);
+  const [agents, setAgents] = useState<GatewayAgentRecord[]>([]);
+  const [objective, setObjective] = useState("");
+  const [instruction, setInstruction] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!window.electronAPI) return;
+    const [nextCollaborations, nextAgents] = await Promise.all([
+      window.electronAPI.ipcInvoke<CollaborationSession[]>(
+        "agent-collaboration:list",
+        session.conversationID,
+      ),
+      window.electronAPI.ipcInvoke<GatewayAgentRecord[]>("agent-gateway:discover", {
+        capability: "run.execute",
+      }),
+    ]);
+    setCollaborations(
+      nextCollaborations.filter((item) => item.sessionID === session.id),
+    );
+    setAgents(nextAgents);
+  }, [session.conversationID, session.id]);
+
+  useEffect(() => {
+    void refresh();
+    if (!window.electronAPI) return;
+    return window.electronAPI.subscribe(
+      "agent-collaboration:event",
+      (value: { collaboration?: CollaborationSession }) => {
+        if (value.collaboration?.conversationID === session.conversationID) {
+          void refresh();
+        }
+      },
+    );
+  }, [refresh, session.conversationID]);
+
+  const collaboration = collaborations[0];
+  const runAction = async (action: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      await action();
+      await refresh();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const start = () =>
+    runAction(async () => {
+      const value = objective.trim();
+      if (!value) throw new Error("Enter a collaboration objective");
+      const api = window.electronAPI;
+      if (!api) throw new Error("Electron collaboration bridge is unavailable");
+      const workerAgents = agents.slice(0, Math.min(2, agents.length));
+      const workerAgent = workerAgents[0];
+      if (!workerAgent) throw new Error("No online Agent can execute runs");
+      const reviewerAgent =
+        agents.find(
+          (agent) => !workerAgents.some((worker) => worker.agentID === agent.agentID),
+        ) ?? workerAgent;
+      const humanID = self.userID || "local-human";
+      const created = await api.ipcInvoke<{
+        collaboration: CollaborationSession;
+      }>("agent-collaboration:create", {
+        conversationID: session.conversationID,
+        sessionID: session.id,
+        idempotencyKey: `ui:${session.id}:${crypto.randomUUID()}`,
+        objective: value,
+        participants: [
+          {
+            participantID: `human-driver:${humanID}`,
+            kind: "human",
+            principalID: humanID,
+            displayName: self.nickname || humanID,
+            role: "driver",
+          },
+          ...workerAgents.map((agent) => ({
+            participantID: `agent-worker:${agent.agentID}`,
+            kind: "agent",
+            principalID: agent.agentID,
+            displayName: agent.displayName,
+            role: "worker",
+            agentID: agent.agentID,
+          })),
+          {
+            participantID: `agent-reviewer:${reviewerAgent.agentID}`,
+            kind: "agent",
+            principalID: reviewerAgent.agentID,
+            displayName: `${reviewerAgent.displayName} Reviewer`,
+            role: "reviewer",
+            agentID: reviewerAgent.agentID,
+          },
+        ],
+      });
+      const collaborationID = created.collaboration.collaborationID;
+      await api.ipcInvoke("agent-collaboration:delegate", {
+        collaborationID,
+        driverParticipantID: `human-driver:${humanID}`,
+        delegationKey: `ui-initial:${collaborationID}`,
+        tasks: workerAgents.map((agent, index) => ({
+          title: index === 0 ? value : `Independent risk analysis: ${value}`,
+          instruction:
+            index === 0
+              ? value
+              : `Independently analyze risks, gaps, and validation needs for: ${value}`,
+          assigneeParticipantID: `agent-worker:${agent.agentID}`,
+          risk: "medium",
+        })),
+      });
+      await api.ipcInvoke("agent-collaboration:dispatch", {
+        collaborationID,
+        requestedByParticipantID: `human-driver:${humanID}`,
+      });
+      setObjective("");
+    });
+
+  if (!collaboration) {
+    return (
+      <div
+        data-testid="agent-collaboration-card"
+        className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm dark:bg-blue-950/20"
+      >
+        <div className="mb-2 font-medium">Distributed collaboration</div>
+        <div className="mb-2 text-xs text-[var(--sub-text)]">
+          Start a worker/reviewer flow bound to this OpenIM conversation. Results remain
+          in the Agent panel until a human approves and sends them.
+        </div>
+        <div className="flex gap-2">
+          <Input
+            size="small"
+            value={objective}
+            placeholder="Collaboration objective"
+            onChange={(event) => setObjective(event.target.value)}
+          />
+          <Button
+            size="small"
+            type="primary"
+            loading={busy}
+            disabled={!agents.length}
+            onClick={() => void start()}
+          >
+            Start
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const participantByID = new Map(
+    collaboration.participants.map((participant) => [
+      participant.participantID,
+      participant,
+    ]),
+  );
+  const workerParticipantIDs = new Set(
+    collaboration.participants
+      .filter((participant) => participant.role === "worker")
+      .map((participant) => participant.participantID),
+  );
+  const workerTasks = collaboration.tasks.filter((task) =>
+    workerParticipantIDs.has(task.assigneeParticipantID),
+  );
+  const hasActiveReview = collaboration.tasks.some(
+    (task) =>
+      participantByID.get(task.assigneeParticipantID)?.role === "reviewer" &&
+      (task.status === "queued" || task.status === "running"),
+  );
+  const canBeginReview =
+    collaboration.status === "running" &&
+    workerTasks.length > 0 &&
+    workerTasks.every((task) => task.status === "completed") &&
+    !hasActiveReview;
+  const driver = collaboration.participants.find(
+    (participant) => participant.role === "driver",
+  );
+  const pendingHuman =
+    collaboration.status === "waiting_human" &&
+    collaboration.intervention &&
+    !collaboration.intervention.resolvedAt;
+
+  const beginReview = () =>
+    runAction(async () => {
+      if (!driver) throw new Error("Collaboration driver is missing");
+      const api = window.electronAPI;
+      if (!api) throw new Error("Electron collaboration bridge is unavailable");
+      await api.ipcInvoke("agent-collaboration:beginReview", {
+        collaborationID: collaboration.collaborationID,
+        driverParticipantID: driver.participantID,
+      });
+      await api.ipcInvoke("agent-collaboration:dispatch", {
+        collaborationID: collaboration.collaborationID,
+        requestedByParticipantID: driver.participantID,
+      });
+    });
+
+  const resolveHuman = (decision: "approve" | "reject" | "instruct") =>
+    runAction(async () => {
+      if (!driver || driver.kind !== "human") {
+        throw new Error("A human driver must make the final decision");
+      }
+      if (decision === "instruct" && !instruction.trim()) {
+        throw new Error("Enter revision instructions");
+      }
+      const api = window.electronAPI;
+      if (!api) throw new Error("Electron collaboration bridge is unavailable");
+      await api.ipcInvoke("agent-collaboration:resolveHuman", {
+        collaborationID: collaboration.collaborationID,
+        humanParticipantID: driver.participantID,
+        decision,
+        instruction: instruction.trim() || undefined,
+      });
+      if (decision === "instruct") {
+        await api.ipcInvoke("agent-collaboration:dispatch", {
+          collaborationID: collaboration.collaborationID,
+          requestedByParticipantID: driver.participantID,
+        });
+      }
+      setInstruction("");
+    });
+
+  return (
+    <div
+      data-testid="agent-collaboration-card"
+      className="mb-3 rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm dark:bg-violet-950/20"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-medium">Distributed collaboration</div>
+        <Tag>{collaboration.status}</Tag>
+      </div>
+      <div className="mt-1 text-xs">{collaboration.objective}</div>
+      <div className="mt-2 space-y-1 text-xs">
+        {collaboration.tasks.map((task) => (
+          <div key={task.taskID} className="flex items-center justify-between gap-2">
+            <span className="truncate">{task.title}</span>
+            <Tag>{task.status}</Tag>
+          </div>
+        ))}
+      </div>
+      {canBeginReview && (
+        <Button
+          className="mt-2"
+          size="small"
+          type="primary"
+          loading={busy}
+          onClick={() => void beginReview()}
+        >
+          Start reviewer
+        </Button>
+      )}
+      {pendingHuman && (
+        <div className="mt-2 border-t border-violet-200 pt-2">
+          <div className="mb-2 text-xs">{collaboration.intervention?.reason}</div>
+          <Input.TextArea
+            value={instruction}
+            placeholder="Optional final wording, or required revision instructions"
+            autoSize={{ minRows: 2, maxRows: 4 }}
+            onChange={(event) => setInstruction(event.target.value)}
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              size="small"
+              type="primary"
+              loading={busy}
+              onClick={() => void resolveHuman("approve")}
+            >
+              Approve final
+            </Button>
+            <Button
+              size="small"
+              disabled={!instruction.trim()}
+              onClick={() => void resolveHuman("instruct")}
+            >
+              Request revision
+            </Button>
+            <Button size="small" danger onClick={() => void resolveHuman("reject")}>
+              Reject
+            </Button>
+          </div>
+        </div>
+      )}
+      {collaboration.status === "completed" && collaboration.finalSummary && (
+        <div className="mt-2 text-xs">Human-approved: {collaboration.finalSummary}</div>
+      )}
+    </div>
+  );
+};
+
 const AgentPanel = ({
   conversationIDOverride,
 }: {
@@ -942,10 +1237,13 @@ const AgentPanel = ({
                 : activeSession.workspacePath}
             </span>
           </div>
+          <div className="max-h-48 shrink-0 overflow-y-auto px-3 pt-3">
+            <CollaborationCard session={activeSession} />
+          </div>
           <Virtuoso
             className="min-h-0 flex-1"
             data={activeSession.messages}
-            followOutput="smooth"
+            followOutput={() => "smooth"}
             initialTopMostItemIndex={Math.max(activeSession.messages.length - 1, 0)}
             itemContent={(_, agentMessage) => (
               <div className="px-3 first:pt-3">

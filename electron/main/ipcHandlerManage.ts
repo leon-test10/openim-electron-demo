@@ -21,6 +21,7 @@ import { agentWatchManager } from "./agentWatchManage";
 import { opencodeManager } from "./opencodeManage";
 import { agentSessionManager } from "./agentSessionManage";
 import { getCurrentAppConfig } from "./appConfig";
+import { agentGatewayManager } from "./agentGatewayManage";
 import {
   downloadFolderShare,
   FolderShareDownloadManifest,
@@ -387,6 +388,50 @@ export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.opencodeGetBinding, (_, workspaceID) => {
     return opencodeManager.getBinding(workspaceID);
   });
+  ipcMain.handle(IpcRenderToMain.agentGatewayStatus, () => {
+    return agentGatewayManager.getStatus();
+  });
+  ipcMain.handle(IpcRenderToMain.agentGatewayDiscover, (_, filter) => {
+    return agentGatewayManager.discoverAgents(filter);
+  });
+  ipcMain.handle(IpcRenderToMain.agentGatewayMetrics, () => {
+    return agentGatewayManager.getMetrics();
+  });
+  ipcMain.handle(IpcRenderToMain.agentGatewayAudits, (_, filter) => {
+    return agentGatewayManager.listAudits(filter);
+  });
+  ipcMain.handle(IpcRenderToMain.agentCollaborationList, (_, conversationID: string) =>
+    agentGatewayManager.getCollaboration().listByConversation(conversationID),
+  );
+  ipcMain.handle(IpcRenderToMain.agentCollaborationCreate, (_, params) => {
+    return agentGatewayManager.getCollaboration().createCollaboration(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentCollaborationDelegate, (_, params) => {
+    return agentGatewayManager.getCollaboration().delegateTasks(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentCollaborationDispatch, (_, params) => {
+    return agentGatewayManager.getCoordinator().dispatchReadyTasks(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentCollaborationBeginReview, (_, params) => {
+    return agentGatewayManager.getCollaboration().beginReview(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentCollaborationSubmitReview, (_, params) => {
+    return agentGatewayManager.getCollaboration().submitReview(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentCollaborationRequestHuman, (_, params) => {
+    return agentGatewayManager.getCollaboration().requestHumanIntervention(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentCollaborationResolveHuman, (_, params) => {
+    return agentGatewayManager.getCollaboration().resolveHumanIntervention(params);
+  });
+  ipcMain.handle(
+    IpcRenderToMain.agentCollaborationEvents,
+    (_, params: { collaborationID: string; afterSequence?: number }) => {
+      return agentGatewayManager
+        .getCollaboration()
+        .listEvents(params.collaborationID, params.afterSequence);
+    },
+  );
   ipcMain.handle(IpcRenderToMain.agentSessionList, () => {
     return agentSessionManager.getSnapshot();
   });

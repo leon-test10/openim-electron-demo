@@ -11,6 +11,13 @@ export interface AppConfig {
   agent: {
     serviceUrl: string;
     bridgeUrl: string;
+    gateway: {
+      enabled: boolean;
+      hostname: string;
+      port: number;
+      authToken: string;
+      heartbeatTtlMs: number;
+    };
   };
   terminal: {
     defaultWorkspacePath: string;
@@ -52,6 +59,13 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   agent: {
     serviceUrl: "http://127.0.0.1:4096",
     bridgeUrl: "http://127.0.0.1:4096",
+    gateway: {
+      enabled: true,
+      hostname: "127.0.0.1",
+      port: 4097,
+      authToken: "",
+      heartbeatTtlMs: 30000,
+    },
   },
   terminal: {
     defaultWorkspacePath: "%USERPROFILE%\\OpenIM-Agent\\workspaces",
@@ -112,7 +126,10 @@ const mergeRecord = <T extends Record<string, unknown>>(base: T, patch: unknown)
 };
 
 export const mergeAppConfig = (patch: unknown): AppConfig =>
-  mergeRecord(DEFAULT_APP_CONFIG as unknown as Record<string, unknown>, patch) as unknown as AppConfig;
+  mergeRecord(
+    DEFAULT_APP_CONFIG as unknown as Record<string, unknown>,
+    patch,
+  ) as unknown as AppConfig;
 
 export const resolveConfiguredPath = (
   value: string,
@@ -128,10 +145,7 @@ export const resolveConfiguredPath = (
 export const getUserConfigPath = (userDataPath: string) =>
   path.join(userDataPath, "config.json");
 
-const withBundledOpencodePath = (
-  defaults: AppConfig,
-  bundledOpencodePath?: string,
-) => {
+const withBundledOpencodePath = (defaults: AppConfig, bundledOpencodePath?: string) => {
   if (!bundledOpencodePath || !fs.existsSync(bundledOpencodePath)) return defaults;
   return mergeRecord(defaults as unknown as Record<string, unknown>, {
     opencode: {

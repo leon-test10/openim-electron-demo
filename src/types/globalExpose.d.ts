@@ -12,6 +12,13 @@ export interface AppRuntimeConfig {
   agent: {
     serviceUrl: string;
     bridgeUrl: string;
+    gateway: {
+      enabled: boolean;
+      hostname: string;
+      port: number;
+      authToken: string;
+      heartbeatTtlMs: number;
+    };
   };
   terminal: {
     defaultWorkspacePath: string;

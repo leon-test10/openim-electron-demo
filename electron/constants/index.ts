@@ -4,6 +4,7 @@ export const IpcMainToRender = {
   terminalEvent: "terminal:event",
   agentStructuredOutput: "agent:structuredOutput",
   agentSessionEvent: "agent-session:event",
+  agentCollaborationEvent: "agent-collaboration:event",
 };
 
 export const IpcRenderToMain = {
@@ -48,6 +49,19 @@ export const IpcRenderToMain = {
   opencodeStartServer: "opencode:startServer",
   opencodeStopServer: "opencode:stopServer",
   opencodeGetBinding: "opencode:getBinding",
+  agentGatewayStatus: "agent-gateway:status",
+  agentGatewayDiscover: "agent-gateway:discover",
+  agentGatewayMetrics: "agent-gateway:metrics",
+  agentGatewayAudits: "agent-gateway:audits",
+  agentCollaborationList: "agent-collaboration:list",
+  agentCollaborationCreate: "agent-collaboration:create",
+  agentCollaborationDelegate: "agent-collaboration:delegate",
+  agentCollaborationDispatch: "agent-collaboration:dispatch",
+  agentCollaborationBeginReview: "agent-collaboration:beginReview",
+  agentCollaborationSubmitReview: "agent-collaboration:submitReview",
+  agentCollaborationRequestHuman: "agent-collaboration:requestHuman",
+  agentCollaborationResolveHuman: "agent-collaboration:resolveHuman",
+  agentCollaborationEvents: "agent-collaboration:events",
 
   agentSessionList: "agent-session:list",
   agentSessionCreate: "agent-session:create",
