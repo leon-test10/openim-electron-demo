@@ -5,6 +5,7 @@ export * from "./gateway";
 export * from "./gatewayHttpClient";
 export * from "./gatewayWorker";
 export * from "./httpClient";
+export * from "./humanAgentCollaboration";
 export * from "./identity";
 export * from "./protocol";
 export * from "./providerAdapter";

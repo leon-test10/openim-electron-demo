@@ -15,9 +15,19 @@ const turn = (
   createdAt: number,
 ): AgentTurn => ({
   id,
+  requestID: `request-${id}`,
+  runID: `run-${id}`,
   sessionID: "session-1",
+  requesterUserID: "requester-1",
   source: "manual",
   prompt: id,
+  contextPolicy: {
+    ownerUserID: "requester-1",
+    recentMessageLimit: 20,
+    includeAttachments: true,
+    allowedConversationIDs: ["conversation-1"],
+  },
+  authorizedContextMessageCount: 0,
   status,
   createdAt,
   updatedAt: createdAt,
@@ -41,6 +51,8 @@ const session = (patch: Partial<AgentSession> & { id: string }): AgentSession =>
   messages: [],
   turns: [],
   interactions: [],
+  stagedResults: [],
+  traceSummaries: [],
   ...patch,
   id: patch.id,
 });

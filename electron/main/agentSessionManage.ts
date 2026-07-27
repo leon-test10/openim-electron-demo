@@ -6,6 +6,7 @@ import path from "node:path";
 import { app, Notification } from "electron";
 
 import type {
+  AgentDeliveryAttachment,
   AgentDeliveryResponse,
   AgentHistoryQueryRequest,
   AgentHistoryQueryResponse,
@@ -22,9 +23,27 @@ import type {
   CreateAgentSessionParams,
   IMHistoryToolQuery,
   IMHistoryToolResult,
+  PublishAgentStagedResultParams,
+  RecordImprovementCandidateParams,
   SendAgentMessageParams,
+  UpdateAgentStagedResultParams,
+  UpdateImprovementCandidateParams,
   UpdateAgentSessionParams,
 } from "../../src/types/agentSession";
+import type {
+  AgentRequest,
+  AgentRunTraceSummary,
+  ContextPolicy,
+  ImprovementCandidate,
+} from "../../src/types/humanAgentCollaboration";
+import {
+  createAgentRequest,
+  createContextPolicy,
+  createImprovementCandidate,
+  createRunTrace,
+  stageAgentResult,
+  updateImprovementCandidateStatus,
+} from "../agent-core/humanAgentCollaboration";
 import { IpcMainToRender } from "../constants";
 import { AGENT_DELIVERY_SYSTEM_PROMPT, resolveAgentDelivery } from "./agentDelivery";
 import {
@@ -55,8 +74,11 @@ interface PersistedState {
   activeSessionByConversation: Record<string, string | undefined>;
   botPolicyByConversation: Record<string, BotConversationPolicy>;
   botContextLimitByConversation: Record<string, number | undefined>;
+  botIncludeAttachmentsByConversation: Record<string, boolean | undefined>;
   botCheckpointByConversation: Record<string, string | undefined>;
   botRequests: BotRequest[];
+  improvementCandidates: ImprovementCandidate[];
+  imOnline: boolean;
   agentPanelOpen: boolean;
   terminalPanelOpen: boolean;
 }
@@ -75,7 +97,10 @@ const historyCapabilities = new AgentHistoryCapabilityRegistry();
 const historyRequests = new Map<string, PendingHistoryRequest>();
 const refreshTimers = new Map<string, NodeJS.Timeout>();
 const streamPublishTimers = new Map<string, NodeJS.Timeout>();
-const pendingDeliveryRequests = new Map<string, string>();
+const pendingDeliveryRequests = new Map<
+  string,
+  { requestID: string; resultID?: string }
+>();
 const fileWriteQueues = new Map<string, Promise<void>>();
 let runtimeBaseUrl: string | undefined;
 let initialized = false;
@@ -90,6 +115,35 @@ let viewport = {
 };
 
 const createID = (prefix: string) => `${prefix}_${crypto.randomUUID()}`;
+
+const defaultContextPolicy = (
+  ownerUserID: string,
+  conversationID: string,
+  recentMessageLimit = 20,
+): ContextPolicy =>
+  createContextPolicy({
+    ownerUserID,
+    recentMessageLimit,
+    includeAttachments: true,
+    allowedConversationIDs: [conversationID],
+  });
+
+const traceForRun = (session: AgentSession, runID?: string) =>
+  runID ? session.traceSummaries.find((trace) => trace.runID === runID) : undefined;
+
+const activeTurn = (session: AgentSession) =>
+  session.turns.find((turn) => turn.status === "running");
+
+const addImprovementCandidate = (
+  params: Omit<Parameters<typeof createImprovementCandidate>[0], "createdAt">,
+) => {
+  const candidate = createImprovementCandidate(params, createID);
+  state.improvementCandidates = [candidate, ...state.improvementCandidates].slice(
+    0,
+    500,
+  );
+  return candidate;
+};
 
 const sortAgentSessions = (items: AgentSession[]) =>
   [...items].sort((a, b) => {
@@ -113,8 +167,11 @@ const defaultPersistedState = (): PersistedState => ({
   activeSessionByConversation: {},
   botPolicyByConversation: {},
   botContextLimitByConversation: {},
+  botIncludeAttachmentsByConversation: {},
   botCheckpointByConversation: {},
   botRequests: [],
+  improvementCandidates: [],
+  imOnline: true,
   agentPanelOpen: true,
   terminalPanelOpen: false,
 });
@@ -143,12 +200,21 @@ const readPersistedState = () => {
       typeof parsed.botContextLimitByConversation === "object"
         ? parsed.botContextLimitByConversation
         : {},
+    botIncludeAttachmentsByConversation:
+      parsed.botIncludeAttachmentsByConversation &&
+      typeof parsed.botIncludeAttachmentsByConversation === "object"
+        ? parsed.botIncludeAttachmentsByConversation
+        : {},
     botCheckpointByConversation:
       parsed.botCheckpointByConversation &&
       typeof parsed.botCheckpointByConversation === "object"
         ? parsed.botCheckpointByConversation
         : {},
     botRequests: Array.isArray(parsed.botRequests) ? parsed.botRequests : [],
+    improvementCandidates: Array.isArray(parsed.improvementCandidates)
+      ? parsed.improvementCandidates
+      : [],
+    imOnline: typeof parsed.imOnline === "boolean" ? parsed.imOnline : true,
     agentPanelOpen:
       typeof parsed.agentPanelOpen === "boolean" ? parsed.agentPanelOpen : true,
     terminalPanelOpen:
@@ -249,8 +315,13 @@ const snapshot = (): AgentSessionStateSnapshot => ({
   activeSessionByConversation: { ...state.activeSessionByConversation },
   botPolicyByConversation: { ...state.botPolicyByConversation },
   botContextLimitByConversation: { ...state.botContextLimitByConversation },
+  botIncludeAttachmentsByConversation: {
+    ...state.botIncludeAttachmentsByConversation,
+  },
   botCheckpointByConversation: { ...state.botCheckpointByConversation },
   botRequests: [...state.botRequests],
+  improvementCandidates: [...state.improvementCandidates],
+  imOnline: state.imOnline,
   agentPanelOpen: state.agentPanelOpen,
   terminalPanelOpen: state.terminalPanelOpen,
   runtimeBaseUrl,
@@ -504,7 +575,7 @@ const refreshMessages = async (session: AgentSession) => {
     session.updatedAt = Date.now();
     await persistSessionFiles(session);
     publish();
-    await maybeRequestAutoDelivery(session);
+    await stageCompletedResult(session);
   } catch (error) {
     session.lastError = error instanceof Error ? error.message : String(error);
   }
@@ -531,60 +602,48 @@ const latestCompletedAssistantTurn = (session: AgentSession) => {
     );
 };
 
-const maybeRequestAutoDelivery = async (session: AgentSession) => {
-  if (
-    session.status !== "idle" ||
-    !session.lastCompletedAt ||
-    (!session.autoReplyTextEnabled && !session.autoFileAttachmentEnabled)
-  ) {
-    return;
-  }
+const stageCompletedResult = async (session: AgentSession) => {
+  if (session.status !== "idle" || !session.lastCompletedAt) return;
+  const turn = [...session.turns].reverse().find((item) => item.status === "completed");
+  if (!turn) return;
   const turnMessages = latestCompletedAssistantTurn(session);
   const message = turnMessages[turnMessages.length - 1];
   if (!message) return;
-  const messageAt = message.completedAt ?? message.createdAt;
-  const wantsText =
-    session.autoReplyTextEnabled &&
-    messageAt >= (session.autoReplyTextEnabledAt ?? Number.MAX_SAFE_INTEGER) &&
-    session.lastAutoReplyMessageID !== message.id;
-  const wantsAttachments =
-    session.autoFileAttachmentEnabled &&
-    messageAt >= (session.autoFileAttachmentEnabledAt ?? Number.MAX_SAFE_INTEGER) &&
-    session.lastAutoAttachmentMessageID !== message.id;
-  if (!wantsText && !wantsAttachments) return;
-  if (pendingDeliveryRequests.has(session.id)) return;
-
-  const resolved = await resolveAgentDelivery(session.workspacePath, turnMessages);
-  if (wantsText && !resolved.text) {
-    session.lastAutoReplyMessageID = message.id;
-  }
-  if (wantsAttachments && resolved.attachments.length === 0) {
-    session.lastAutoAttachmentMessageID = message.id;
-  }
-  const deliveryText = wantsText ? resolved.text || undefined : undefined;
-  const deliveryAttachments = wantsAttachments ? resolved.attachments : [];
-  if (!deliveryText && deliveryAttachments.length === 0) {
-    persist();
+  if (
+    session.stagedResults.some(
+      (result) => result.runID === turn.runID || result.messageID === message.id,
+    )
+  ) {
     return;
   }
-  const requestID = createID("agent_delivery");
-  pendingDeliveryRequests.set(session.id, requestID);
-  setTimeout(() => {
-    if (pendingDeliveryRequests.get(session.id) === requestID) {
-      pendingDeliveryRequests.delete(session.id);
-    }
-  }, 30_000).unref();
-  sendEvent(IpcMainToRender.agentSessionEvent, {
-    type: "delivery-request",
-    request: {
-      requestID,
+  const resolved = await resolveAgentDelivery(session.workspacePath, turnMessages);
+  if (!resolved.text && resolved.attachments.length === 0) return;
+  const result = stageAgentResult(
+    {
+      requestID: turn.requestID,
+      runID: turn.runID,
       sessionID: session.id,
-      conversationID: session.conversationID,
       messageID: message.id,
-      text: deliveryText,
-      attachments: deliveryAttachments,
+      finalAnswer: resolved.text,
+      authorizedContextMessageCount: turn.authorizedContextMessageCount,
+      artifacts: resolved.attachments.map((attachment) => ({
+        type: attachment.kind,
+        name: attachment.fileName,
+        localPath: attachment.nativePath,
+      })),
     },
-  } satisfies AgentSessionEvent);
+    createID,
+  );
+  session.stagedResults = [result, ...session.stagedResults].slice(0, 100);
+  const trace = traceForRun(session, turn.runID);
+  if (trace) {
+    trace.finishedAt = Date.now();
+    trace.status = "completed_staged";
+    trace.artifactCount = result.artifacts.length;
+  }
+  session.updatedAt = Date.now();
+  await persistSessionFiles(session);
+  publish();
 };
 
 const scheduleRefresh = (session: AgentSession, delay = 120) => {
@@ -624,6 +683,8 @@ const dispatchNext = async (session: AgentSession) => {
   if (!turn) return;
   turn.status = "running";
   turn.updatedAt = Date.now();
+  const trace = traceForRun(session, turn.runID);
+  if (trace) trace.status = "running";
   session.status = "running";
   session.updatedAt = Date.now();
   if (turn.source === "bot") updateBotRequestForTurn(turn, "running");
@@ -635,9 +696,7 @@ const dispatchNext = async (session: AgentSession) => {
       prompt: turn.prompt,
       messageID: `local_${turn.id}`,
       model: session.model,
-      system: session.autoFileAttachmentEnabled
-        ? AGENT_DELIVERY_SYSTEM_PROMPT
-        : undefined,
+      system: AGENT_DELIVERY_SYSTEM_PROMPT,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -648,13 +707,18 @@ const dispatchNext = async (session: AgentSession) => {
     session.lastError = message;
     session.updatedAt = Date.now();
     if (turn.source === "bot") updateBotRequestForTurn(turn, "failed", message);
+    if (trace) {
+      trace.status = "failed";
+      trace.finishedAt = Date.now();
+      trace.failureCode = "runtime_send_failed";
+    }
     notifySession(session, "Agent session failed", session.title);
     publish();
   }
 };
 
 const completeActiveTurn = (session: AgentSession) => {
-  const turn = session.turns.find((item) => item.status === "running");
+  const turn = activeTurn(session);
   if (!turn) return;
   turn.status = "completed";
   turn.updatedAt = Date.now();
@@ -782,6 +846,27 @@ const handleRuntimeEvent = (event: RuntimeSessionEvent) => {
       session.lastError = String(
         statusRecord?.message ?? "OpenCode is retrying the model request.",
       );
+      const turn = activeTurn(session);
+      const trace = traceForRun(session, turn?.runID);
+      if (trace) {
+        trace.retryCount += 1;
+        if (
+          trace.retryCount >= 2 &&
+          !state.improvementCandidates.some(
+            (candidate) =>
+              candidate.source === "repeated_retry" &&
+              candidate.relatedTraceIDs.includes(trace.traceID),
+          )
+        ) {
+          addImprovementCandidate({
+            source: "repeated_retry",
+            relatedTraceIDs: [trace.traceID],
+            title: "Agent Run repeatedly retried",
+            description:
+              "The Runtime retried this Run more than once. Review provider health, model availability, and retry policy.",
+          });
+        }
+      }
       scheduleRefresh(session, 0);
     }
     publish();
@@ -812,6 +897,12 @@ const handleRuntimeEvent = (event: RuntimeSessionEvent) => {
       if (turn.source === "bot") {
         updateBotRequestForTurn(turn, "failed", session.lastError);
       }
+      const trace = traceForRun(session, turn.runID);
+      if (trace) {
+        trace.status = "failed";
+        trace.finishedAt = Date.now();
+        trace.failureCode = "runtime_error";
+      }
     }
     notifySession(session, "Agent session error", session.title);
     publish();
@@ -819,6 +910,14 @@ const handleRuntimeEvent = (event: RuntimeSessionEvent) => {
   }
   const interaction = interactionFromEvent(event);
   if (interaction) {
+    const turn = activeTurn(session);
+    interaction.runID = turn?.runID;
+    interaction.agentRequestID = turn?.requestID;
+    const trace = traceForRun(session, turn?.runID);
+    if (trace) {
+      if (interaction.type === "permission") trace.permissionCount += 1;
+      else trace.questionCount += 1;
+    }
     if (interaction.type === "permission" && autoApproveSessionIDs.has(session.id)) {
       void adapter
         .replyPermission({
@@ -869,23 +968,48 @@ const handleRuntimeEvent = (event: RuntimeSessionEvent) => {
 const restorePersistedSessions = async () => {
   state = readPersistedState();
   const restoredAt = Date.now();
-  state.botRequests = state.botRequests.map((request) =>
-    request.status === "queued" || request.status === "running"
+  state.botRequests = state.botRequests.map((request) => {
+    const agentRequest =
+      request.agentRequest ??
+      createAgentRequest({
+        requestID: `legacy_${request.id}`,
+        conversationID: request.conversationID,
+        requesterUserID: request.senderUserID,
+        targetAgentID: request.targetUserID,
+        instruction: request.instructionText,
+        contextPolicy: defaultContextPolicy(
+          request.senderUserID,
+          request.conversationID,
+          request.contextLimit,
+        ),
+        createdAt: request.createdAt,
+      });
+    return request.status === "queued" || request.status === "running"
       ? {
           ...request,
+          agentRequest,
           status: "failed",
           lastError: "Application stopped before this request completed.",
           updatedAt: restoredAt,
         }
-      : request,
-  );
+      : { ...request, agentRequest };
+  });
   const restored = await Promise.all(
     state.sessions.map(async (saved) => {
       const turns = cancelUnfinishedTurns(
-        saved.turns,
+        saved.turns ?? [],
         restoredAt,
         "Application stopped before this request completed.",
-      );
+      ).map((turn) => ({
+        ...turn,
+        requestID: turn.requestID ?? `legacy_request_${turn.id}`,
+        runID: turn.runID ?? `legacy_run_${turn.id}`,
+        requesterUserID: turn.requesterUserID ?? "legacy_requester",
+        contextPolicy:
+          turn.contextPolicy ??
+          defaultContextPolicy("legacy_requester", saved.conversationID),
+        authorizedContextMessageCount: turn.authorizedContextMessageCount ?? 0,
+      }));
       return {
         ...saved,
         autoReplyTextEnabled: saved.autoReplyTextEnabled === true,
@@ -895,6 +1019,8 @@ const restorePersistedSessions = async () => {
           saved.archived || saved.status === "archived" ? "archived" : "disconnected",
         messages: await readMessageCache(saved),
         interactions: [],
+        stagedResults: saved.stagedResults ?? [],
+        traceSummaries: saved.traceSummaries ?? [],
       } satisfies AgentSession;
     }),
   );
@@ -1009,6 +1135,8 @@ const createSession = async (params: CreateAgentSessionParams) => {
     messages: [],
     turns: [],
     interactions: [],
+    stagedResults: [],
+    traceSummaries: [],
   };
   if (!params.title?.trim()) {
     session.title =
@@ -1059,11 +1187,40 @@ const queueMessage = async (params: SendAgentMessageParams) => {
   const text = params.text.trim();
   if (!text) throw new Error("Agent message is empty");
   const now = Date.now();
+  const requesterUserID =
+    params.agentRequest?.requesterUserID || params.requesterUserID?.trim() || "local";
+  const agentRequest =
+    params.agentRequest ??
+    createAgentRequest({
+      conversationID: session.conversationID,
+      requesterUserID,
+      targetAgentID: session.id,
+      runtimeID: session.runtime,
+      instruction: text,
+      contextPolicy: defaultContextPolicy(
+        requesterUserID,
+        session.conversationID,
+        Math.max(params.authorizedContextMessageCount ?? 1, 1),
+      ),
+      createdAt: now,
+    });
+  if (agentRequest.conversationID !== session.conversationID) {
+    throw new Error("Agent request belongs to another conversation");
+  }
+  const runID = createID("agent_run");
   const turn: AgentTurn = {
     id: createID("agent_turn"),
+    requestID: agentRequest.requestID,
+    runID,
     sessionID: session.id,
+    requesterUserID: agentRequest.requesterUserID,
     source: params.source ?? "manual",
     prompt: text,
+    contextPolicy: agentRequest.contextPolicy,
+    authorizedContextMessageCount: Math.max(
+      params.authorizedContextMessageCount ?? 0,
+      0,
+    ),
     status: "queued",
     createdAt: now,
     updatedAt: now,
@@ -1071,6 +1228,18 @@ const queueMessage = async (params: SendAgentMessageParams) => {
     contextPaths: params.contextPaths,
   };
   session.turns.push(turn);
+  session.traceSummaries.push(
+    createRunTrace(
+      {
+        requestID: agentRequest.requestID,
+        runID,
+        requesterUserID: agentRequest.requesterUserID,
+        runtimeID: agentRequest.runtimeID ?? session.runtime,
+        startedAt: now,
+      },
+      createID,
+    ),
+  );
   session.messages.push({
     id: `local_${turn.id}`,
     sessionID: session.runtimeSessionID ?? session.id,
@@ -1198,6 +1367,34 @@ const getOrCreateBotSession = async (conversationID: string) => {
     title: "Bot 请求",
     liveHistoryEnabled: false,
   });
+};
+
+const findStagedResult = (session: AgentSession, resultID: string) => {
+  const result = session.stagedResults.find((item) => item.resultID === resultID);
+  if (!result) throw new Error("Staged Agent result not found");
+  return result;
+};
+
+const artifactDeliveryPath = (session: AgentSession, localPath: string) =>
+  path
+    .relative(path.resolve(session.workspacePath), path.resolve(localPath))
+    .replaceAll("\\", "/");
+
+const artifactToDeliveryAttachment = (
+  session: AgentSession,
+  artifact: AgentSession["stagedResults"][number]["artifacts"][number],
+): AgentDeliveryAttachment | undefined => {
+  if (!artifact.localPath || artifact.type === "text") return undefined;
+  const relativePath = artifactDeliveryPath(session, artifact.localPath);
+  if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    return undefined;
+  }
+  return {
+    path: relativePath,
+    nativePath: artifact.localPath,
+    fileName: artifact.name,
+    kind: artifact.type,
+  };
 };
 
 export const agentSessionManager = {
@@ -1358,20 +1555,261 @@ export const agentSessionManager = {
   },
   sendMessage: queueMessage,
   executeCollaborationRun,
+  async updateStagedResult(params: UpdateAgentStagedResultParams) {
+    await ensureInitialized();
+    const session = sessions.get(params.sessionID);
+    if (!session) throw new Error("Agent session not found");
+    const result = findStagedResult(session, params.resultID);
+    if (result.status === "published" || result.status === "rejected") {
+      throw new Error(`Cannot edit a ${result.status} result`);
+    }
+    if (typeof params.finalAnswer === "string") {
+      result.finalAnswer = params.finalAnswer;
+    }
+    if (params.removeArtifactID) {
+      result.artifacts = result.artifacts.filter(
+        (artifact) => artifact.artifactID !== params.removeArtifactID,
+      );
+    }
+    result.status = "completed_staged";
+    result.publicationError = undefined;
+    result.updatedAt = Date.now();
+    session.updatedAt = result.updatedAt;
+    await persistSessionFiles(session);
+    publish();
+    return result;
+  },
+  async rejectStagedResult(params: PublishAgentStagedResultParams) {
+    await ensureInitialized();
+    const session = sessions.get(params.sessionID);
+    if (!session) throw new Error("Agent session not found");
+    const result = findStagedResult(session, params.resultID);
+    if (result.status === "published") {
+      throw new Error("Published Agent result cannot be rejected");
+    }
+    result.status = "rejected";
+    result.updatedAt = Date.now();
+    const trace = traceForRun(session, result.runID);
+    if (trace) trace.status = "rejected";
+    await persistSessionFiles(session);
+    publish();
+    return result;
+  },
+  async retryStagedResult(params: PublishAgentStagedResultParams) {
+    await ensureInitialized();
+    const session = sessions.get(params.sessionID);
+    if (!session) throw new Error("Agent session not found");
+    const result = findStagedResult(session, params.resultID);
+    const originalTurn = session.turns.find((turn) => turn.runID === result.runID);
+    if (!originalTurn) throw new Error("Original Agent Run is unavailable");
+    result.status = "rejected";
+    result.updatedAt = Date.now();
+    await persistSessionFiles(session);
+    publish();
+    return queueMessage({
+      sessionID: session.id,
+      text: originalTurn.prompt,
+      requesterUserID: originalTurn.requesterUserID,
+      source: originalTurn.source,
+      triggerMessageID: originalTurn.triggerMessageID,
+      contextPaths: originalTurn.contextPaths,
+      authorizedContextMessageCount: originalTurn.authorizedContextMessageCount,
+      agentRequest: createAgentRequest({
+        conversationID: session.conversationID,
+        requesterUserID: originalTurn.requesterUserID,
+        targetAgentID: session.id,
+        runtimeID: session.runtime,
+        instruction: originalTurn.prompt,
+        contextPolicy: originalTurn.contextPolicy,
+      }),
+    });
+  },
+  async publishStagedResult(params: PublishAgentStagedResultParams) {
+    await ensureInitialized();
+    const session = sessions.get(params.sessionID);
+    if (!session) throw new Error("Agent session not found");
+    const result = findStagedResult(session, params.resultID);
+    if (result.status === "published") return result;
+    if (result.status === "rejected") {
+      throw new Error("Rejected Agent result cannot be published");
+    }
+    if (pendingDeliveryRequests.has(session.id)) {
+      throw new Error("Another Agent result is already being published");
+    }
+    if (!result.finalAnswer.trim() && result.artifacts.length === 0) {
+      throw new Error("Staged Agent result is empty");
+    }
+    const attachments = result.artifacts
+      .filter((artifact) => artifact.status !== "published")
+      .map((artifact) => artifactToDeliveryAttachment(session, artifact))
+      .filter((attachment): attachment is AgentDeliveryAttachment =>
+        Boolean(attachment),
+      );
+    const textToPublish = result.textPublished
+      ? undefined
+      : result.finalAnswer.trim() || undefined;
+    if (!textToPublish && attachments.length === 0) {
+      result.status = "published";
+      result.publicationError = undefined;
+      const trace = traceForRun(session, result.runID);
+      if (trace) {
+        trace.status = "published";
+        trace.published = true;
+      }
+      await persistSessionFiles(session);
+      publish();
+      return result;
+    }
+    result.status = "approved";
+    result.publicationError = undefined;
+    result.artifacts.forEach((artifact) => {
+      if (artifact.status !== "published") artifact.status = "approved";
+    });
+    result.updatedAt = Date.now();
+    const requestID = createID("agent_delivery");
+    pendingDeliveryRequests.set(session.id, {
+      requestID,
+      resultID: result.resultID,
+    });
+    setTimeout(async () => {
+      const pending = pendingDeliveryRequests.get(session.id);
+      if (pending?.requestID !== requestID) return;
+      pendingDeliveryRequests.delete(session.id);
+      result.status = "completed_staged";
+      result.publicationError = "IM publication timed out. You can retry.";
+      result.artifacts.forEach((artifact) => {
+        if (artifact.status !== "published") artifact.status = "failed";
+      });
+      const trace = traceForRun(session, result.runID);
+      if (trace) {
+        trace.status = "publication_failed";
+        trace.failureCode = "publication_failure";
+      }
+      if (
+        !state.improvementCandidates.some(
+          (candidate) =>
+            candidate.source === "publication_failure" &&
+            trace &&
+            candidate.relatedTraceIDs.includes(trace.traceID),
+        )
+      ) {
+        addImprovementCandidate({
+          source: "publication_failure",
+          relatedTraceIDs: trace ? [trace.traceID] : [],
+          title: "Agent result publication timed out",
+          description:
+            "OpenIM did not confirm publication in time. The staged result remains available for retry.",
+        });
+      }
+      result.updatedAt = Date.now();
+      session.updatedAt = Date.now();
+      await persistSessionFiles(session);
+      publish();
+    }, 30_000).unref();
+    await persistSessionFiles(session);
+    publish();
+    sendEvent(IpcMainToRender.agentSessionEvent, {
+      type: "delivery-request",
+      request: {
+        requestID,
+        resultID: result.resultID,
+        sessionID: session.id,
+        conversationID: session.conversationID,
+        messageID: result.messageID,
+        text: textToPublish,
+        attachments,
+      },
+    } satisfies AgentSessionEvent);
+    return result;
+  },
+  async recordImprovementCandidate(params: RecordImprovementCandidateParams) {
+    await ensureInitialized();
+    const session = sessions.get(params.sessionID);
+    if (!session) throw new Error("Agent session not found");
+    const trace = traceForRun(session, params.runID);
+    if (!trace) throw new Error("Agent Run trace not found");
+    const candidate = addImprovementCandidate({
+      source: params.source,
+      relatedTraceIDs: [trace.traceID],
+      title: params.title,
+      description: params.description,
+    });
+    publish();
+    return candidate;
+  },
+  async updateImprovementCandidate(params: UpdateImprovementCandidateParams) {
+    await ensureInitialized();
+    let updated: ImprovementCandidate | undefined;
+    state.improvementCandidates = state.improvementCandidates.map((candidate) => {
+      if (candidate.candidateID !== params.candidateID) return candidate;
+      updated = updateImprovementCandidateStatus(candidate, params.status);
+      return updated;
+    });
+    if (!updated) throw new Error("Improvement candidate not found");
+    publish();
+    return updated;
+  },
+  async setIMOnline(online: boolean) {
+    await ensureInitialized();
+    state.imOnline = online;
+    publish();
+    return online;
+  },
   async handleDeliveryResponse(response: AgentDeliveryResponse) {
     await ensureInitialized();
     const session = sessions.get(response.sessionID);
     if (!session) return;
-    if (pendingDeliveryRequests.get(session.id) !== response.requestID) return;
+    const pending = pendingDeliveryRequests.get(session.id);
+    if (pending?.requestID !== response.requestID) return;
     pendingDeliveryRequests.delete(session.id);
-    if (response.textSent) session.lastAutoReplyMessageID = response.messageID;
-    if (response.sentAttachmentPaths.length > 0) {
-      session.lastAutoAttachmentMessageID = response.messageID;
-    }
+    const resultID = pending.resultID ?? response.resultID;
+    const result = resultID
+      ? session.stagedResults.find((item) => item.resultID === resultID)
+      : undefined;
+    if (!result) return;
+    const sentPaths = new Set(response.sentAttachmentPaths);
+    result.artifacts.forEach((artifact) => {
+      if (artifact.status === "published") return;
+      if (!artifact.localPath) return;
+      const deliveryPath = artifactDeliveryPath(session, artifact.localPath);
+      artifact.status = sentPaths.has(deliveryPath) ? "published" : "failed";
+    });
+    const trace = traceForRun(session, result.runID);
+    if (response.textSent) result.textPublished = true;
     if (response.errors?.length) {
-      session.lastError = `Automatic IM delivery: ${response.errors.join("; ")}`;
-      notifySession(session, "Automatic Agent delivery failed", session.title);
+      result.status = "completed_staged";
+      result.publicationError =
+        "Some content could not be published. The staged result was kept for retry.";
+      if (trace) {
+        trace.status = "publication_failed";
+        trace.failureCode = "publication_failure";
+      }
+      if (
+        !state.improvementCandidates.some(
+          (candidate) =>
+            candidate.source === "publication_failure" &&
+            trace &&
+            candidate.relatedTraceIDs.includes(trace.traceID),
+        )
+      ) {
+        addImprovementCandidate({
+          source: "publication_failure",
+          relatedTraceIDs: trace ? [trace.traceID] : [],
+          title: "Agent result publication failed",
+          description:
+            "OpenIM could not publish all approved result content. The staged result remains available for retry.",
+        });
+      }
+      notifySession(session, "Agent result publication failed", session.title);
+    } else {
+      result.status = "published";
+      result.publicationError = undefined;
+      if (trace) {
+        trace.status = "published";
+        trace.published = true;
+      }
     }
+    result.updatedAt = Date.now();
     session.updatedAt = Date.now();
     await persistSessionFiles(session);
     publish();
@@ -1388,6 +1826,19 @@ export const agentSessionManager = {
     if (turn) {
       turn.status = "cancelled";
       turn.updatedAt = Date.now();
+      const trace = traceForRun(session, turn.runID);
+      if (trace) {
+        trace.status = "aborted";
+        trace.finishedAt = Date.now();
+        trace.humanTakeover = true;
+        addImprovementCandidate({
+          source: "human_takeover",
+          relatedTraceIDs: [trace.traceID],
+          title: "Human interrupted an Agent Run",
+          description:
+            "The Run was stopped by a person. Review whether the Runtime needed clearer constraints, progress, or an earlier escalation.",
+        });
+      }
     }
     session.status = "idle";
     session.updatedAt = Date.now();
@@ -1429,10 +1880,18 @@ export const agentSessionManager = {
     requestID: string,
     reply: "once" | "always" | "reject",
     message?: string,
+    runID?: string,
   ) {
     await ensureInitialized();
     const session = sessions.get(sessionID);
     if (!session) throw new Error("Agent session not found");
+    const interaction = session.interactions.find(
+      (item) => item.id === requestID && item.type === "permission",
+    );
+    if (!interaction) throw new Error("Permission request is no longer active");
+    if (runID && interaction.runID && runID !== interaction.runID) {
+      throw new Error("Permission request belongs to another Agent Run");
+    }
     await adapter.replyPermission({
       workspacePath: session.workspacePath,
       requestID,
@@ -1448,10 +1907,18 @@ export const agentSessionManager = {
     requestID: string,
     answers?: string[][],
     reject?: boolean,
+    runID?: string,
   ) {
     await ensureInitialized();
     const session = sessions.get(sessionID);
     if (!session) throw new Error("Agent session not found");
+    const interaction = session.interactions.find(
+      (item) => item.id === requestID && item.type === "question",
+    );
+    if (!interaction) throw new Error("Question request is no longer active");
+    if (runID && interaction.runID && runID !== interaction.runID) {
+      throw new Error("Question request belongs to another Agent Run");
+    }
     await adapter.replyQuestion({
       workspacePath: session.workspacePath,
       requestID,
@@ -1503,6 +1970,7 @@ export const agentSessionManager = {
     conversationID: string,
     policy: BotConversationPolicy,
     contextLimit?: number,
+    includeAttachments?: boolean,
   ) {
     await ensureInitialized();
     state.botPolicyByConversation[conversationID] = policy;
@@ -1511,6 +1979,9 @@ export const agentSessionManager = {
         Math.max(contextLimit, 1),
         200,
       );
+    }
+    if (typeof includeAttachments === "boolean") {
+      state.botIncludeAttachmentsByConversation[conversationID] = includeAttachments;
     }
     publish();
   },
@@ -1569,6 +2040,8 @@ export const agentSessionManager = {
     requestID: string;
     prompt: string;
     contextPaths?: string[];
+    agentRequest?: AgentRequest;
+    authorizedContextMessageCount?: number;
   }) {
     await ensureInitialized();
     const request = state.botRequests.find((item) => item.id === params.requestID);
@@ -1586,6 +2059,8 @@ export const agentSessionManager = {
       source: "bot",
       triggerMessageID: request.triggerMessageID,
       contextPaths: params.contextPaths,
+      agentRequest: params.agentRequest ?? request.agentRequest,
+      authorizedContextMessageCount: params.authorizedContextMessageCount,
     });
   },
   async writeSessionFiles(

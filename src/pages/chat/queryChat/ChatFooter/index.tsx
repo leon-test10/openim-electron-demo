@@ -2,7 +2,14 @@ import { CloseOutlined } from "@ant-design/icons";
 import { MessageType, SessionType } from "@openim/wasm-client-sdk";
 import { MessageItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { useLatest } from "ahooks";
-import { Button, message as antdMessage, Modal, Switch, Tooltip } from "antd";
+import {
+  Button,
+  InputNumber,
+  message as antdMessage,
+  Modal,
+  Switch,
+  Tooltip,
+} from "antd";
 import { t } from "i18next";
 import {
   forwardRef,
@@ -19,9 +26,16 @@ import { getCleanText } from "@/components/CKEditor/utils";
 import useGroupMembers from "@/hooks/useGroupMembers";
 import i18n from "@/i18n";
 import { IMSDK } from "@/layout/MainContentWrap";
-import { BotTargetCandidate } from "@/services/botTrigger";
+import { BotTargetCandidate, detectBotTrigger } from "@/services/botTrigger";
 import {
+  attachAgentRequestEnvelope,
+  createAgentRequest,
+  createContextPolicy,
+} from "@/services/humanAgentCollaboration";
+import {
+  useAgentSessionStore,
   useConversationStore,
+  useMessageSelectionStore,
   usePendingAgentRequestStore,
   useTerminalDockStore,
   useUserStore,
@@ -76,6 +90,25 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const autoFileAttachmentEnabled = false;
   const botContextMessageLimit = useTerminalDockStore(
     (state) => state.botContextMessageLimit,
+  );
+  const requesterContextMessageLimit = useAgentSessionStore(
+    (state) =>
+      state.botContextLimitByConversation[currentConversation?.conversationID ?? ""] ??
+      20,
+  );
+  const requesterIncludeAttachments = useAgentSessionStore(
+    (state) =>
+      state.botIncludeAttachmentsByConversation[
+        currentConversation?.conversationID ?? ""
+      ] ?? true,
+  );
+  const selectedContextMessageCount = useMessageSelectionStore(
+    (state) =>
+      Object.keys(
+        state.selectedMessagesByConversation[
+          currentConversation?.conversationID ?? ""
+        ] ?? {},
+      ).length,
   );
   const setAutoInjectEnabled = useTerminalDockStore(
     (state) => state.setAutoInjectEnabled,
@@ -281,13 +314,49 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const textToDraftHtml = (text: string) =>
     text.trim() ? `<pre><code>${escapeHtml(text.trim())}</code></pre>` : "";
 
-  const createTextMessage = async (text: string) =>
-    getAuthMode() === "offline"
-      ? ({
-          contentType: MessageType.TextMessage,
-          textElem: { content: text },
-        } as MessageItem)
-      : (await IMSDK.createTextMessage(text)).data;
+  const createTextMessage = async (text: string) => {
+    const created =
+      getAuthMode() === "offline"
+        ? ({
+            contentType: MessageType.TextMessage,
+            textElem: { content: text },
+          } as MessageItem)
+        : (await IMSDK.createTextMessage(text)).data;
+    if (!currentConversation?.conversationID || !selfInfo.userID) return created;
+    const trigger = detectBotTrigger({
+      text,
+      currentUserID: selfInfo.userID,
+      conversationType:
+        currentConversation.conversationType === SessionType.Single
+          ? "single"
+          : "group",
+      targetCandidates: botTargetCandidates,
+    });
+    if (!trigger?.targetUserID) return created;
+    const selected =
+      useMessageSelectionStore.getState().selectedMessagesByConversation[
+        currentConversation.conversationID
+      ] ?? {};
+    const request = createAgentRequest({
+      conversationID: currentConversation.conversationID,
+      requesterUserID: selfInfo.userID,
+      targetAgentID: trigger.targetUserID,
+      instruction: trigger.instructionText,
+      contextPolicy: createContextPolicy({
+        ownerUserID: selfInfo.userID,
+        recentMessageLimit: requesterContextMessageLimit,
+        selectedMessageIDs: Object.keys(selected),
+        includeAttachments: requesterIncludeAttachments,
+        allowedConversationIDs: [currentConversation.conversationID],
+      }),
+    });
+    const messageWithMetadata = created as MessageItem & { ex?: unknown };
+    messageWithMetadata.ex = attachAgentRequestEnvelope(
+      messageWithMetadata.ex,
+      request,
+    );
+    return messageWithMetadata;
+  };
 
   useEffect(() => {
     const onAppend = (text: string) => {
@@ -487,6 +556,57 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     <footer className="relative h-full min-h-0 bg-white py-px">
       <div className="flex h-full flex-col border-t border-t-[var(--gap-text)]">
         <SendActionBar />
+        <div
+          className="flex shrink-0 items-center gap-2 border-b border-black/5 px-4 py-1 text-xs text-[var(--sub-text)]"
+          data-testid="requester-context-policy"
+        >
+          <span>Agent context authorized by you:</span>
+          <InputNumber
+            size="small"
+            min={1}
+            max={200}
+            value={requesterContextMessageLimit}
+            onChange={(value) => {
+              if (!currentConversation?.conversationID || !value) return;
+              const agentStore = useAgentSessionStore.getState();
+              void agentStore.setBotPolicy(
+                currentConversation.conversationID,
+                agentStore.botPolicyByConversation[
+                  currentConversation.conversationID
+                ] ?? "review",
+                value,
+                requesterIncludeAttachments,
+              );
+            }}
+            data-testid="requester-context-limit"
+          />
+          <span>
+            recent messages
+            {selectedContextMessageCount > 0
+              ? `; ${selectedContextMessageCount} selected messages take priority`
+              : ""}
+          </span>
+          <label className="ml-auto flex items-center gap-1">
+            Include attachments
+            <Switch
+              size="small"
+              checked={requesterIncludeAttachments}
+              onChange={(checked) => {
+                if (!currentConversation?.conversationID) return;
+                const agentStore = useAgentSessionStore.getState();
+                void agentStore.setBotPolicy(
+                  currentConversation.conversationID,
+                  agentStore.botPolicyByConversation[
+                    currentConversation.conversationID
+                  ] ?? "review",
+                  requesterContextMessageLimit,
+                  checked,
+                );
+              }}
+              data-testid="requester-include-attachments"
+            />
+          </label>
+        </div>
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           {pendingAttachments.length > 0 && (
             <div

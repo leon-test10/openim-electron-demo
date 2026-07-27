@@ -217,8 +217,12 @@ const installE2EElectronMock = () => {
           activeSessionByConversation: state.activeSessionByConversation,
           botPolicyByConversation: state.botPolicyByConversation,
           botContextLimitByConversation: state.botContextLimitByConversation,
+          botIncludeAttachmentsByConversation:
+            state.botIncludeAttachmentsByConversation,
           botCheckpointByConversation: state.botCheckpointByConversation,
           botRequests: state.botRequests,
+          improvementCandidates: state.improvementCandidates,
+          imOnline: state.imOnline,
           agentPanelOpen: state.agentPanelOpen,
           terminalPanelOpen: state.terminalPanelOpen,
           initialized: true,
@@ -412,6 +416,71 @@ const installE2EElectronMock = () => {
         return Promise.resolve({ ok: true } as T);
       }
 
+      if (channel === "agent-session:setIMOnline") {
+        useAgentSessionStore.setState({ imOnline: Boolean(args[0]) });
+        return Promise.resolve(Boolean(args[0]) as T);
+      }
+
+      if (channel === "agent-session:setBotPolicy") {
+        const params = args[0] as {
+          conversationID: string;
+          policy: "off" | "review" | "auto";
+          contextLimit?: number;
+          includeAttachments?: boolean;
+        };
+        useAgentSessionStore.setState((state) => ({
+          botPolicyByConversation: {
+            ...state.botPolicyByConversation,
+            [params.conversationID]: params.policy,
+          },
+          botContextLimitByConversation: {
+            ...state.botContextLimitByConversation,
+            [params.conversationID]:
+              params.contextLimit ??
+              state.botContextLimitByConversation[params.conversationID],
+          },
+          botIncludeAttachmentsByConversation: {
+            ...state.botIncludeAttachmentsByConversation,
+            [params.conversationID]:
+              params.includeAttachments ??
+              state.botIncludeAttachmentsByConversation[params.conversationID],
+          },
+        }));
+        return Promise.resolve({ ok: true } as T);
+      }
+
+      if (channel === "agent-session:e2eRuntimeStatus") {
+        const params = args[0] as {
+          sessionID: string;
+          status: "idle" | "disconnected" | "recovery_required";
+          lastError?: string;
+        };
+        useAgentSessionStore.setState((state) => ({
+          sessions: state.sessions.map((session) =>
+            session.id === params.sessionID
+              ? {
+                  ...session,
+                  status: params.status,
+                  lastError: params.lastError,
+                }
+              : session,
+          ),
+        }));
+        return Promise.resolve({ ok: true } as T);
+      }
+
+      if (channel === "agent-session:recover") {
+        const sessionID = args[0] as string;
+        useAgentSessionStore.setState((state) => ({
+          sessions: state.sessions.map((session) =>
+            session.id === sessionID
+              ? { ...session, status: "idle", lastError: undefined }
+              : session,
+          ),
+        }));
+        return Promise.resolve({ ok: true } as T);
+      }
+
       if (channel === "agent-session:markRead") {
         const sessionID = args[0] as string;
         useAgentSessionStore.setState((state) => ({
@@ -462,14 +531,65 @@ const installE2EElectronMock = () => {
       }
 
       if (channel === "agent-session:send") {
-        const params = args[0] as { sessionID: string; text: string };
+        const params = args[0] as {
+          sessionID: string;
+          text: string;
+          authorizedContextMessageCount?: number;
+        };
         const now = Date.now();
+        const requestID = `e2e-request-${now}`;
+        const runID = `e2e-run-${now}`;
         useAgentSessionStore.setState((state) => ({
           sessions: state.sessions.map((session) =>
             session.id === params.sessionID
               ? {
                   ...session,
                   status: "running",
+                  turns: [
+                    ...session.turns,
+                    {
+                      id: `e2e-turn-${now}`,
+                      requestID,
+                      runID,
+                      sessionID: params.sessionID,
+                      requesterUserID: "e2e_self",
+                      source: "manual",
+                      prompt: params.text,
+                      contextPolicy: {
+                        ownerUserID: "e2e_self",
+                        recentMessageLimit: 10,
+                        includeAttachments: true,
+                        allowedConversationIDs: [session.conversationID],
+                      },
+                      authorizedContextMessageCount:
+                        (params.authorizedContextMessageCount ?? 0) > 0
+                          ? params.authorizedContextMessageCount!
+                          : params.text.includes("context-policy")
+                          ? 10
+                          : 0,
+                      status: "running",
+                      createdAt: now,
+                      updatedAt: now,
+                    },
+                  ],
+                  traceSummaries: [
+                    ...session.traceSummaries,
+                    {
+                      traceID: `e2e-trace-${now}`,
+                      requestID,
+                      runID,
+                      requesterUserID: "e2e_self",
+                      runtimeID: "opencode",
+                      startedAt: now,
+                      status: "running",
+                      retryCount: 0,
+                      permissionCount: 0,
+                      questionCount: 0,
+                      artifactCount: 0,
+                      humanTakeover: false,
+                      published: false,
+                    },
+                  ],
                   messages: [
                     ...session.messages,
                     {
@@ -529,11 +649,198 @@ const installE2EElectronMock = () => {
                         ? { ...message, completedAt: Date.now() }
                         : message,
                     ),
+                    turns: session.turns.map((turn) =>
+                      turn.runID === runID
+                        ? { ...turn, status: "completed" as const }
+                        : turn,
+                    ),
+                    stagedResults: [
+                      {
+                        resultID: `e2e-result-${now}`,
+                        requestID,
+                        runID,
+                        sessionID: params.sessionID,
+                        messageID: `e2e-assistant-${now}`,
+                        status: "completed_staged" as const,
+                        finalAnswer: `Completed in background: ${params.text}`,
+                        originalFinalAnswer: `Completed in background: ${params.text}`,
+                        artifacts: params.text.includes("folder")
+                          ? [
+                              {
+                                artifactID: `e2e-artifact-${now}`,
+                                requestID,
+                                runID,
+                                type: "folder" as const,
+                                name: "nested-output",
+                                localPath: "C:\\OpenIM-E2E\\workspaces\\nested-output",
+                                status: "staged" as const,
+                              },
+                            ]
+                          : [],
+                        authorizedContextMessageCount:
+                          (params.authorizedContextMessageCount ?? 0) > 0
+                            ? params.authorizedContextMessageCount!
+                            : params.text.includes("context-policy")
+                            ? 10
+                            : 0,
+                        createdAt: now,
+                        updatedAt: Date.now(),
+                      },
+                      ...session.stagedResults,
+                    ],
+                    traceSummaries: session.traceSummaries.map((trace) =>
+                      trace.runID === runID
+                        ? {
+                            ...trace,
+                            status: "completed_staged",
+                            finishedAt: Date.now(),
+                            artifactCount: params.text.includes("folder") ? 1 : 0,
+                          }
+                        : trace,
+                    ),
                   }
                 : session,
             ),
           }));
         }, 900);
+        return Promise.resolve({ ok: true } as T);
+      }
+
+      if (channel === "agent-session:updateStagedResult") {
+        const params = args[0] as {
+          sessionID: string;
+          resultID: string;
+          finalAnswer?: string;
+          removeArtifactID?: string;
+        };
+        let updated: unknown;
+        useAgentSessionStore.setState((state) => ({
+          sessions: state.sessions.map((session) => {
+            if (session.id !== params.sessionID) return session;
+            return {
+              ...session,
+              stagedResults: session.stagedResults.map((result) => {
+                if (result.resultID !== params.resultID) return result;
+                updated = {
+                  ...result,
+                  finalAnswer: params.finalAnswer ?? result.finalAnswer,
+                  artifacts: params.removeArtifactID
+                    ? result.artifacts.filter(
+                        (artifact) => artifact.artifactID !== params.removeArtifactID,
+                      )
+                    : result.artifacts,
+                  status: "completed_staged" as const,
+                  publicationError: undefined,
+                  updatedAt: Date.now(),
+                };
+                return updated as typeof result;
+              }),
+            };
+          }),
+        }));
+        return Promise.resolve(updated as T);
+      }
+
+      if (channel === "agent-session:publishStagedResult") {
+        const params = args[0] as { sessionID: string; resultID: string };
+        let published: unknown;
+        useAgentSessionStore.setState((state) => ({
+          sessions: state.sessions.map((session) => {
+            if (session.id !== params.sessionID) return session;
+            return {
+              ...session,
+              stagedResults: session.stagedResults.map((result) => {
+                if (result.resultID !== params.resultID) return result;
+                published = {
+                  ...result,
+                  status: "published" as const,
+                  artifacts: result.artifacts.map((artifact) => ({
+                    ...artifact,
+                    status: "published" as const,
+                  })),
+                  updatedAt: Date.now(),
+                };
+                emitter.emit("SEND_CHAT_INPUT", result.finalAnswer);
+                return published as typeof result;
+              }),
+              traceSummaries: session.traceSummaries.map((trace) =>
+                trace.runID ===
+                session.stagedResults.find(
+                  (result) => result.resultID === params.resultID,
+                )?.runID
+                  ? { ...trace, status: "published", published: true }
+                  : trace,
+              ),
+            };
+          }),
+        }));
+        return Promise.resolve(published as T);
+      }
+
+      if (
+        channel === "agent-session:rejectStagedResult" ||
+        channel === "agent-session:retryStagedResult"
+      ) {
+        const params = args[0] as { sessionID: string; resultID: string };
+        useAgentSessionStore.setState((state) => ({
+          sessions: state.sessions.map((session) =>
+            session.id === params.sessionID
+              ? {
+                  ...session,
+                  stagedResults: session.stagedResults.map((result) =>
+                    result.resultID === params.resultID
+                      ? {
+                          ...result,
+                          status: "rejected" as const,
+                          updatedAt: Date.now(),
+                        }
+                      : result,
+                  ),
+                }
+              : session,
+          ),
+        }));
+        return Promise.resolve({ ok: true } as T);
+      }
+
+      if (channel === "agent-session:recordImprovement") {
+        const params = args[0] as {
+          runID: string;
+          source: "runtime_error" | "user_feedback";
+          title: string;
+          description: string;
+        };
+        const traceID = useAgentSessionStore
+          .getState()
+          .sessions.flatMap((session) => session.traceSummaries)
+          .find((trace) => trace.runID === params.runID)?.traceID;
+        const candidate = {
+          candidateID: `e2e-improvement-${Date.now()}`,
+          source: params.source,
+          relatedTraceIDs: traceID ? [traceID] : [],
+          title: params.title,
+          description: params.description,
+          status: "new" as const,
+          createdAt: Date.now(),
+        };
+        useAgentSessionStore.setState((state) => ({
+          improvementCandidates: [candidate, ...state.improvementCandidates],
+        }));
+        return Promise.resolve(candidate as T);
+      }
+
+      if (channel === "agent-session:updateImprovement") {
+        const params = args[0] as {
+          candidateID: string;
+          status: "approved" | "rejected" | "converted_to_goal";
+        };
+        useAgentSessionStore.setState((state) => ({
+          improvementCandidates: state.improvementCandidates.map((candidate) =>
+            candidate.candidateID === params.candidateID
+              ? { ...candidate, status: params.status }
+              : candidate,
+          ),
+        }));
         return Promise.resolve({ ok: true } as T);
       }
 
@@ -1122,6 +1429,8 @@ const E2EHarness = () => {
           messages: [],
           turns: [],
           interactions: [],
+          stagedResults: [],
+          traceSummaries: [],
         }));
       useAgentSessionStore.setState({
         sessions: [...current.sessions, ...seedSessions],

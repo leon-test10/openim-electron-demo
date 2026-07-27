@@ -48,6 +48,8 @@ export interface AgentPermissionInteraction {
   id: string;
   type: "permission";
   sessionID: string;
+  runID?: string;
+  agentRequestID?: string;
   permission: string;
   patterns: string[];
   always: string[];
@@ -72,6 +74,8 @@ export interface AgentQuestionInteraction {
   id: string;
   type: "question";
   sessionID: string;
+  runID?: string;
+  agentRequestID?: string;
   questions: AgentQuestionInfo[];
   createdAt: number;
 }

@@ -39,26 +39,13 @@ test("Agent panel follows contacts while background work continues", async ({
   await appWindow.getByTestId("agent-model-select").click();
   await appWindow.getByText("E2E Provider · E2E Model (default)").click();
 
-  const assistantCard = appWindow
-    .getByTestId("agent-message-assistant")
-    .last();
-  await expect(appWindow.getByTestId("agent-send-to-im")).toBeHidden();
-  await expect(
-    appWindow.getByTestId("agent-insert-to-im").last(),
-  ).toBeHidden();
-  await assistantCard.hover();
-  await expect(appWindow.getByTestId("agent-send-to-im")).toBeVisible();
-  await expect(
-    appWindow.getByTestId("agent-insert-to-im").last(),
-  ).toBeVisible();
-
-  await appWindow.getByTestId("agent-send-to-im").click();
-  await appWindow
-    .getByRole("dialog")
-    .getByRole("button", { name: "Send to IM" })
-    .click();
+  await expect(appWindow.getByTestId("agent-staged-result")).toBeVisible();
+  const stagedAnswer = appWindow.getByTestId("agent-staged-final-answer");
+  await stagedAnswer.fill("Human edited result for contact one");
+  await stagedAnswer.blur();
+  await appWindow.getByTestId("agent-confirm-and-send").click();
   await expect(appWindow.getByTestId("e2e-sent-drafts")).toContainText(
-    "Completed in background: finish contact one task",
+    "Human edited result for contact one",
   );
 
   const attachedSessions = await appWindow.evaluate(
@@ -86,7 +73,5 @@ test("Agent assistant text renders progressively while running", async ({
   await expect
     .poll(async () => (await streamed.textContent())?.length ?? 0)
     .toBeGreaterThan(0);
-  await expect(streamed).toContainText(
-    "Completed in background: stream this response",
-  );
+  await expect(streamed).toContainText("Completed in background: stream this response");
 });

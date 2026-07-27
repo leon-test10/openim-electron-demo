@@ -13,17 +13,28 @@ import type {
   BotConversationPolicy,
   BotRequest,
   CreateAgentSessionParams,
+  PublishAgentStagedResultParams,
+  RecordImprovementCandidateParams,
   SendAgentMessageParams,
   UpdateAgentSessionParams,
+  UpdateAgentStagedResultParams,
+  UpdateImprovementCandidateParams,
 } from "@/types/agentSession";
+import type {
+  AgentStagedResult,
+  ImprovementCandidate,
+} from "@/types/humanAgentCollaboration";
 
 const emptySnapshot: AgentSessionStateSnapshot = {
   sessions: [],
   activeSessionByConversation: {},
   botPolicyByConversation: {},
   botContextLimitByConversation: {},
+  botIncludeAttachmentsByConversation: {},
   botCheckpointByConversation: {},
   botRequests: [],
+  improvementCandidates: [],
+  imOnline: true,
   agentPanelOpen: true,
   terminalPanelOpen: false,
   initialized: false,
@@ -51,12 +62,14 @@ interface AgentSessionStore extends AgentSessionStateSnapshot {
     sessionID: string,
     requestID: string,
     reply: "once" | "always" | "reject",
+    runID?: string,
   ) => Promise<void>;
   replyQuestion: (
     sessionID: string,
     requestID: string,
     answers?: string[][],
     reject?: boolean,
+    runID?: string,
   ) => Promise<void>;
   setAutoApprove: (sessionID: string, enabled: boolean) => Promise<void>;
   markRead: (sessionID: string) => Promise<void>;
@@ -73,6 +86,7 @@ interface AgentSessionStore extends AgentSessionStateSnapshot {
     conversationID: string,
     policy: BotConversationPolicy,
     contextLimit?: number,
+    includeAttachments?: boolean,
   ) => Promise<void>;
   setBotCheckpoint: (conversationID: string, clientMsgID?: string) => Promise<void>;
   addBotRequest: (request: BotRequest) => Promise<boolean>;
@@ -82,12 +96,31 @@ interface AgentSessionStore extends AgentSessionStateSnapshot {
     requestID: string;
     prompt: string;
     contextPaths?: string[];
+    agentRequest?: import("@/types/humanAgentCollaboration").AgentRequest;
+    authorizedContextMessageCount?: number;
   }) => Promise<void>;
   writeSessionFiles: (
     sessionID: string,
     files: Array<{ relativePath: string; content: string }>,
   ) => Promise<string[]>;
   sendHistoryResponse: (response: AgentHistoryQueryResponse) => Promise<void>;
+  setIMOnline: (online: boolean) => Promise<void>;
+  updateStagedResult: (
+    params: UpdateAgentStagedResultParams,
+  ) => Promise<AgentStagedResult>;
+  rejectStagedResult: (
+    params: PublishAgentStagedResultParams,
+  ) => Promise<AgentStagedResult>;
+  retryStagedResult: (params: PublishAgentStagedResultParams) => Promise<void>;
+  publishStagedResult: (
+    params: PublishAgentStagedResultParams,
+  ) => Promise<AgentStagedResult>;
+  recordImprovementCandidate: (
+    params: RecordImprovementCandidateParams,
+  ) => Promise<ImprovementCandidate>;
+  updateImprovementCandidate: (
+    params: UpdateImprovementCandidateParams,
+  ) => Promise<ImprovementCandidate>;
 }
 
 const invoke = async <T>(channel: string, ...args: unknown[]) => {
@@ -162,15 +195,21 @@ export const useAgentSessionStore = create<AgentSessionStore>()((set) => ({
   recover: async (sessionID) => {
     await invoke("agent-session:recover", sessionID);
   },
-  replyPermission: async (sessionID, requestID, reply) => {
-    await invoke("agent-session:replyPermission", { sessionID, requestID, reply });
+  replyPermission: async (sessionID, requestID, reply, runID) => {
+    await invoke("agent-session:replyPermission", {
+      sessionID,
+      requestID,
+      reply,
+      runID,
+    });
   },
-  replyQuestion: async (sessionID, requestID, answers, reject) => {
+  replyQuestion: async (sessionID, requestID, answers, reject, runID) => {
     await invoke("agent-session:replyQuestion", {
       sessionID,
       requestID,
       answers,
       reject,
+      runID,
     });
   },
   setAutoApprove: async (sessionID, enabled) => {
@@ -192,11 +231,12 @@ export const useAgentSessionStore = create<AgentSessionStore>()((set) => ({
   setPanelState: async (params) => {
     await invoke("agent-session:setPanelState", params);
   },
-  setBotPolicy: async (conversationID, policy, contextLimit) => {
+  setBotPolicy: async (conversationID, policy, contextLimit, includeAttachments) => {
     await invoke("agent-session:setBotPolicy", {
       conversationID,
       policy,
       contextLimit,
+      includeAttachments,
     });
   },
   setBotCheckpoint: async (conversationID, clientMsgID) => {
@@ -230,6 +270,26 @@ export const useAgentSessionStore = create<AgentSessionStore>()((set) => ({
   sendHistoryResponse: async (response) => {
     await invoke("agent-session:historyResponse", response);
   },
+  setIMOnline: async (online) => {
+    if (!window.electronAPI) {
+      set({ imOnline: online });
+      return;
+    }
+    await invoke("agent-session:setIMOnline", online);
+  },
+  updateStagedResult: async (params) =>
+    invoke<AgentStagedResult>("agent-session:updateStagedResult", params),
+  rejectStagedResult: async (params) =>
+    invoke<AgentStagedResult>("agent-session:rejectStagedResult", params),
+  retryStagedResult: async (params) => {
+    await invoke("agent-session:retryStagedResult", params);
+  },
+  publishStagedResult: async (params) =>
+    invoke<AgentStagedResult>("agent-session:publishStagedResult", params),
+  recordImprovementCandidate: async (params) =>
+    invoke<ImprovementCandidate>("agent-session:recordImprovement", params),
+  updateImprovementCandidate: async (params) =>
+    invoke<ImprovementCandidate>("agent-session:updateImprovement", params),
 }));
 
 export const getAgentSessionsForConversation = (conversationID?: string) => {

@@ -1,8 +1,6 @@
 import {
   CopyOutlined,
   DeleteOutlined,
-  EditOutlined,
-  FolderOpenOutlined,
   PushpinFilled,
   PushpinOutlined,
   SendOutlined,
@@ -31,6 +29,7 @@ import {
   loadRecentConversationMessages,
   persistAgentContextBundle,
 } from "@/services/agentSessions/context";
+import { deriveConversationAgentBindingState } from "@/services/humanAgentCollaboration";
 import { useAgentSessionStore, useUserStore } from "@/store";
 import type {
   CollaborationSession,
@@ -44,7 +43,10 @@ import type {
   AgentSession,
   BotRequest,
 } from "@/types/agentSession";
-import { emit } from "@/utils/events";
+import type {
+  AgentStagedResult,
+  ImprovementCandidate,
+} from "@/types/humanAgentCollaboration";
 
 import { SafeMarkdown } from "./SafeMarkdown";
 
@@ -141,37 +143,6 @@ const MessageCard = ({
     (part) => part.type === "reasoning" || part.type === "tool",
   );
   const text = partText(agentMessage);
-  const replyText = visible
-    .filter((part) => part.type === "text")
-    .map((part) => part.text ?? "")
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-
-  const attachFile = async (pathValue?: string) => {
-    if (!pathValue) return;
-    const absolute = /^[a-zA-Z]:[\\/]/.test(pathValue)
-      ? pathValue
-      : `${session.workspacePath.replace(/[\\/]+$/, "")}\\${pathValue}`;
-    const stat = await window.electronAPI?.ipcInvoke<{
-      exists: boolean;
-      size: number;
-    }>("file:statNativePath", absolute);
-    if (!stat?.exists) {
-      message.warning("Agent output file is no longer available");
-      return;
-    }
-    emit("ADD_PENDING_CHAT_ATTACHMENT", {
-      source: "workspace",
-      fileName: pathValue.split(/[\\/]/).pop() ?? "agent-output",
-      nativePath: absolute,
-      relativePath: pathValue,
-      fileType: "",
-      fileSize: stat.size,
-      sendKind: "file",
-    });
-    message.success("Added to IM attachments");
-  };
 
   return (
     <div
@@ -194,49 +165,16 @@ const MessageCard = ({
               onClick={() => void navigator.clipboard.writeText(text)}
             />
           </Tooltip>
-          <Tooltip title="Insert into IM composer">
-            <Button
-              size="small"
-              type="text"
-              icon={<EditOutlined rev={undefined} />}
-              onClick={() => emit("APPEND_CHAT_INPUT", text)}
-              data-testid="agent-insert-to-im"
-            />
-          </Tooltip>
-          {agentMessage.role === "assistant" && replyText && (
-            <Tooltip title="Send to IM">
-              <Button
-                size="small"
-                type="text"
-                icon={<SendOutlined rev={undefined} />}
-                onClick={() =>
-                  Modal.confirm({
-                    title: "Send this Agent reply to the current IM chat?",
-                    content: (
-                      <div className="max-h-48 overflow-y-auto whitespace-pre-wrap text-sm">
-                        {replyText}
-                      </div>
-                    ),
-                    okText: "Send to IM",
-                    onOk: () => emit("SEND_CHAT_INPUT", replyText),
-                  })
-                }
-                data-testid="agent-send-to-im"
-              />
-            </Tooltip>
-          )}
         </div>
       </div>
       {visible.map((part) =>
         part.type === "file" ? (
-          <Button
+          <div
             key={part.id}
-            className="my-1 max-w-full"
-            icon={<FolderOpenOutlined rev={undefined} />}
-            onClick={() => void attachFile(part.path)}
+            className="my-1 max-w-full rounded border border-black/5 px-2 py-1 text-xs dark:border-white/10"
           >
-            <span className="truncate">{part.name ?? part.path ?? "Output file"}</span>
-          </Button>
+            Output: {part.name ?? part.path ?? "file"}
+          </div>
         ) : (
           <StreamedMarkdown
             key={part.id}
@@ -357,7 +295,13 @@ const InteractionCard = ({
       <QuestionCard
         interaction={interaction}
         onReply={(answers, reject) =>
-          void store.replyQuestion(sessionID, interaction.id, answers, reject)
+          void store.replyQuestion(
+            sessionID,
+            interaction.id,
+            answers,
+            reject,
+            interaction.runID,
+          )
         }
       />
     );
@@ -372,14 +316,26 @@ const InteractionCard = ({
         <Button
           size="small"
           type="primary"
-          onClick={() => void store.replyPermission(sessionID, interaction.id, "once")}
+          onClick={() =>
+            void store.replyPermission(
+              sessionID,
+              interaction.id,
+              "once",
+              interaction.runID,
+            )
+          }
         >
           Allow once
         </Button>
         <Button
           size="small"
           onClick={() =>
-            void store.replyPermission(sessionID, interaction.id, "always")
+            void store.replyPermission(
+              sessionID,
+              interaction.id,
+              "always",
+              interaction.runID,
+            )
           }
         >
           Always this session
@@ -388,12 +344,267 @@ const InteractionCard = ({
           danger
           size="small"
           onClick={() =>
-            void store.replyPermission(sessionID, interaction.id, "reject")
+            void store.replyPermission(
+              sessionID,
+              interaction.id,
+              "reject",
+              interaction.runID,
+            )
           }
         >
           Reject
         </Button>
       </div>
+    </div>
+  );
+};
+
+const StagedResultCard = ({ result }: { result: AgentStagedResult }) => {
+  const [answer, setAnswer] = useState(result.finalAnswer);
+  const [busy, setBusy] = useState(false);
+  const store = useAgentSessionStore.getState();
+
+  useEffect(() => setAnswer(result.finalAnswer), [result.finalAnswer]);
+
+  const run = async (action: () => Promise<unknown>, success: string) => {
+    setBusy(true);
+    try {
+      await action();
+      message.success(success);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (result.status === "published" || result.status === "rejected") return null;
+
+  return (
+    <div
+      className="mb-3 rounded-xl border border-emerald-300 bg-emerald-50 p-3 dark:bg-emerald-950/20"
+      data-testid="agent-staged-result"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-medium">Result awaiting your confirmation</div>
+        <Tag color={result.status === "approved" ? "processing" : "success"}>
+          {result.status}
+        </Tag>
+      </div>
+      <div
+        className="mb-2 mt-1 text-xs text-[var(--sub-text)]"
+        data-testid="agent-authorized-context-count"
+      >
+        Used {result.authorizedContextMessageCount} messages authorized by the requester
+        · Run {result.runID}
+      </div>
+      <Input.TextArea
+        autoSize={{ minRows: 3, maxRows: 8 }}
+        value={answer}
+        disabled={busy || result.status === "approved"}
+        onChange={(event) => setAnswer(event.target.value)}
+        data-testid="agent-staged-final-answer"
+      />
+      {result.artifacts.length > 0 && (
+        <div className="mt-3 space-y-1" data-testid="agent-staged-artifacts">
+          {result.artifacts.map((artifact) => (
+            <div
+              key={artifact.artifactID}
+              className="flex items-center justify-between gap-2 rounded border border-black/5 bg-white/70 px-2 py-1 text-xs dark:border-white/10 dark:bg-black/10"
+            >
+              <span className="min-w-0 truncate">
+                {artifact.type} · {artifact.name}
+              </span>
+              <Button
+                size="small"
+                type="text"
+                danger
+                disabled={busy || result.status === "approved"}
+                onClick={() =>
+                  void run(
+                    () =>
+                      store.updateStagedResult({
+                        sessionID: result.sessionID,
+                        resultID: result.resultID,
+                        removeArtifactID: artifact.artifactID,
+                      }),
+                    "Artifact removed from this delivery",
+                  )
+                }
+                data-testid="agent-remove-staged-artifact"
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      {result.publicationError && (
+        <div
+          className="mt-2 text-xs text-red-600 dark:text-red-300"
+          data-testid="agent-publication-error"
+        >
+          {result.publicationError}
+        </div>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {answer !== result.finalAnswer && (
+          <Button
+            size="small"
+            disabled={busy}
+            onClick={() =>
+              void run(
+                () =>
+                  store.updateStagedResult({
+                    sessionID: result.sessionID,
+                    resultID: result.resultID,
+                    finalAnswer: answer,
+                  }),
+                "Staged answer updated",
+              )
+            }
+            data-testid="agent-save-staged-answer"
+          >
+            Save edit
+          </Button>
+        )}
+        <Button
+          size="small"
+          type="primary"
+          loading={busy}
+          onClick={() =>
+            void run(async () => {
+              if (answer !== result.finalAnswer) {
+                await store.updateStagedResult({
+                  sessionID: result.sessionID,
+                  resultID: result.resultID,
+                  finalAnswer: answer,
+                });
+              }
+              await store.publishStagedResult({
+                sessionID: result.sessionID,
+                resultID: result.resultID,
+              });
+            }, "Approved result is being sent to OpenIM")
+          }
+          data-testid="agent-confirm-and-send"
+        >
+          Confirm and Send
+        </Button>
+        <Button
+          size="small"
+          disabled={busy}
+          onClick={() =>
+            void run(
+              () =>
+                store.retryStagedResult({
+                  sessionID: result.sessionID,
+                  resultID: result.resultID,
+                }),
+              "Agent Run queued again",
+            )
+          }
+          data-testid="agent-retry-staged-result"
+        >
+          Retry
+        </Button>
+        <Button
+          size="small"
+          danger
+          disabled={busy}
+          onClick={() =>
+            void run(
+              () =>
+                store.rejectStagedResult({
+                  sessionID: result.sessionID,
+                  resultID: result.resultID,
+                }),
+              "Staged result rejected",
+            )
+          }
+          data-testid="agent-reject-staged-result"
+        >
+          Reject
+        </Button>
+        <Button
+          size="small"
+          disabled={busy}
+          onClick={() =>
+            void run(
+              () =>
+                store.recordImprovementCandidate({
+                  sessionID: result.sessionID,
+                  runID: result.runID,
+                  source: "user_feedback",
+                  title: "Review this Agent Run",
+                  description:
+                    "A user requested that this completed Run be reviewed for a future controlled improvement.",
+                }),
+              "Improvement candidate recorded",
+            )
+          }
+          data-testid="agent-suggest-improvement"
+        >
+          Suggest improvement
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+const ImprovementBacklog = ({ candidates }: { candidates: ImprovementCandidate[] }) => {
+  if (candidates.length === 0) return null;
+  const update = (
+    candidateID: string,
+    status: "approved" | "rejected" | "converted_to_goal",
+  ) =>
+    void useAgentSessionStore
+      .getState()
+      .updateImprovementCandidate({ candidateID, status })
+      .catch((error) =>
+        message.error(error instanceof Error ? error.message : String(error)),
+      );
+  return (
+    <div
+      className="mb-3 rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs dark:bg-violet-950/20"
+      data-testid="agent-improvement-backlog"
+    >
+      <div className="mb-2 font-medium">Improvement Backlog</div>
+      {candidates.slice(0, 5).map((candidate) => (
+        <div
+          key={candidate.candidateID}
+          className="mb-2 rounded border border-black/5 bg-white/60 p-2 last:mb-0 dark:border-white/10 dark:bg-black/10"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium">{candidate.title}</span>
+            <Tag>{candidate.status}</Tag>
+          </div>
+          <div className="my-1 text-[var(--sub-text)]">{candidate.description}</div>
+          {candidate.status === "new" && (
+            <div className="flex flex-wrap gap-1">
+              <Button
+                size="small"
+                onClick={() => update(candidate.candidateID, "approved")}
+              >
+                Approve
+              </Button>
+              <Button
+                size="small"
+                onClick={() => update(candidate.candidateID, "rejected")}
+              >
+                Reject
+              </Button>
+              <Button
+                size="small"
+                type="primary"
+                onClick={() => update(candidate.candidateID, "converted_to_goal")}
+              >
+                Convert to Goal
+              </Button>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 };
@@ -429,8 +640,35 @@ const RuntimeStatusCard = ({ session }: { session: AgentSession }) => {
             )
         }
       >
-        Retry in this workspace
+        Reconnect Runtime
       </Button>
+      {session.traceSummaries.at(-1) && (
+        <Button
+          className="ml-2"
+          size="small"
+          onClick={() => {
+            const trace = session.traceSummaries.at(-1);
+            if (!trace) return;
+            void useAgentSessionStore
+              .getState()
+              .recordImprovementCandidate({
+                sessionID: session.id,
+                runID: trace.runID,
+                source: "runtime_error",
+                title: "Investigate Runtime failure",
+                description:
+                  "A user recorded this Runtime failure for later diagnosis. Sensitive terminal output was not stored.",
+              })
+              .then(() => message.success("Issue recorded"))
+              .catch((error) =>
+                message.error(error instanceof Error ? error.message : String(error)),
+              );
+          }}
+          data-testid="agent-record-runtime-issue"
+        >
+          Record issue
+        </Button>
+      )}
     </div>
   );
 };
@@ -475,7 +713,12 @@ const BotRequestCard = ({ request }: { request: BotRequest }) => {
         {request.instructionText || "(no instruction)"}
       </div>
       <div className="mb-2 text-xs text-[var(--sub-text)]">
-        Run it in this contact&apos;s pinned Bot session, or dismiss it.
+        Requester authorized {request.agentRequest.contextPolicy.recentMessageLimit}{" "}
+        messages
+        {request.agentRequest.contextPolicy.selectedMessageIDs?.length
+          ? ` (${request.agentRequest.contextPolicy.selectedMessageIDs.length} selected)`
+          : ""}
+        . The receiving Agent cannot override this scope.
       </div>
       <Button size="small" type="primary" loading={running} onClick={() => void run()}>
         Run in Bot session
@@ -794,6 +1037,11 @@ const AgentPanel = ({
   const sessions = useAgentSessionStore((state) => state.sessions);
   const activeMap = useAgentSessionStore((state) => state.activeSessionByConversation);
   const botRequests = useAgentSessionStore((state) => state.botRequests);
+  const improvementCandidates = useAgentSessionStore(
+    (state) => state.improvementCandidates,
+  );
+  const imOnline = useAgentSessionStore((state) => state.imOnline);
+  const selfUserID = useUserStore((state) => state.selfInfo.userID);
   const botPolicy = useAgentSessionStore(
     (state) => state.botPolicyByConversation[conversationID ?? ""] ?? "review",
   );
@@ -812,6 +1060,7 @@ const AgentPanel = ({
   const [workspacePath, setWorkspacePath] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
   const [contextLimit, setContextLimit] = useState(20);
+  const [draftAuthorizedContextCount, setDraftAuthorizedContextCount] = useState(0);
   const [creating, setCreating] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameTitle, setRenameTitle] = useState("");
@@ -837,6 +1086,17 @@ const AgentPanel = ({
   const pendingRequests = botRequests.filter(
     (request) =>
       request.conversationID === conversationID && request.status === "pending_review",
+  );
+  const bindingState = deriveConversationAgentBindingState({
+    hasBoundSession: Boolean(activeSession),
+    imOnline,
+    runtimeStatus: activeSession?.status,
+  });
+  const relatedTraceIDs = new Set(
+    activeSession?.traceSummaries.map((trace) => trace.traceID) ?? [],
+  );
+  const sessionImprovementCandidates = improvementCandidates.filter((candidate) =>
+    candidate.relatedTraceIDs.some((traceID) => relatedTraceIDs.has(traceID)),
   );
 
   useEffect(() => {
@@ -931,7 +1191,10 @@ const AgentPanel = ({
       await useAgentSessionStore.getState().sendMessage({
         sessionID: activeSession.id,
         text: value,
+        requesterUserID: selfUserID,
+        authorizedContextMessageCount: draftAuthorizedContextCount,
       });
+      setDraftAuthorizedContextCount(0);
     } catch (error) {
       setPrompt(value);
       message.error(error instanceof Error ? error.message : String(error));
@@ -953,6 +1216,7 @@ const AgentPanel = ({
       setPrompt(
         (current) => `${current}${current ? "\n\n" : ""}${result.bundle.promptText}`,
       );
+      setDraftAuthorizedContextCount(messages.length);
       setContextOpen(false);
       message.success("Auditable IM context snapshot added");
     } catch (error) {
@@ -999,6 +1263,26 @@ const AgentPanel = ({
           {activeSession && (
             <Tag color={statusColor[activeSession.status]}>{activeSession.status}</Tag>
           )}
+          <Tag
+            color={
+              bindingState === "bound" || bindingState === "runtime_running"
+                ? "success"
+                : bindingState === "im_offline" ||
+                  bindingState === "runtime_disconnected" ||
+                  bindingState === "failed"
+                ? "error"
+                : "processing"
+            }
+            data-testid="agent-binding-state"
+          >
+            {bindingState}
+          </Tag>
+          <span
+            className="text-[10px] text-[var(--sub-text)]"
+            data-testid="agent-im-status"
+          >
+            OpenIM {imOnline ? "online" : "offline"}
+          </span>
         </div>
         <div className="flex shrink-0 items-center">
           {activeSession && (
@@ -1133,7 +1417,7 @@ const AgentPanel = ({
               />
             </label>
             <label className="flex items-center gap-1">
-              Context
+              Requester context
               <InputNumber
                 size="small"
                 min={1}
@@ -1175,59 +1459,26 @@ const AgentPanel = ({
               />
             </label>
             <label className="flex items-center gap-1">
-              Auto send reply
+              Auto publish reply
               <Switch
                 size="small"
-                checked={Boolean(activeSession.autoReplyTextEnabled)}
-                onChange={(checked) => {
-                  const apply = () =>
-                    useAgentSessionStore.getState().updateSession({
-                      sessionID: activeSession.id,
-                      autoReplyTextEnabled: checked,
-                    });
-                  if (!checked) {
-                    void apply();
-                    return;
-                  }
-                  Modal.confirm({
-                    title: "Send Agent replies without confirmation?",
-                    content:
-                      "New replies from this Agent session will be sent automatically to its bound IM conversation, even when you switch to another contact.",
-                    okText: "Enable auto send",
-                    cancelText: "Cancel",
-                    onOk: apply,
-                  });
-                }}
+                checked={false}
+                disabled
                 data-testid="agent-auto-send-reply"
               />
             </label>
             <label className="flex items-center gap-1">
-              Auto attach outputs
+              Auto publish artifacts
               <Switch
                 size="small"
-                checked={Boolean(activeSession.autoFileAttachmentEnabled)}
-                onChange={(checked) => {
-                  const apply = () =>
-                    useAgentSessionStore.getState().updateSession({
-                      sessionID: activeSession.id,
-                      autoFileAttachmentEnabled: checked,
-                    });
-                  if (!checked) {
-                    void apply();
-                    return;
-                  }
-                  Modal.confirm({
-                    title: "Automatically send output files and folders?",
-                    content:
-                      "Files and folders listed by this Agent under Output Files or Output Folders will be uploaded to its bound IM conversation without another confirmation.",
-                    okText: "Enable auto attachments",
-                    cancelText: "Cancel",
-                    onOk: apply,
-                  });
-                }}
+                checked={false}
+                disabled
                 data-testid="agent-auto-attach-output"
               />
             </label>
+            <span className="text-[var(--sub-text)]">
+              Human confirmation is required for every publication.
+            </span>
             <span
               className="truncate text-[var(--sub-text)]"
               title={activeSession.workspacePath}
@@ -1268,6 +1519,10 @@ const AgentPanel = ({
                   ))}
                   <RuntimeStatusCard session={activeSession} />
                   <RuntimeRetryCard session={activeSession} />
+                  {activeSession.stagedResults.map((result) => (
+                    <StagedResultCard key={result.resultID} result={result} />
+                  ))}
+                  <ImprovementBacklog candidates={sessionImprovementCandidates} />
                   {activeSession.messages.length === 0 &&
                     activeSession.interactions.length === 0 &&
                     pendingRequests.length === 0 && (
@@ -1332,6 +1587,7 @@ const AgentPanel = ({
                   icon={<SendOutlined rev={undefined} />}
                   disabled={!prompt.trim() || !activeSession.runtimeSessionID}
                   onClick={() => void send()}
+                  data-testid="agent-send-message"
                 >
                   Send
                 </Button>

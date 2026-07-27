@@ -139,6 +139,35 @@ const run = async () => {
       folderResult.attachments.map((item) => [item.path, item.kind]),
       [["test-folder", "folder"]],
     );
+
+    await fs.promises.writeFile(path.join(workspace, "preview.png"), "png");
+    await fs.promises.mkdir(path.join(workspace, "empty-folder"));
+    const typedArtifacts = await resolveAgentDelivery(workspace, {
+      ...finalMessage,
+      id: "assistant-artifact-types",
+      parts: [
+        {
+          id: "artifact-types-text",
+          type: "text",
+          text: [
+            "Artifacts ready.",
+            "",
+            "## Output Files",
+            "- preview.png",
+            "",
+            "## Output Folders",
+            "- empty-folder/",
+          ].join("\n"),
+        },
+      ],
+    });
+    assert.deepEqual(
+      typedArtifacts.attachments.map((item) => [item.path, item.kind]),
+      [
+        ["empty-folder", "folder"],
+        ["preview.png", "image"],
+      ],
+    );
   } finally {
     await fs.promises.rm(workspace, { recursive: true, force: true });
   }

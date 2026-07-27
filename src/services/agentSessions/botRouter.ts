@@ -7,6 +7,12 @@ import {
   extractTextMessageContent,
   isAgentGeneratedMessage,
 } from "@/services/botTrigger";
+import {
+  createAgentRequest,
+  createContextPolicy,
+  hasAgentRequestEnvelope,
+  readAgentRequestEnvelope,
+} from "@/services/humanAgentCollaboration";
 import { offlineIMService } from "@/services/offlineIM";
 import { useAgentSessionStore, useConversationStore, useUserStore } from "@/store";
 import type { BotRequest } from "@/types/agentSession";
@@ -54,19 +60,51 @@ export const executeAgentBotRequest = async (request: BotRequest) => {
       triggerMessageID: request.triggerMessageID,
       triggerText: request.triggerText,
       messageIDs: messages.map((item) => item.clientMsgID),
-      recentLimit: request.contextLimit,
+      recentLimit: request.agentRequest.contextPolicy.recentMessageLimit,
     },
     messages,
+    includeAttachments: request.agentRequest.contextPolicy.includeAttachments,
   });
   await store.runBotRequest({
     requestID: request.id,
-    prompt: `${context.bundle.promptText}\n\n${request.instructionText}`,
+    prompt: `${context.bundle.promptText}\n\n${request.agentRequest.instruction}`,
     contextPaths: context.paths,
+    agentRequest: request.agentRequest,
+    authorizedContextMessageCount: messages.length,
   });
 };
 
 async function loadBotRequestContextMessages(request: BotRequest) {
-  const precedingCount = Math.max(request.contextLimit - 1, 0);
+  const policy = request.agentRequest.contextPolicy;
+  if (!policy.allowedConversationIDs.includes(request.conversationID)) {
+    throw new Error("Agent request conversation is not authorized");
+  }
+  if (policy.ownerUserID !== request.senderUserID) {
+    throw new Error("Agent request context is not owned by the requester");
+  }
+  if (policy.selectedMessageIDs?.length) {
+    let selected: MessageItem[] = [];
+    if (getAuthMode() === "offline") {
+      selected = await offlineIMService.getMessagesByClientMsgIDs(
+        request.conversationID,
+        policy.selectedMessageIDs,
+      );
+    } else {
+      const { data } = await IMSDK.findMessageList([
+        {
+          conversationID: request.conversationID,
+          clientMsgIDList: policy.selectedMessageIDs,
+        },
+      ]);
+      const groups = data.searchResultItems ?? data.findResultItems ?? [];
+      selected = groups.flatMap((group) => group.messageList ?? []);
+    }
+    const byID = new Map(selected.map((message) => [message.clientMsgID, message]));
+    return policy.selectedMessageIDs
+      .map((messageID) => byID.get(messageID))
+      .filter((message): message is MessageItem => Boolean(message));
+  }
+  const precedingCount = Math.max(policy.recentMessageLimit - 1, 0);
   let preceding: MessageItem[] = [];
   let triggerMessage: MessageItem | undefined;
   if (getAuthMode() === "offline") {
@@ -113,7 +151,7 @@ async function loadBotRequestContextMessages(request: BotRequest) {
   } as MessageItem;
   return [...preceding, triggerMessage]
     .sort((a, b) => (a.sendTime ?? 0) - (b.sendTime ?? 0))
-    .slice(-request.contextLimit);
+    .slice(-policy.recentMessageLimit);
 }
 
 export const routeIncomingBotMessage = async (
@@ -156,6 +194,37 @@ export const routeIncomingBotMessage = async (
     const policy = store.botPolicyByConversation[conversationID] ?? "review";
     if (policy === "off") return;
     const now = Date.now();
+    const messageEx = (message as MessageItem & { ex?: unknown }).ex;
+    const transportedRequest = readAgentRequestEnvelope(messageEx);
+    if (
+      hasAgentRequestEnvelope(messageEx) &&
+      (!transportedRequest ||
+        transportedRequest.conversationID !== conversationID ||
+        transportedRequest.requesterUserID !== message.sendID ||
+        transportedRequest.targetAgentID !== self.userID)
+    ) {
+      throw new Error("Agent request authorization envelope was rejected");
+    }
+    const agentRequest =
+      transportedRequest &&
+      transportedRequest.conversationID === conversationID &&
+      transportedRequest.requesterUserID === message.sendID &&
+      transportedRequest.targetAgentID === self.userID
+        ? transportedRequest
+        : createAgentRequest({
+            requestID: `agent_request_${message.clientMsgID}`,
+            conversationID,
+            requesterUserID: message.sendID,
+            targetAgentID: self.userID,
+            instruction: trigger.instructionText,
+            contextPolicy: createContextPolicy({
+              ownerUserID: message.sendID,
+              recentMessageLimit: 20,
+              includeAttachments: true,
+              allowedConversationIDs: [conversationID],
+            }),
+            createdAt: message.sendTime ?? now,
+          });
     const request: BotRequest = {
       id: `bot_request_${message.clientMsgID}`,
       conversationID,
@@ -165,10 +234,8 @@ export const routeIncomingBotMessage = async (
       senderUserID: message.sendID,
       senderNickname: message.senderNickname,
       targetUserID: self.userID,
-      contextLimit: Math.min(
-        Math.max(store.botContextLimitByConversation[conversationID] ?? 20, 1),
-        200,
-      ),
+      contextLimit: agentRequest.contextPolicy.recentMessageLimit,
+      agentRequest,
       status: "pending_review",
       createdAt: now,
       updatedAt: now,

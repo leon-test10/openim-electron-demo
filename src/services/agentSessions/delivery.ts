@@ -132,7 +132,7 @@ const sendOfflineAttachment = async (
     const scan = await scanFolder(attachment);
     const shareID = uuidV4();
     const manifest = {
-      schema: FOLDER_SHARE_SCHEMA,
+      schema: FOLDER_SHARE_SCHEMA as "openim-agent.folder-share.v1",
       shareID,
       folderName: scan.folderName || attachment.fileName,
       itemCount: scan.itemCount,
@@ -185,6 +185,7 @@ export const deliverAgentOutput = async (
     requestID: request.requestID,
     sessionID: request.sessionID,
     messageID: request.messageID,
+    resultID: request.resultID,
     textSent: false,
     sentAttachmentPaths: [],
     errors: [],

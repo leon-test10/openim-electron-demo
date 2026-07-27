@@ -108,6 +108,8 @@ const recoverWorkspace = async (
     messages,
     turns: [],
     interactions: [],
+    stagedResults: [],
+    traceSummaries: [],
   } satisfies AgentSession;
 };
 
@@ -131,11 +133,7 @@ export const discoverManagedAgentSessions = async (
   return recovered.filter((session): session is AgentSession => Boolean(session));
 };
 
-const SKIPPED_DIRECTORY_NAMES = new Set([
-  ".git",
-  ".openim-agent",
-  "node_modules",
-]);
+const SKIPPED_DIRECTORY_NAMES = new Set([".git", ".openim-agent", "node_modules"]);
 
 export const discoverExternalAgentSessions = async (
   searchRoots: string[],
@@ -152,9 +150,7 @@ export const discoverExternalAgentSessions = async (
       return;
     }
     if (
-      entries.some(
-        (entry) => entry.isDirectory() && entry.name === ".openim-agent",
-      )
+      entries.some((entry) => entry.isDirectory() && entry.name === ".openim-agent")
     ) {
       candidates.add(path.resolve(directory));
     }

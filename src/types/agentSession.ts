@@ -6,6 +6,14 @@ import type {
   AgentQuestionInteraction,
   AgentSessionStatus,
 } from "../agent-core/sessionTypes";
+import type {
+  AgentRequest,
+  AgentRunTraceSummary,
+  AgentStagedResult,
+  ContextPolicy,
+  ImprovementCandidate,
+  ImprovementCandidateStatus,
+} from "./humanAgentCollaboration";
 
 export type {
   AgentInteraction,
@@ -33,9 +41,14 @@ export type AgentTurnStatus =
 
 export interface AgentTurn {
   id: string;
+  requestID: string;
+  runID: string;
   sessionID: string;
+  requesterUserID: string;
   source: AgentTurnSource;
   prompt: string;
+  contextPolicy: ContextPolicy;
+  authorizedContextMessageCount: number;
   status: AgentTurnStatus;
   createdAt: number;
   updatedAt: number;
@@ -76,6 +89,8 @@ export interface AgentSession {
   messages: AgentMessage[];
   turns: AgentTurn[];
   interactions: AgentInteraction[];
+  stagedResults: AgentStagedResult[];
+  traceSummaries: AgentRunTraceSummary[];
 }
 
 export type BotConversationPolicy = "off" | "review" | "auto";
@@ -98,6 +113,7 @@ export interface BotRequest {
   senderNickname?: string;
   targetUserID: string;
   contextLimit: number;
+  agentRequest: AgentRequest;
   status: BotRequestStatus;
   createdAt: number;
   updatedAt: number;
@@ -111,8 +127,11 @@ export interface AgentSessionStateSnapshot {
   activeSessionByConversation: Record<string, string | undefined>;
   botPolicyByConversation: Record<string, BotConversationPolicy>;
   botContextLimitByConversation: Record<string, number | undefined>;
+  botIncludeAttachmentsByConversation: Record<string, boolean | undefined>;
   botCheckpointByConversation: Record<string, string | undefined>;
   botRequests: BotRequest[];
+  improvementCandidates: ImprovementCandidate[];
+  imOnline: boolean;
   agentPanelOpen: boolean;
   terminalPanelOpen: boolean;
   runtimeBaseUrl?: string;
@@ -135,6 +154,9 @@ export interface CreateAgentSessionParams {
 export interface SendAgentMessageParams {
   sessionID: string;
   text: string;
+  requesterUserID?: string;
+  agentRequest?: AgentRequest;
+  authorizedContextMessageCount?: number;
   source?: AgentTurnSource;
   triggerMessageID?: string;
   contextPaths?: string[];
@@ -210,6 +232,7 @@ export interface AgentDeliveryRequest {
   sessionID: string;
   conversationID: string;
   messageID: string;
+  resultID?: string;
   text?: string;
   attachments: AgentDeliveryAttachment[];
 }
@@ -218,6 +241,7 @@ export interface AgentDeliveryResponse {
   requestID: string;
   sessionID: string;
   messageID: string;
+  resultID?: string;
   textSent: boolean;
   sentAttachmentPaths: string[];
   errors?: string[];
@@ -228,3 +252,28 @@ export type AgentSessionEvent =
   | { type: "navigate"; conversationID: string; sessionID?: string }
   | { type: "history-query"; request: AgentHistoryQueryRequest }
   | { type: "delivery-request"; request: AgentDeliveryRequest };
+
+export interface UpdateAgentStagedResultParams {
+  sessionID: string;
+  resultID: string;
+  finalAnswer?: string;
+  removeArtifactID?: string;
+}
+
+export interface PublishAgentStagedResultParams {
+  sessionID: string;
+  resultID: string;
+}
+
+export interface RecordImprovementCandidateParams {
+  sessionID: string;
+  runID: string;
+  source: ImprovementCandidate["source"];
+  title: string;
+  description: string;
+}
+
+export interface UpdateImprovementCandidateParams {
+  candidateID: string;
+  status: ImprovementCandidateStatus;
+}

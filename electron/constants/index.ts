@@ -88,6 +88,13 @@ export const IpcRenderToMain = {
   agentSessionWriteFiles: "agent-session:writeFiles",
   agentSessionHistoryResponse: "agent-session:historyResponse",
   agentSessionDeliveryResponse: "agent-session:deliveryResponse",
+  agentSessionSetIMOnline: "agent-session:setIMOnline",
+  agentSessionUpdateStagedResult: "agent-session:updateStagedResult",
+  agentSessionRejectStagedResult: "agent-session:rejectStagedResult",
+  agentSessionRetryStagedResult: "agent-session:retryStagedResult",
+  agentSessionPublishStagedResult: "agent-session:publishStagedResult",
+  agentSessionRecordImprovement: "agent-session:recordImprovement",
+  agentSessionUpdateImprovement: "agent-session:updateImprovement",
   agentSessionOpenTerminal: "agent-session:openTerminal",
 
   workspaceGetConversationDir: "workspace:getConversationDir",

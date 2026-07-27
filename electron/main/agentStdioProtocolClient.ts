@@ -118,7 +118,7 @@ export class AgentStdioProtocolClient implements AgentProtocolClient {
       return;
     }
     if (frame.type === "event") {
-      this.listeners.forEach((listener) => listener(frame));
+      this.listeners.forEach((listener) => listener(frame as AgentProtocolEventFrame));
       return;
     }
     if (frame.type !== "res") return;

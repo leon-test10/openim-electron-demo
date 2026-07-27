@@ -9,6 +9,7 @@ import {
   useAgentSessionStore,
   useConversationStore,
   useMessageSelectionStore,
+  useUserStore,
 } from "@/store";
 import type {
   AgentSessionEvent,
@@ -25,6 +26,13 @@ const clearLegacyPanelMetadata = () => {
 
 export const useAgentSessionBridge = () => {
   const navigate = useNavigate();
+  const imOnline = useUserStore(
+    (state) => state.authMode === "offline" || state.connectState === "success",
+  );
+
+  useEffect(() => {
+    void useAgentSessionStore.getState().setIMOnline(imOnline);
+  }, [imOnline]);
 
   useEffect(() => {
     clearLegacyPanelMetadata();

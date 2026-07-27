@@ -31,10 +31,13 @@ export function useSendMessage() {
       if (getAuthMode() === "offline") {
         const content = message.textElem?.content?.trim();
         if (!currentConversation?.conversationID || !content) return undefined;
-        const offlineMessage = await offlineIMService.createTextMessage({
+        const offlineMessage = await offlineIMService.createMessage({
           conversationID: currentConversation.conversationID,
           sender: offlineSender ?? "self",
-          content,
+          message: {
+            ...message,
+            textElem: { content },
+          },
         });
         const conversationList = await offlineIMService.listConversations();
         const updatedCurrentConversation = conversationList.find(

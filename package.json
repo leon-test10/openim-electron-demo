@@ -25,6 +25,7 @@
     "test:e2e:headed": "playwright test -c playwright.electron.config.ts --headed",
     "test:e2e:debug": "playwright test -c playwright.electron.config.ts --debug",
     "test": "node scripts/run-node-tests.cjs",
+    "typecheck": "tsc -p tsconfig.typecheck.json && tsc -p tsconfig.electron-check.json",
     "format": "prettier --write .",
     "lint": "eslint --ext .js,.jsx,.ts,.tsx src",
     "lint:fix": "eslint --ext .js,.jsx,.ts,.tsx --fix --quiet src",

@@ -471,6 +471,7 @@ export const setIpcMainListener = () => {
         requestID: string;
         reply: "once" | "always" | "reject";
         message?: string;
+        runID?: string;
       },
     ) => {
       return agentSessionManager.replyPermission(
@@ -478,6 +479,7 @@ export const setIpcMainListener = () => {
         params.requestID,
         params.reply,
         params.message,
+        params.runID,
       );
     },
   );
@@ -490,6 +492,7 @@ export const setIpcMainListener = () => {
         requestID: string;
         answers?: string[][];
         reject?: boolean;
+        runID?: string;
       },
     ) => {
       return agentSessionManager.replyQuestion(
@@ -497,6 +500,7 @@ export const setIpcMainListener = () => {
         params.requestID,
         params.answers,
         params.reject,
+        params.runID,
       );
     },
   );
@@ -526,12 +530,14 @@ export const setIpcMainListener = () => {
         conversationID: string;
         policy: "off" | "review" | "auto";
         contextLimit?: number;
+        includeAttachments?: boolean;
       },
     ) => {
       return agentSessionManager.setBotPolicy(
         params.conversationID,
         params.policy,
         params.contextLimit,
+        params.includeAttachments,
       );
     },
   );
@@ -571,6 +577,27 @@ export const setIpcMainListener = () => {
   });
   ipcMain.handle(IpcRenderToMain.agentSessionDeliveryResponse, (_, response) => {
     return agentSessionManager.handleDeliveryResponse(response);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionSetIMOnline, (_, online: boolean) => {
+    return agentSessionManager.setIMOnline(online);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionUpdateStagedResult, (_, params) => {
+    return agentSessionManager.updateStagedResult(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionRejectStagedResult, (_, params) => {
+    return agentSessionManager.rejectStagedResult(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionRetryStagedResult, (_, params) => {
+    return agentSessionManager.retryStagedResult(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionPublishStagedResult, (_, params) => {
+    return agentSessionManager.publishStagedResult(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionRecordImprovement, (_, params) => {
+    return agentSessionManager.recordImprovementCandidate(params);
+  });
+  ipcMain.handle(IpcRenderToMain.agentSessionUpdateImprovement, (_, params) => {
+    return agentSessionManager.updateImprovementCandidate(params);
   });
   ipcMain.handle(
     IpcRenderToMain.agentSessionOpenTerminal,

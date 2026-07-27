@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "lib": ["ES2022", "DOM"],
+    "strict": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "noEmit": true
+  },
+  "include": [
+    "electron/**/*.ts",
+    "src/agent-core/identity.ts",
+    "src/agent-core/sessionTypes.ts",
+    "src/types/agentSession.ts",
+    "src/types/humanAgentCollaboration.ts"
+  ]
+}

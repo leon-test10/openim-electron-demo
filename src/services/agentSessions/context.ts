@@ -2,6 +2,7 @@ import { ViewType } from "@openim/wasm-client-sdk";
 import type { MessageItem } from "@openim/wasm-client-sdk/lib/types/entity";
 
 import { IMSDK } from "@/layout/MainContentWrap";
+import { applyContextAttachmentPolicy } from "@/services/humanAgentCollaboration";
 import {
   type ContextSource,
   exportContextAttachments,
@@ -40,18 +41,26 @@ export const persistAgentContextBundle = async ({
   session,
   source,
   messages,
+  includeAttachments = true,
 }: {
   session: AgentSession;
   source: ContextSource;
   messages: MessageItem[];
+  includeAttachments?: boolean;
 }) => {
+  const contextMessages = applyContextAttachmentPolicy(messages, includeAttachments);
   let bundle = IMContextService.createContextBundle({
     workspacePath: session.workspacePath,
     source,
-    messages,
+    messages: contextMessages,
   });
 
-  if (session.managedWorkspace && bundle.attachments.length && window.electronAPI) {
+  if (
+    includeAttachments &&
+    session.managedWorkspace &&
+    bundle.attachments.length &&
+    window.electronAPI
+  ) {
     const attachments = await exportContextAttachments({
       attachments: bundle.attachments,
       copyFile: (sourcePath, relativePath, maxBytes) =>

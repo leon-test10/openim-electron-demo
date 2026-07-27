@@ -120,7 +120,7 @@ export class AgentGatewayWorker {
       typeof run.input.collaborationID === "string"
         ? run.input.collaborationID
         : undefined;
-    let stateQueue: Promise<unknown> = Promise.resolve();
+    let stateQueue: Promise<void> = Promise.resolve();
     let lastState: GatewayWorkerExecutionState = "running";
     const publishState = (state: GatewayWorkerExecutionState) => {
       if (state === lastState) return stateQueue;

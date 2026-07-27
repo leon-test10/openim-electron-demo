@@ -1,5 +1,71 @@
 # Session Handoff - Contact-scoped Persistent Agent Sessions
 
+## Latest Update - Human-Agent Collaboration Loop V1 (2026-07-27)
+
+Current branch: `feature/agent-run-contract`
+
+### Delivered
+
+- Added a stable `AgentRequest` envelope and requester-owned `ContextPolicy`.
+  Ordinary `@Agent` messages now freeze the requester's recent-message limit,
+  selected message IDs, attachment permission, and allowed conversation before
+  the target Agent executes. Invalid or conversation-mismatched envelopes are
+  rejected; legacy triggers retain a bounded compatibility policy.
+- Propagated `requestID` and `runID` through Agent turns, interactions, staged
+  results, Artifacts, and lightweight traces. The actual authorized context
+  count is recorded and shown in the Agent panel.
+- Added explicit conversation/session binding states and separate Runtime and
+  OpenIM health. Persisted sessions recover after reload, Runtime disconnects
+  expose Reconnect, and IM-offline state is not reported as an unbound
+  terminal.
+- Kept streaming text, tool activity, permission/question responses, retry,
+  abort, and failures in the Agent panel. Permission and question replies are
+  checked against their originating Run.
+- Runtime completion now creates an editable staged result. Text and unified
+  file/image/folder Artifacts remain unpublished until `Confirm and Send`.
+  Users can edit text, remove Artifacts, retry, or reject. Partial publication
+  failures and timeouts retain the staged result for retry and do not resend
+  content already confirmed as published.
+- Added lightweight trace summaries and a deliberately small Improvement
+  Backlog. Runtime failures, repeated retries, human takeover, publication
+  failures, and explicit feedback can create sanitized candidates; users can
+  approve, reject, or convert them to a development Goal. There is no automatic
+  code, prompt, permission, Git, or production modification.
+- Kept Electron main-process collaboration contracts environment-neutral. The
+  production import checker verifies that main-process output has no unresolved
+  relative dependency or renderer-source dependency, preventing the startup
+  failure class previously seen as `Cannot find module ../../src/...`.
+
+### Validation
+
+- `npm.cmd run typecheck`: pass.
+- `npm.cmd run lint -- --quiet`: pass.
+- `npm.cmd test`: pass.
+- `npm.cmd run build`: pass; Electron relative imports resolve and the
+  `agent-core` boundary is environment-neutral.
+- Full Electron E2E: 27/27 pass.
+- Focused E2E names passed:
+  `requester-context-policy`, `session-binding-recovery`, `result-staging`,
+  `artifact-folder-delivery`, and `improvement-candidate`.
+- `git diff --check`: pass before final documentation update.
+
+### Deliberate Limits / Next Work
+
+- This milestone completes the single-Agent human collaboration loop. A second
+  production Runtime, shared multi-human approval, and durable server-side
+  distributed collaboration remain later phases.
+- Trace and improvement records intentionally store compact metadata and
+  sanitized user-entered summaries rather than raw terminal output, secrets, or
+  full message bodies.
+- IM publication is confirmed by the renderer bridge. End-to-end exactly-once
+  delivery across a process crash still requires a durable IM-side idempotency
+  key in a later protocol revision.
+
+See `docs/human-agent-collaboration-loop-v1.md` for the contract and state-flow
+summary.
+
+---
+
 ## Latest Update - Agent Model, Message Dedup, and IM Delivery (2026-07-16)
 
 ### Fixed
